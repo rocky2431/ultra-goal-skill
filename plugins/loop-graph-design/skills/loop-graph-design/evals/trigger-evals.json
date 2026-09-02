@@ -1,0 +1,136 @@
+{
+  "skill_name": "loop-graph-design",
+  "adjacent_skills": {
+    "agent-harness-design": "Design, audit, or evaluate an AI agent's execution layer: model/tool loops, authority and effects, context/state/recovery, orchestration, provider-native adapters, and model-harness safety, utility, or capability tax. Use only when the agent system is the subject.",
+    "agent-delegation": "Use when handing a meaningful research, analysis, writing, operations, or coding mission to another agent while preserving worker agency, inherited authority, effect gates, receipts, and cycle limits.",
+    "task-state-with-files": "Use for tool-driven execution that is substantive, multi-step, long-running, or likely to survive compaction. Keep objective, decisions, evidence, next action, and unfinished work in an owner-readable file."
+  },
+  "evals": [
+    {
+      "id": 1,
+      "name": "positive_recurring_upgrade_loop",
+      "kind": "positive",
+      "prompt": "I want an agent that checks our dependencies every week, opens an upgrade PR when there is a high-severity advisory, and stops when the audit is clean. Help me set that up properly.",
+      "expected_skills": ["loop-graph-design"]
+    },
+    {
+      "id": 2,
+      "name": "positive_turn_manual_process_into_a_loop",
+      "kind": "positive",
+      "prompt": "Every morning I manually ask Claude to check CI, fix the flaky tests, and report. Turn this into something that runs itself with a clear stopping point.",
+      "expected_skills": ["loop-graph-design"]
+    },
+    {
+      "id": 3,
+      "name": "positive_multi_vendor_orchestration_shape",
+      "kind": "positive",
+      "prompt": "Four agents from different vendors each own part of the review and I coordinate the results. Is that a loop or a graph, and what should I actually write?",
+      "expected_skills": ["loop-graph-design"]
+    },
+    {
+      "id": 4,
+      "name": "positive_stop_condition_and_verifier",
+      "kind": "positive",
+      "prompt": "My agent loop never knows when to quit and it keeps grading its own work as good. Help me define the exit criteria and who checks it.",
+      "expected_skills": ["loop-graph-design"]
+    },
+    {
+      "id": 5,
+      "name": "positive_workflow_script_for_known_stages",
+      "kind": "positive",
+      "prompt": "The stages are fixed: review the diff on three dimensions in parallel, then verify each finding. I want the orchestration written down rather than rediscovered every run.",
+      "expected_skills": ["loop-graph-design"]
+    },
+    {
+      "id": 6,
+      "name": "negative_translation",
+      "kind": "negative",
+      "prompt": "Translate 'The build completed successfully.' into Chinese.",
+      "expected_skills": []
+    },
+    {
+      "id": 7,
+      "name": "negative_one_shot_refactor",
+      "kind": "negative",
+      "prompt": "Rename getUserData to fetchUserProfile and update every caller.",
+      "expected_skills": []
+    },
+    {
+      "id": 8,
+      "name": "negative_authority_and_approval_design",
+      "kind": "negative",
+      "prompt": "Design the permission model for our support agent: which tools it may call unattended, where refunds need approval, and how secrets reach the runtime.",
+      "expected_skills": ["agent-harness-design"]
+    },
+    {
+      "id": 9,
+      "name": "negative_context_recovery_design",
+      "kind": "negative",
+      "prompt": "How should our week-long coding agent survive context compaction and recover its state after the process dies?",
+      "expected_skills": ["agent-harness-design"]
+    },
+    {
+      "id": 10,
+      "name": "negative_single_handoff_now",
+      "kind": "negative",
+      "prompt": "Send this refactoring mission to Codex and bring back the result.",
+      "expected_skills": ["agent-delegation"]
+    },
+    {
+      "id": 11,
+      "name": "negative_ordinary_code_review",
+      "kind": "negative",
+      "prompt": "Review this function that concatenates raw user input into a SQL WHERE clause.",
+      "expected_skills": []
+    },
+    {
+      "id": 12,
+      "name": "ambiguous_orchestrate_these_agents",
+      "kind": "ambiguous",
+      "prompt": "Help me orchestrate these agents.",
+      "expected_skills": ["loop-graph-design"],
+      "accepted_skill_sets": [
+        ["loop-graph-design"],
+        ["agent-delegation"],
+        []
+      ],
+      "note": "Must ask whether the ask is a repeating structure to design or a single mission to hand off; either resolution is acceptable, silently building a topology is not."
+    },
+    {
+      "id": 13,
+      "name": "ambiguous_make_it_keep_going",
+      "kind": "ambiguous",
+      "prompt": "Can you just make it keep going until it works?",
+      "expected_skills": ["loop-graph-design"],
+      "accepted_skill_sets": [
+        ["loop-graph-design"],
+        []
+      ],
+      "note": "Acceptable to answer with the host's own goal primitive for a trivial case instead of a full interview, but not to start an unbounded loop with no stop condition."
+    },
+    {
+      "id": 14,
+      "name": "coexistence_design_then_delegate",
+      "kind": "coexistence",
+      "prompt": "Design the weekly audit loop, then actually hand the first round to Codex and Kimi.",
+      "expected_skills": ["loop-graph-design", "agent-delegation"],
+      "accepted_skill_sets": [
+        ["loop-graph-design", "agent-delegation"],
+        ["loop-graph-design"]
+      ],
+      "note": "This Skill compiles the artifact; delegation executes it. Designing without delegating is acceptable when the owner has not authorized the run."
+    },
+    {
+      "id": 15,
+      "name": "coexistence_harness_boundary_inside_a_loop_design",
+      "kind": "coexistence",
+      "prompt": "Build the nightly migration loop, and decide which of its effects need approval before they run.",
+      "expected_skills": ["loop-graph-design", "agent-harness-design"],
+      "accepted_skill_sets": [
+        ["loop-graph-design", "agent-harness-design"],
+        ["loop-graph-design"]
+      ],
+      "note": "The loop's boundary question overlaps the harness authority question; covering it inside the interview is acceptable, but the approval model itself is harness territory."
+    }
+  ]
+}

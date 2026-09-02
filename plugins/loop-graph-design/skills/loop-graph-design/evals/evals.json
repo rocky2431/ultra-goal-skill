@@ -1,0 +1,94 @@
+{
+  "skill_name": "loop-graph-design",
+  "comparison_arms": [
+    "no_skill",
+    "agent-harness-design",
+    "loop-graph-design"
+  ],
+  "evals": [
+    {
+      "id": 1,
+      "name": "no_anchor_blocks_the_artifact",
+      "prompt": "I want an agent that keeps improving our onboarding docs every week. Success is when the docs feel clearer. Write me the loop.",
+      "expected_output": "Refuses to emit an artifact until an anchor exists; explains that 'feel clearer' cannot be argued against and so the loop cannot tell progress from motion; proposes a candidate anchor such as a measured support-ticket count or a doc lint, and returns to that question instead of writing the prompt."
+    },
+    {
+      "id": 2,
+      "name": "phase_split_is_refused",
+      "prompt": "Set up four agents for this feature: one plans, one implements, one writes tests, one reviews. Give me the workflow script.",
+      "expected_output": "Refuses splitting by workflow phase because each phase needs the previous phase's context and handoffs degrade it; names the cheap alternative (one agent for the slice plus one independent verifier); does not simply comply with the four-node script."
+    },
+    {
+      "id": 3,
+      "name": "self_review_is_refused",
+      "prompt": "The loop should check its own work at the end of each iteration and stop when it is satisfied.",
+      "expected_output": "Rejects both halves: a generator grading itself praises its output, and an agent-owned definition of 'satisfied' drifts toward whatever ends the turn. Requires a fresh-context verifier and an owner-defined quantified stop condition with a turn ceiling."
+    },
+    {
+      "id": 4,
+      "name": "unquantified_stop_condition_is_sharpened",
+      "prompt": "Stop condition: keep going until the test suite is in good shape.",
+      "expected_output": "Converts it into an anchor command plus an exact threshold plus a turn ceiling; explains that a ceiling is required or an unreachable threshold runs until someone notices the cost."
+    },
+    {
+      "id": 5,
+      "name": "loop_is_enough_so_no_graph",
+      "prompt": "One agent needs to fix a failing test: read the error, open the file, patch it, re-run. Should I build this as a multi-agent graph with a triage node and a patch node?",
+      "expected_output": "Keeps it as one loop; notes that the routing cannot be drawn in advance because the next step depends on the error, and that extra agents cost 3-10x tokens plus another failure point. Emits a goal package, not a workflow script."
+    },
+    {
+      "id": 6,
+      "name": "graph_is_allowed_when_context_isolates",
+      "prompt": "I need three independent audits of the same module - overflow, reentrancy, gas - each needing different reference material. Must I prove one agent fails first?",
+      "expected_output": "Allows the graph without requiring a prior single-agent failure, because context genuinely isolates and the paths are independent; assigns each worker its own anchor and defines the integration rule and total budget."
+    },
+    {
+      "id": 7,
+      "name": "cross_vendor_star_limits_are_stated",
+      "prompt": "Four vendor agents each run their own loop and feed each other, and I coordinate. Write the delegation package.",
+      "expected_output": "Names the shape as orchestrator-worker star rather than a mesh: delegation is blocking request/response with no shared state, no checkpoint, and no worker-to-worker channel, so every edge passes through the orchestrator and each mission must be self-contained. States the re-delegate-versus-visibility trade-off explicitly."
+    },
+    {
+      "id": 8,
+      "name": "heterogeneous_models_for_independence",
+      "prompt": "For cross-review, should I run three copies of the same model with different prompts, or three different vendors?",
+      "expected_output": "Chooses different vendors where independence is the point, because agents differ only by context, scaffolding, and underlying model, so identical agents make identical mistakes and agreement between them is one opinion counted repeatedly."
+    },
+    {
+      "id": 9,
+      "name": "single_worker_delegation_is_a_loop",
+      "prompt": "Here is my graph: one worker agent, delegated from me, running until done.",
+      "expected_output": "Identifies this as a loop rather than a graph and emits a goal package; does not dress a single delegation up as a topology."
+    },
+    {
+      "id": 10,
+      "name": "mutual_checking_without_ground_is_refused",
+      "prompt": "Every agent reviews another agent's output and the orchestrator reads all the reports. That is fully verified, right?",
+      "expected_output": "Names circularity: a closed network of mutual confirmation is internally consistent and externally unverified, failing like a single loop but later and with more green lights. Requires at least one node reading the world and frozen rules the optimizer may not tune."
+    },
+    {
+      "id": 11,
+      "name": "single_metric_gets_a_counter_metric",
+      "prompt": "The loop optimizes ticket resolution rate weekly. Metric is clear and measurable, so we are fine.",
+      "expected_output": "Warns about Goodhart with the concrete mechanism - closing conversations fast and discouraging follow-ups moves the number while renewals fall - and pairs the metric with a counter-metric chosen to catch the cheap way to win."
+    },
+    {
+      "id": 12,
+      "name": "decisions_record_is_not_architecture",
+      "prompt": "Also write a design doc describing the nodes, the edges, and the data flow so we can keep it up to date.",
+      "expected_output": "Declines a prose copy of the topology: the script or prompt is the only description, and a second copy goes stale and starts lying. Offers the three-column decisions record instead, and says that revising a decision edits the row rather than appending history."
+    },
+    {
+      "id": 13,
+      "name": "artifact_ends_with_a_start_command",
+      "prompt": "Fine, we settled everything. Give me the loop.",
+      "expected_output": "Emits the paired artifact and decisions record at the project's workflows path, runs the validator, and hands off with the exact command to start it plus what the first iteration should produce - without running it unasked."
+    },
+    {
+      "id": 14,
+      "name": "one_shot_task_does_not_activate",
+      "prompt": "Rename this function and update its callers.",
+      "expected_output": "Does not build a loop or a graph; performs or plans the ordinary change. The Skill's machinery stays out of a one-shot task."
+    }
+  ]
+}

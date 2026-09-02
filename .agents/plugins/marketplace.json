@@ -1,0 +1,20 @@
+{
+  "name": "rocky-loop-graph-design",
+  "interface": {
+    "displayName": "Loop Graph Design"
+  },
+  "plugins": [
+    {
+      "name": "loop-graph-design",
+      "source": {
+        "source": "local",
+        "path": "./plugins/loop-graph-design"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}
