@@ -1354,6 +1354,28 @@ def audit_artifact(path: Path) -> tuple[dict[str, object], list[Finding]]:
                 )
             )
 
+    # A round that lost a role is not a clean round. Written by the
+    # PostToolUseFailure hook, so it is host-observed evidence rather than the
+    # run's account of itself - which is why this finding exists again after
+    # being deleted: the deletion was right about the old implementation and
+    # wrong about whether a hook could see it.
+    degraded = [e for e in events if e.get("event") == "role_unavailable"]
+    if degraded:
+        roles = ", ".join(
+            sorted({str(e.get("role")) for e in degraded if e.get("role")})
+        ) or "unnamed"
+        out.append(
+            Finding(
+                str(path),
+                "ROUND_DEGRADED",
+                f"{len(degraded)} call(s) naming {roles} failed during this run, so those "
+                "rounds ran with a fallback. Whether the fallback was adequate is not "
+                "something this can judge - check the report said the round was degraded, "
+                "because a review that could not happen is a missing review, not a pass",
+                "advisory",
+            )
+        )
+
     # Did the goalposts move? Two ways to find out, both from machine-written
     # facts: the gate said so on some turn, or the file on disk no longer
     # matches the digest recorded on turn 1.

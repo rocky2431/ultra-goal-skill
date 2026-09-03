@@ -1,6 +1,6 @@
 {
   "name": "ultra-goal",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Interview an objective into a grounded goal, emit the runnable artifact, and gate the run on its anchor.",
   "keywords": [
     "kimi-code",
@@ -31,6 +31,11 @@
     {
       "event": "PreCompact",
       "command": "python3 ./skills/ultra-goal/scripts/goal_pre_compact.py",
+      "timeout": 10
+    },
+    {
+      "event": "PostToolUseFailure",
+      "command": "python3 ./skills/ultra-goal/scripts/goal_tool_failure.py",
       "timeout": 10
     }
   ],

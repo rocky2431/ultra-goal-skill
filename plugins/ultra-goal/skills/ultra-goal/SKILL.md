@@ -5,7 +5,7 @@ when_to_use: "When the owner wants work to keep running without them - \"make an
 license: MIT
 metadata:
   author: rocky2431
-  version: "2.2.0"
+  version: "2.3.0"
 ---
 
 # UltraGoal
@@ -226,6 +226,21 @@ lost, read it and resume from the first unanswered question instead of starting 
    | Review semantically | not whoever wrote it | The one place where the choice below actually costs money |
    | Fan out | one worker per subject | Only where subjects are independent and **each has its own anchor** |
 
+   **Three of these roles ship as forked skills, so the isolation is a property of the
+   file rather than something you have to arrange:**
+
+   | Invoke | Runs as | Reads | Writes |
+   |---|---|---|---|
+   | `/ultra-goal:design-critic <slug>` | forked, no conversation history | the spec and the decisions record | nothing — returns objections |
+   | `/ultra-goal:review <slug>` | forked | the artifact, the frozen diff, the anchor's own output | `.goals/.work/<slug>-review.md` |
+   | `/ultra-goal:critic <slug>` | forked | that review and the same frozen diff | `.goals/.work/<slug>-critique.md` |
+
+   `context: fork` means the skill's content is the whole prompt and **the fork never sees
+   this conversation** — which is exactly the contagion that matters, because the thing that
+   must not reach a reviewer is the author's argument, and the author is you. Each waits for
+   its result in the invoking turn (`background: false`), so the artifact stays frozen for
+   the exchange.
+
    **The only genuine choice in review is model independence**, because the two axes cure
    different diseases: a **fresh context** stops the author's *argument* from reaching the
    reviewer and is never optional; a **different vendor** stops *shared blind spots* and
@@ -237,6 +252,10 @@ lost, read it and resume from the first unanswered question instead of starting 
    **When review runs** and the **round cap** are parameters of that choice, not peers of
    it: default to proposed completion plus the acceptance lines a green anchor would not
    prove, and 5 rounds accepting a clean first pass.
+
+   Delegating to another vendor instead is the same protocol with `agent-delegate` in place
+   of the fork: same inputs, same refusals, one extra process and a different set of blind
+   spots.
 
    **Then who judges, and whether they judge blind.** A lead that reads the executors'
    reports before recording its own verdict has been persuaded before it decided, which is

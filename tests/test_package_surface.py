@@ -648,7 +648,7 @@ class HygieneTests(unittest.TestCase):
         hook_scripts = sorted(p.name for p in scripts.glob("goal_*.py"))
         self.assertEqual(
             ["goal_hooks.py", "goal_pre_compact.py", "goal_session_start.py",
-             "goal_stop.py"],
+             "goal_stop.py", "goal_tool_failure.py"],
             hook_scripts,
         )
         for name in hook_scripts:
@@ -661,8 +661,13 @@ class HygieneTests(unittest.TestCase):
             (PLUGIN_ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8")
         )
         self.assertEqual(
-            ["Stop", "SessionStart", "PreCompact"], list(manifest["hooks"])
+            ["Stop", "SessionStart", "PreCompact", "PostToolUseFailure"],
+            list(manifest["hooks"]),
         )
+        # PostToolUseFailure earns its place: it fires only on a *failed* tool
+        # call, so its cost does not scale with tool use the way PostToolUse
+        # would - and it is the only host-observed view of a failed delegation.
+        self.assertIn("PostToolUseFailure", manifest["description"] or "")
         # PostToolUse is deliberately absent: it fires once per tool call, so its
         # cost is a Python start per call, and its value duplicates SessionStart
         # injection plus the goal text's own instruction to read carry-over.
@@ -1025,10 +1030,11 @@ class HostManifestTests(unittest.TestCase):
         self.assertEqual(["./skills"], self.load(
             "plugins/ultra-goal/kimi.plugin.json")["skills"])
 
-    def test_kimi_hooks_are_a_flat_array_naming_the_same_three_events(self) -> None:
+    def test_kimi_hooks_name_the_same_events_as_the_claude_manifest(self) -> None:
         hooks = self.load("plugins/ultra-goal/kimi.plugin.json")["hooks"]
         self.assertEqual(
-            ["Stop", "SessionStart", "PreCompact"], [h["event"] for h in hooks]
+            ["Stop", "SessionStart", "PreCompact", "PostToolUseFailure"],
+            [h["event"] for h in hooks],
         )
         manifest = json.loads(
             (PLUGIN_ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8")
@@ -1177,12 +1183,47 @@ class RolesByStageTests(unittest.TestCase):
             "a review that cannot happen is a missing review, not a red anchor", doc
         )
 
-    def test_no_code_claims_to_detect_degradation(self) -> None:
-        """The promise and the mechanism have to match, both ways."""
-        scripts = (SKILL_ROOT / "scripts").glob("*.py")
-        blob = "\n".join(p.read_text(encoding="utf-8") for p in scripts)
-        self.assertNotIn("role_unavailable", blob)
-        self.assertNotIn("ROUND_DEGRADED", blob)
+    def test_degradation_is_written_by_a_hook_and_read_by_the_audit(self) -> None:
+        """Deleted once for the right reason and the wrong fact.
+
+        The old implementation had the run write `role_unavailable`, putting a
+        claim inside the evidence file, so it went. The reasoning attached to
+        the deletion - that only the run can observe a failed delegation - was
+        wrong: the hooks reference documents `PostToolUseFailure`, which is a
+        host-observed fact about the invocation. So the finding is back, and
+        this pins that the writer is a hook and never the run.
+        """
+        writer = (SKILL_ROOT / "scripts" / "goal_tool_failure.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('"event": "role_unavailable"', writer)
+        self.assertIn("PostToolUseFailure", writer)
+        # And it writes a fact, not a judgement about what the failure meant.
+        self.assertIn("those are judgements, and this writes facts", writer)
+        audit = (SKILL_ROOT / "scripts" / "validate_artifact.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("ROUND_DEGRADED", audit)
+        self.assertIn("host-observed evidence rather than the", audit)
+
+    def test_the_three_roles_ship_as_forked_skills(self) -> None:
+        """Isolation as a property of the file, not of the call site."""
+        for name, writes in (("design-critic", False), ("review", True),
+                             ("critic", True)):
+            with self.subTest(skill=name):
+                text = (PLUGIN_ROOT / "skills" / name / "SKILL.md").read_text(
+                    encoding="utf-8"
+                )
+                self.assertIn("context: fork", text)
+                self.assertIn("background: false", text)
+                self.assertIn("must not seek", text) if name != "design-critic" \
+                    else self.assertIn("never saw the interview", text)
+                self.assertEqual(writes, "Write" in text.split("---")[1])
+        skill = skill_text()
+        for command in ("/ultra-goal:design-critic <slug>", "/ultra-goal:review <slug>",
+                        "/ultra-goal:critic <slug>"):
+            self.assertIn(command, skill)
+        self.assertIn("**the fork never sees\n   this conversation**", skill)
 
     def test_the_run_is_asked_to_say_it_out_loud(self) -> None:
         goal = (SKILL_ROOT / "assets" / "goal-package.md").read_text(encoding="utf-8")

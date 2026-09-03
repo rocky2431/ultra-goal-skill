@@ -75,9 +75,10 @@ here so a later reader can see the shape without reconstructing it.
   fallback: none; an interview cannot be delegated to something the owner is not talking to.
 - **research**: fanned-out subagents, fresh context each, one per independent question.
   fallback: this session inline, narrower.
-- **design critic**: one subagent, fresh context, reads the spec and attacks it before the
-  first turn. fallback: skip it and say so in the report, because a skipped design review is
-  a missing one rather than a pass.
+- **design critic**: `/ultra-goal:design-critic weekly-dep-upgrade`, run once at the end of
+  the interview before any work starts. Forked, so it never saw the interview that produced
+  the spec. fallback: skip it and say so in the report, because a skipped design review is a
+  missing one rather than a pass.
 - **carry out**: this session. Writes the code **and its tests, test first**.
   fallback: none, because `### Lessons` and every dead end live in this context and a fresh
   coder would restart the run at turn 1 every turn.
@@ -88,13 +89,13 @@ here so a later reader can see the shape without reconstructing it.
 - **anchor**: the command in `## Anchor`. No model in the path.
   fallback: none; if it cannot run the outcome is unknown, which is the answer rather than a
   failure.
-- **reviewer**: a subagent, fresh context, same model. Receives the frozen diff, this
-  boundary, and the anchor's raw output - never the author's account of why the change is
-  correct. fallback: this session with the diff re-read cold, and say the review was not
-  independent.
-- **critic**: a second subagent, fresh context. Audits the review, not the code.
-  fallback: none; without the third role the review is nobody's job to audit, so a round
-  without a critic is reported as unreviewed.
+- **reviewer**: `/ultra-goal:review weekly-dep-upgrade`. Forked, so it receives the frozen
+  diff, this boundary and the anchor's raw output, and never this session's account of why
+  the change is correct. fallback: this session with the diff re-read cold, and say the
+  review was not independent.
+- **critic**: `/ultra-goal:critic weekly-dep-upgrade`, after the reviewer. Audits the
+  review, not the code. fallback: none; without the third role the review is nobody's job to
+  audit, so a round without a critic is reported as unreviewed.
 
 **Model independence is deliberately not bought here.** A same-model subagent stops the
 author's argument from reaching the reviewer, which is the contagion that matters for a
@@ -107,10 +108,10 @@ already the check.
 
 ## Verification
 
-A **reviewer** with a fresh context reviews the diff against this boundary, citing file:line
-and the command whose output proves each finding. It receives the frozen diff, this
-boundary, and the anchor's own output - never the main agent's account of why the change is
-correct, because that account is what a reviewer conforms to. A **critic** then audits that review rather
+Run `/ultra-goal:review weekly-dep-upgrade`, then `/ultra-goal:critic weekly-dep-upgrade`.
+Both are forked skills: the fork never sees the invoking conversation, so the author's
+account of why the change is correct cannot reach them - and that account is what a reviewer
+conforms to. Every finding cites file:line and the command whose output proves it. A **critic** then audits that review rather
 than the code, sorting every point into exactly one of agreement, evidence-backed
 disagreement, or concern-based disagreement. The reviewer answers a disagreement with
 evidence, never with a rebuttal. At most 5 inner rounds; if round 1 converges with no

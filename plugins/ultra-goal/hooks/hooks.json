@@ -1,5 +1,5 @@
 {
-  "description": "Gate an active goal on its anchor, and restore its frozen spec and carried state after a session or compaction boundary. Silent in any project without a .goals/active marker.",
+  "description": "Gate an active goal on its anchor and re-state the sections it may change, restore its frozen spec and carried state after a session or compaction boundary, and record a failed delegation via PostToolUseFailure so a degraded round cannot read as a clean one. Silent in any project without a .goals/active marker.",
   "hooks": {
     "Stop": [
       {
@@ -40,6 +40,19 @@
             "commandWindows": "py -3 \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_pre_compact.py\"",
             "timeout": 10,
             "statusMessage": "Recording the loop's carried state"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/skills/ultra-goal/scripts/goal_tool_failure.py\"",
+            "commandWindows": "py -3 \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_tool_failure.py\"",
+            "timeout": 10
           }
         ]
       }

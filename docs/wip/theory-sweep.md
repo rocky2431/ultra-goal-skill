@@ -452,7 +452,33 @@ forked 会话此前完全没有注入)、`Stop` 会收到 **`last_assistant_mess
 后两个意味着"派发失败"其实**有** hook 侧的观测路径,所以我删掉 `role_unavailable` 的推理
 (只有运行能观测)是错的,但结论(当时那个实现是假货)仍然对。这条留作下一项。
 
-## 十三、刻意还没做
+## 十三、reference 指出的三件,已全部接线(v2.3.0)
+
+1. **`context: fork` 真接上了。**reviewer / critic / design-critic 现在是**三个独立的
+   forked skill**,`context: fork` + `background: false` + `agent: general-purpose`。
+   文档原话:skill 内容成为驱动 subagent 的整个 prompt,**fork 不带对话历史**。
+   为什么比临时 subagent 强:**该被隔离的是作者的说辞,而作者正是发起调用的那个会话**——
+   把隔离变成**文件的声明属性**,就取消了"调用方每次要记得安排"这一步。
+2. **`role_unavailable` 有了正确的写入方**:`PostToolUseFailure` hook。
+   我 v2.1.1 删它的**结论**对(那个实现让运行写证据,是假货),**理由**错(我说只有运行
+   能观测到)。现在 hook 写、`--audit` 读、`ROUND_DEGRADED` 复活。实测:
+   `agent-delegate ... --to codex` 失败 → 记 `{"event":"role_unavailable","role":"codex"}`;
+   `pnpm test` 失败 → 不记。它只在**失败的**工具调用上触发,成本不随工具用量线性增长。
+3. **恢复注入的契约改对了。**测试原来断言"出厂模板永不需要截断",而制品两次长过它——
+   那是测试把一个好性质写成了要求。真契约是**承重节必到、丢了要点名、先丢最不需要的**。
+   实测 7924 字符,只丢 `## Cadence`(它说这目标多久启动一次,而读到这段的运行已经启动了)。
+
+## 十四、eval:业主裁定不做
+
+`claude plugin eval` 是 CC 一等公民功能,但**本账号 early access 未开通**
+(`plugin eval is currently in early access`),且 `case.yaml` schema **没有公开文档**
+(`docs/llms.txt` 无 eval 页面、`/docs/en/plugin-evals` 404、`init` 被同一道门挡住)。
+
+按"定义从 reference 取",不猜 schema 编一套既跑不了又验不了的用例。
+**2026-09-04 业主裁定:阻塞在别人手里,那就不做。**74 道题保持现状,作为需求记录而非
+测试套件。
+
+## 十五、刻意还没做
 
 - **74 道 eval 仍然只有题目没有成绩,连执行器都没有。**这是唯一还没有任何证据的一半:
   所有依赖"我照着做"的东西 —— 访谈顺序、9 条 refusal、means 标签、真教训 vs 事件、

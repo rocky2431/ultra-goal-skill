@@ -216,6 +216,7 @@ a sentence in a prompt into something that actually runs.
 | `Stop` | Runs the anchor every turn | **Yes, in exactly one case**: the anchor ran and was red |
 | `SessionStart` | Re-injects the frozen spec and carried state after a restart | No |
 | `PreCompact` | Records the carried state before the context is emptied | No |
+| `PostToolUseFailure` | Records that a call naming a delegation target failed, so a degraded round cannot read as a clean one | No |
 
 **Three outcomes, not two.** An anchor that cannot run — missing command, not executable,
 timed out — is **unknown**, not failed. A timeout measures elapsed time and has no access to
@@ -264,6 +265,25 @@ whether a topology is the right one — that part is the design, and design belo
 and the model, not to a template engine.
 
 Its silence is not evidence that the design is right.
+
+## Three roles that ship as isolated skills
+
+The reviewer, the critic and the design critic are not ad-hoc subagent calls. Each is a
+skill with `context: fork` and `background: false`, which the skills reference defines as
+running the skill's content as the whole prompt in a subagent that **never sees the invoking
+conversation**:
+
+| Invoke | Reads | Writes |
+|---|---|---|
+| `/ultra-goal:design-critic <slug>` | the spec and the decisions record, before any work starts | nothing — returns objections |
+| `/ultra-goal:review <slug>` | the artifact, the frozen diff, the anchor's own output | `.goals/.work/<slug>-review.md` |
+| `/ultra-goal:critic <slug>` | that review and the same frozen diff | `.goals/.work/<slug>-critique.md` |
+
+The contagion worth preventing is the **author's argument**, and the author is the session
+doing the invoking — so making isolation a declared property of the file removes the step
+where the caller has to remember to arrange it. Crossing vendors instead is the same
+protocol with `agent-delegate` in place of the fork: same inputs, same refusals, one extra
+process, a different set of blind spots.
 
 ## What the gate says, and to whom
 
@@ -524,7 +544,7 @@ designed with its owner in the room has no validation set.
 python3 -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-268 tests: the validator's rules at two severities, the status projection, the
+273 tests: the validator's rules at two severities, the status projection, the
 claim-versus-measurement audit
 against a real Git repository, the gate's eight outcomes, the package surface, version
 consistency across three files, every relative link in `SKILL.md` resolving, and the shipped
