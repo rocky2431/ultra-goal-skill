@@ -74,6 +74,10 @@ Read this before acting; rewrite it before finishing.
 
 - nothing yet
 
+### Next
+
+- make the anchor pass
+
 ## Handoff
 
 ```
@@ -302,7 +306,16 @@ class AnchorGateTests(Harness):
         return json.loads(result.stdout) if result.stdout.strip() else {}
 
     def decision(self, payload: dict) -> str | None:
-        return payload.get("hookSpecificOutput", {}).get("permissionDecision")
+        """A Stop hook blocks with the top-level decision/reason pair.
+
+        The gate emitted `hookSpecificOutput.permissionDecision` for its whole
+        life, which is the PreToolUse shape; Stop's hookSpecificOutput accepts
+        only `hookEventName` and `additionalContext`. So the one hard power in
+        this design was wired to a field the host does not read, and every test
+        - including this helper - checked what the script emitted rather than
+        what the host honours.
+        """
+        return payload.get("decision")
 
     def events(self) -> list[dict]:
         path = self.cwd / ".goals" / "demo.events.jsonl"
@@ -318,8 +331,12 @@ class AnchorGateTests(Harness):
 
     def test_red_anchor_denies_the_stop(self) -> None:
         payload = self.stop(RED)
-        self.assertEqual("deny", self.decision(payload))
-        reason = payload["hookSpecificOutput"]["permissionDecisionReason"]
+        self.assertEqual("block", self.decision(payload))
+        self.assertNotIn(
+            "hookSpecificOutput", payload,
+            "blocking uses the top-level pair; the PreToolUse shape is not read here",
+        )
+        reason = payload["reason"]
         self.assertIn("still failing", reason)
         # The refusal must also say what to do next, since Stop cannot inject context.
         self.assertIn("### Lessons", reason)
@@ -387,7 +404,7 @@ class AnchorGateTests(Harness):
     def test_an_identical_result_twice_stops_the_spin(self) -> None:
         """Denying again would only spin it more, so it lets go and reports."""
         first = self.stop(RED)
-        self.assertEqual("deny", self.decision(first))
+        self.assertEqual("block", self.decision(first))
         second = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
             input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
@@ -817,3 +834,130 @@ class AmbiguousAnchorTests(Harness):
         self.assertFalse(
             witness.exists(), "running half of an ambiguous anchor proves the wrong thing"
         )
+
+
+class StopContractTests(Harness):
+    """What the host actually reads, pinned against what it prints.
+
+    The gate emitted `hookSpecificOutput.permissionDecision` for its whole life.
+    That is the PreToolUse shape; for Stop, Claude Code accepts only
+    `hookEventName` and `additionalContext` inside hookSpecificOutput, and
+    blocks on the **top-level** `decision`/`reason` pair. So the one hard power
+    in this design was wired to a field the host does not read, and 254 tests
+    all checked what the script emitted rather than what the host honours.
+    """
+
+    def stop(self, anchor: str, goal: str | None = None) -> dict:
+        self.make_loop(goal=(goal or GOAL).replace(f"```\n{GREEN}\n```", f"```\n{anchor}\n```"))
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
+            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            capture_output=True, text=True, timeout=60,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        return json.loads(result.stdout) if result.stdout.strip() else {}
+
+    def test_blocking_uses_the_top_level_pair(self) -> None:
+        payload = self.stop(RED)
+        self.assertEqual("block", payload["decision"])
+        self.assertIn("still failing", payload["reason"])
+        self.assertNotIn("hookSpecificOutput", payload)
+
+    def test_no_payload_ever_carries_the_pretooluse_shape(self) -> None:
+        """The wrong field must not come back anywhere."""
+        for anchor in (GREEN, RED, "this-command-does-not-exist-42"):
+            with self.subTest(anchor=anchor):
+                blob = json.dumps(self.stop(anchor))
+                self.assertNotIn("permissionDecision", blob)
+
+    def test_an_ending_turn_is_reminded_of_what_it_may_change(self) -> None:
+        payload = self.stop(GREEN)
+        context = payload["hookSpecificOutput"]["additionalContext"]
+        self.assertEqual("Stop", payload["hookSpecificOutput"]["hookEventName"])
+        for probe in ("### Next", "### Lessons", "### State"):
+            self.assertIn(probe, context, probe)
+
+    def test_the_reminder_never_carries_a_frozen_section(self) -> None:
+        """The owner's rule cuts both ways: a frozen section named in a
+        reminder is an invitation to edit it."""
+        context = self.stop(GREEN)["hookSpecificOutput"]["additionalContext"]
+        for frozen in ("## Intent", "## Boundary", "## Anchor", "## Means"):
+            self.assertNotIn(frozen, context, frozen)
+        self.assertIn("are frozen", context)
+
+    def test_open_acceptance_lines_are_carried_and_closed_ones_are_not(self) -> None:
+        goal = GOAL.replace(
+            "## Carry-over",
+            "## Acceptance\n\n- [x] already true\n- [ ] not yet true\n\n## Carry-over",
+        )
+        context = self.stop(GREEN, goal)["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("- [ ] not yet true", context)
+        self.assertNotIn("already true", context)
+
+
+class UnboundedCeilingTests(Harness):
+    """A run the owner declared unbounded has no ceiling, not a ceiling of 12.
+
+    Live defect: a real long run whose stop condition said "no ceiling" would
+    have been stopped by this gate at turn 13 while reporting "ceiling
+    reached" - in the owner's own voice.
+    """
+
+    def gate(self):
+        import importlib
+        return importlib.import_module("goal_stop")
+
+    def test_declared_forms_win_over_prose(self) -> None:
+        ceiling = self.gate()._ceiling
+        for text, expected in (
+            ("ceiling: none", None),
+            ("ceiling: unbounded", None),
+            ("ceiling: 20", 20),
+            ("ceiling: 20\nor after 6 turns", 20),
+        ):
+            with self.subTest(text=text):
+                turns, declared = ceiling(text)
+                self.assertEqual(expected, turns)
+                self.assertTrue(declared)
+
+    def test_an_unbounded_run_is_never_stopped_for_the_ceiling(self) -> None:
+        goal = GOAL.replace("Stop when `true` succeeds, or after 4 turns.",
+                            "Stop when the anchor is green.\n\nceiling: none")
+        self.make_loop(goal=goal.replace(f"```\n{GREEN}\n```", f"```\n{RED}\n```"))
+        log = self.cwd / ".goals" / "demo.events.jsonl"
+        log.write_text("".join(
+            json.dumps({"event": "anchor_checked", "turn": n, "outcome": "red",
+                        "signature": f"red:1:sig{n}"}) + "\n"
+            for n in range(1, 40)
+        ), encoding="utf-8")
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
+            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            capture_output=True, text=True, timeout=30,
+        )
+        payload = json.loads(result.stdout)
+        self.assertNotIn("ceiling", json.dumps(payload).lower())
+        # Turn 40 of an unbounded run still gets judged on its anchor.
+        self.assertEqual("block", payload.get("decision"))
+
+
+class CompactNoticeTests(Harness):
+    """A compacted model reads its own summary as memory."""
+
+    def context(self, source: str) -> str:
+        self.make_loop()
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_session_start.py")],
+            input=json.dumps({"hook_event_name": "SessionStart", "cwd": str(self.cwd),
+                              "source": source}),
+            capture_output=True, text=True, timeout=30,
+        )
+        return json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+
+    def test_a_compact_resume_is_told_it_lost_its_reasoning(self) -> None:
+        context = self.context("compact")
+        self.assertIn("**This session was just compacted.**", context)
+        self.assertIn("Do not trust a recollection of having", context)
+
+    def test_an_ordinary_resume_is_not(self) -> None:
+        self.assertNotIn("just compacted", self.context("resume"))

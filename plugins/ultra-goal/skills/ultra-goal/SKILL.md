@@ -4,7 +4,7 @@ description: "Turn \"make an agent keep doing this\" into a goal a host will hol
 license: MIT
 metadata:
   author: rocky2431
-  version: "2.0.0"
+  version: "2.1.0"
 ---
 
 # UltraGoal
@@ -201,15 +201,20 @@ lost, read it and resume from the first unanswered question instead of starting 
    the mistake this question used to make. Then read
    [references/agent-modes.md](references/agent-modes.md) and settle the roles by stage:
 
-   | Stage | Who | Ask the owner? |
+**Every stage is the owner's to assign** — who does the work is a material
+   trade-off, and those belong to them. Recommend strongly, with the reason, and then take
+   their answer. Only two rows are not theirs to move, and both are constraints rather than
+   preferences:
+
+   | Stage | Recommend | Why, and what would change it |
    |---|---|---|
-   | Lead — intent into a spec | this session, with them | **No** — an interview cannot be delegated |
-   | **Research** — find out what is true first | **fanned-out subagents** | how wide, and whether any needs another vendor |
-   | Plan — the spec, plus one adversarial pass over it | this session + a design critic | whether the design critic runs |
-   | **Carry out** — the code **and its tests, test first** | **this session** | **No** — `### Lessons` and every dead end live in this context, and a fresh coder restarts the run at turn 1 every turn |
-   | Verify at code level | the anchor | **No** — mechanical |
-   | Review semantically | **not whoever wrote it** | the one real choice, below |
-   | Fan out | one worker per subject | only where subjects are independent and **each has its own anchor** |
+   | Lead — intent into a spec | this session, with them | An interview is a conversation with the owner, so whoever leads has to be the agent they are talking to. **Constraint, not preference** |
+   | **Research** — find out what is true first | fanned-out subagents | The one stage the published evidence says to delegate: a lead that dispatches and synthesises beats one that explores |
+   | Plan — the spec, plus one adversarial pass | this session + a design critic | Design-time specification is the higher-leverage intervention, and the Rejected column is currently written by whoever wrote the Decision |
+   | **Carry out** — the code **and its tests, test first** | this session, **for a small slice** | `### Lessons` and every dead end live in this context, so a delegated coder restarts at turn 1 every turn. **But scale flips it**: on a large build, an owner who keeps the loop, owns one ledger and writes no code — with two cross-vendor executors alternating build and review rounds — is a shape that works in production. Test-first is a **Constraint**: whoever writes the code writes its tests first, because splitting them is a phase split |
+   | Verify at code level | the anchor | **Constraint** — a command, no model in the path |
+   | Review semantically | not whoever wrote it | The one place where the choice below actually costs money |
+   | Fan out | one worker per subject | Only where subjects are independent and **each has its own anchor** |
 
    **The only genuine choice in review is model independence**, because the two axes cure
    different diseases: a **fresh context** stops the author's *argument* from reaching the
@@ -222,6 +227,14 @@ lost, read it and resume from the first unanswered question instead of starting 
    **When review runs** and the **round cap** are parameters of that choice, not peers of
    it: default to proposed completion plus the acceptance lines a green anchor would not
    prove, and 5 rounds accepting a clean first pass.
+
+   **Then who judges, and whether they judge blind.** A lead that reads the executors'
+   reports before recording its own verdict has been persuaded before it decided, which is
+   the referee-and-player problem arriving through the back door. The stronger form is
+   **blind first**: run the anchor yourself, write your verdict to
+   `<slug>.judge-review.md`, *then* read their reports and record where the readings differ.
+   Recommend it wherever the work is delegated; it costs one extra file and the discipline
+   of judging before listening.
 
    **Then a `fallback:` per role.** An agent runs out of quota, a target does not answer, a
    process dies: try the role, then its fallback, then continue as this session alone — and
@@ -590,7 +603,7 @@ They turn the anchor from a sentence in a prompt into a gate that actually runs.
 
 | Hook | Does | Can it block? |
 |---|---|---|
-| `Stop` | Digests the frozen spec, then runs the anchor. Eight steps, seven of which let the turn end | **Yes, in exactly one case**: the anchor ran and was red |
+| `Stop` | Digests the frozen spec, runs the anchor, and re-states the mutable surface. Eight steps, seven of which let the turn end | **Yes, in exactly one case**: the anchor ran and was red |
 | `SessionStart` | Re-injects the frozen spec and the carried state after a restart or resume | No |
 | `PreCompact` | Records the carried state and the fact of the compaction into the event log | No |
 
@@ -603,6 +616,13 @@ end and says the result is unverified.
 **Seven of the eight steps allow.** The gate refuses only when it is certain. Frozen spec
 changed, ceiling reached, run not progressing, anchor unrunnable, anchor green, no anchor at
 all, no active goal — all let the turn end and say why.
+
+**What it reminds you of is exactly what you may change.** Every turn that ends carries
+`additionalContext` holding `### Next`, `### Lessons`, `### State` and the still-open
+`## Acceptance` lines — with their current values, and nothing frozen. The rule is the
+owner's and it cuts both ways: a mutable section the gate never mentions is the one that
+goes stale, and a frozen section it does mention is an invitation to edit. Blocking is the
+other channel: `decision: "block"` plus a `reason` saying why the turn may not end.
 
 **A moved goalpost allows on purpose.** The gate records a digest of `## Intent`,
 `## Boundary` and `## Anchor` on the first turn and compares it on every later one. When it

@@ -131,6 +131,12 @@ ROLE_FIELDS = ("target", "mission", "anchor", "inputs")
 # an auditable object instead of a plausible rebuttal. Three classes, named.
 DISAGREEMENT_CLASSES = ("agreement", "evidence-backed", "concern-based")
 ROUND_CAP = re.compile(r"(\d+)\s+(?:inner\s+)?(?:round|turn)s?\b", re.I)
+# `ceiling: none` is how an owner says a run is unbounded. Declared rather than
+# inferred from prose, because the gate substituting its own number for an
+# unparsed one was a live defect: a run whose stop condition said "no ceiling"
+# would have been stopped at turn 13 and told it had reached its own ceiling.
+CEILING = re.compile(r"(?mi)^\s*ceiling:\s*(none|unbounded|\d+)\s*$")
+TURN_COUNT = re.compile(r"(\d+)[\s-]+(?:turn|iteration|round|cycle)s?\b", re.I)
 COMMAND = re.compile(r"`[^`\n]+`|```")
 DIGIT = re.compile(r"\d")
 FENCE = re.compile(r"```[a-z]*\n(.+?)\n```", re.S)
@@ -505,7 +511,22 @@ def check_goal(path: Path, text: str, out: list[Finding]) -> None:
             out.append(Finding(str(path), code, f"`## {name.title()}` missing: {message}"))
 
     stop = found.get("stop condition", "")
-    if stop and not (COMMAND.search(stop) or DIGIT.search(stop)):
+    # Neither a declared `ceiling:` nor a parseable turn count means the gate
+    # will quietly use its own default, so say that here rather than letting the
+    # owner discover it when a run stops at a number they never wrote.
+    if stop and not (CEILING.search(stop) or TURN_COUNT.search(stop)):
+        out.append(
+            Finding(
+                str(path),
+                "CEILING_UNDECLARED",
+                "no `ceiling: none`, `ceiling: N` or turn count in `## Stop condition`, "
+                "so the gate will apply its own default and say so. Write "
+                "`ceiling: none` for an unbounded run - the point is that the number "
+                "enforced is one you chose",
+                "advisory",
+            )
+        )
+    if stop and not (COMMAND.search(stop) or DIGIT.search(stop) or CEILING.search(stop)):
         out.append(
             Finding(
                 str(path),

@@ -22,10 +22,15 @@ at all.
 | **Review at semantic level** — what the anchor cannot see | not whoever wrote it | Yes: two independent axes |
 | **Fan out** — anything with independent subjects | one worker per subject | Yes, with a hard precondition |
 
-## Why the main session writes the code
+## Who writes the code: a recommendation, and the scale that flips it
 
-This is the stage most often argued about, and the evidence points the opposite way from
-intuition. Anthropic runs both patterns deliberately, split by task type:
+**This is the owner's call.** Who does the work is a material trade-off, and an earlier
+version of this page wrote it down as a rule - which was the Skill taking a decision it has
+no standing to take. What follows is the recommendation and the evidence for it, on both
+sides.
+
+**For a small slice: the main session.** Anthropic runs both patterns deliberately, split by
+task type:
 
 > Claude Code uses this orchestrator-subagent pattern. **The main agent writes code, edits
 > files, and runs commands itself**, dispatching subagents in the background when it needs
@@ -45,8 +50,32 @@ exit code decides**, and no model is in that path. The reviewer never receives t
 argument, and the critic audits the review rather than the code. The referee was moved out
 of the writer's hands, which is what the zero-trust layer is for - not the writing.
 
+**At scale it flips, and there is a working counterexample.** A long build in production on
+this machine runs the opposite way, and runs well: the lead holds the loop, owns one ledger
+exclusively, **writes no code**, and two cross-vendor executors alternate between build
+rounds and review rounds - each taking a whole slice, so it is a role rotation rather than
+the phase split this design refuses. Where a build is large enough that one context cannot
+hold it, the argument above inverts: the lead's context is better spent on judging than on
+editing.
+
 What the main session must never author is its own acceptance. The anchor is the owner's,
 set at question 2, and frozen.
+
+## Judging blind
+
+The referee-and-player objection has a sharper answer than "the anchor decides", and it came
+from that same production run: **the judge records its verdict before reading the executors'
+reports.** Run the anchor yourself, write the verdict to `<slug>.judge-review.md`, and only
+then read what they said and note where the three readings differ.
+
+This is context isolation applied to the judge rather than to the reviewer, and it closes a
+hole the rest of this page leaves open. A judge that reads the reports first has been
+persuaded before it decided - and no amount of "the exit code decides" helps, because
+the exit code does not settle which findings mattered,
+or whether a report was honest about what it did not check.
+
+Cost: one extra file per round, and the discipline of doing the work before hearing about
+it. Recommend it wherever the work is delegated.
 
 **Test-first is not a choice either.** Whoever writes the code writes its tests, first.
 Splitting the test from the code is a phase split, and phase splits are already refused:

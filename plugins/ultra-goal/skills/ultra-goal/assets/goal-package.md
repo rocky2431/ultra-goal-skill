@@ -25,7 +25,14 @@ Reproduce it locally first.
 
 ## Stop condition
 
-Stop when `pnpm audit --audit-level=high` reports 0 findings, or after 6 turns.
+Stop when `pnpm audit --audit-level=high` reports 0 findings, or at the ceiling below.
+
+ceiling: 6
+
+Write `ceiling: none` instead for a run that should continue until the anchor is green,
+however long that takes. The gate reads this line first; without it, it applies its own
+default and says so - and a number you did not choose is the one thing a stop condition
+must never be.
 
 ## Anchor
 
@@ -74,6 +81,10 @@ here so a later reader can see the shape without reconstructing it.
 - **carry out**: this session. Writes the code **and its tests, test first**.
   fallback: none, because `### Lessons` and every dead end live in this context and a fresh
   coder would restart the run at turn 1 every turn.
+- **judge**: this session, **blind first**. Run the anchor yourself, write the verdict to
+  `weekly-dep-upgrade.judge-review.md`, and only then read the reviewer's and critic's
+  reports and record where the three readings differ. fallback: none; a judge that reads
+  the reports first has been persuaded before it decided.
 - **anchor**: the command in `## Anchor`. No model in the path.
   fallback: none; if it cannot run the outcome is unknown, which is the answer rather than a
   failure.

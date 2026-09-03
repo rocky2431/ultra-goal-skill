@@ -77,13 +77,25 @@ TURNS_WORD = re.compile(
 )
 
 
-def _ceiling(stop_section: str) -> tuple[int, bool]:
-    """The owner's turn ceiling, and whether it was actually found.
+DECLARED_CEILING = re.compile(r"(?mi)^\s*ceiling:\s*(none|unbounded|\d+)\s*$")
 
-    The second value is the point. A ceiling nobody could parse is not a
-    ceiling of twelve; it is an unknown, and the gate says so rather than
-    enforcing a number the owner never wrote.
+
+def _ceiling(stop_section: str) -> tuple[int | None, bool]:
+    """The owner's turn ceiling, whether it was found, and None for unbounded.
+
+    Three answers, not two, for the same reason the anchor has three outcomes.
+    A run the owner declared unbounded is not a run with a ceiling of twelve -
+    and that substitution was a live defect: a real long run whose stop
+    condition said "no ceiling" would have been stopped by this gate at turn 13
+    while reporting "ceiling reached", in the owner's own voice.
+
+    `ceiling: none` and `ceiling: N` are declared forms, checked first, because
+    a token the owner wrote beats prose this parser has to guess at.
     """
+    declared = DECLARED_CEILING.search(stop_section)
+    if declared is not None:
+        value = declared.group(1).lower()
+        return (None, True) if value in ("none", "unbounded") else (int(value), True)
     digits = TURNS.search(stop_section)
     if digits is not None:
         return int(digits.group(1)), True
@@ -178,18 +190,88 @@ def _resolvable(command: str) -> bool:
     return shutil.which(head) is not None
 
 
-def _allow(reason: str) -> dict[str, Any]:
-    return {"systemMessage": f"[ultra-goal] {reason}"}
+def _allow(reason: str, context: str | None = None) -> dict[str, Any]:
+    """End the turn, telling the owner why and the model what it may change.
+
+    `additionalContext` is documented for Stop as "Feedback for the model; the
+    conversation continues so the model can act on it", and it carries exactly
+    the mutable surface - nothing frozen. A reminder about something the run may
+    not change has one effect: it invites the change.
+    """
+    payload: dict[str, Any] = {"systemMessage": f"[ultra-goal] {reason}"}
+    if context:
+        payload["hookSpecificOutput"] = {
+            "hookEventName": "Stop",
+            "additionalContext": context,
+        }
+    return payload
 
 
 def _deny(reason: str) -> dict[str, Any]:
-    return {
-        "hookSpecificOutput": {
-            "hookEventName": "Stop",
-            "permissionDecision": "deny",
-            "permissionDecisionReason": reason,
-        }
-    }
+    """Refuse to let the turn end.
+
+    A Stop hook blocks with the **top-level** `decision`/`reason` pair. This was
+    wrong for the whole life of the gate: it emitted
+    `hookSpecificOutput.permissionDecision`, which is the *PreToolUse* shape and
+    is not among the fields Claude Code accepts for Stop - whose
+    hookSpecificOutput takes only `hookEventName` and `additionalContext`. So the
+    one hard power in this design was wired to a field the host does not read,
+    and every test checked what this script emitted rather than what the host
+    honours. The lesson generalises past this bug: a payload contract is a claim
+    until something outside the emitter agrees with it.
+    """
+    return {"decision": "block", "reason": reason}
+
+
+def _mutable_surface(found: dict[str, str]) -> str | None:
+    """The sections a run is allowed to rewrite, with their current values.
+
+    The owner's rule, and it is a sharp one: **what the gate reminds you of
+    should be exactly what you may change.** So the frozen spec is deliberately
+    absent - it is re-injected at session boundaries, where the question is
+    "what am I doing", not here, where the question is "what do I owe before
+    this turn ends".
+    """
+    parts: list[str] = []
+    carry = found.get("carry-over")
+    if carry:
+        for name in ("next", "lessons", "state"):
+            body = _subsection(carry, name)
+            if body:
+                parts.append(f"### {name.title()} (rewrite before you finish)\n{body}")
+    acceptance = found.get("acceptance")
+    if acceptance:
+        open_lines = [
+            line for line in acceptance.splitlines() if line.strip().startswith("- [ ]")
+        ]
+        if open_lines:
+            parts.append(
+                "## Acceptance, still open (a line moves to [x] only after the "
+                "anchor's output showed it)\n" + "\n".join(open_lines)
+            )
+    if not parts:
+        return None
+    return (
+        "These are the only sections this run may change. The intent, the "
+        "boundary and the anchor are frozen; if one of them is wrong, stop and "
+        "write a row under `## Challenges from the run` instead of editing it.\n\n"
+        + "\n\n".join(parts)
+    )
+
+
+def _subsection(text: str, name: str) -> str | None:
+    body: list[str] = []
+    capturing = False
+    for line in text.splitlines():
+        if line.startswith("### "):
+            if capturing:
+                break
+            capturing = line[4:].strip().lower() == name
+            continue
+        if capturing:
+            body.append(line)
+    joined = "\n".join(body).strip()
+    return joined or None
 
 
 def _signature(outcome: str, exit_code: int | None, digest: str) -> str:
@@ -242,7 +324,10 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
     ceiling, declared = _ceiling(stop_section)
 
     # Step 4: the ceiling is the owner's, and it wins even when the goal is unmet.
-    if turn > ceiling:
+    # `None` means the owner declared no ceiling, so this step does not exist for
+    # that run. Substituting a number here is how a long run gets stopped in its
+    # owner's voice by a limit they never set.
+    if ceiling is not None and turn > ceiling:
         append_event(
             goal,
             {
@@ -261,7 +346,8 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
         )
         return _allow(
             f"{goal.slug}: ceiling of {ceiling} turns reached without meeting the "
-            f"goal. Stopping. Report what is left rather than claiming success.{source}"
+            f"goal. Stopping. Report what is left rather than claiming success.{source}",
+            _mutable_surface(found),
         )
 
     # Step 6: is the anchor even runnable? Answered by looking, not by inference.
@@ -342,12 +428,14 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
         return _allow(
             f"{goal.slug}: the anchor could not run ({detail}), so whether the work "
             "landed is unknown - not failed. Stopping. Say it is unverified rather "
-            "than guessing either way."
+            "than guessing either way.",
+            _mutable_surface(found),
         )
 
     if outcome == "green":
         return _allow(
-            f"{goal.slug}: anchor `{anchor}` passed on turn {turn}. Goal met."
+            f"{goal.slug}: anchor `{anchor}` passed on turn {turn}. Goal met.",
+            _mutable_surface(found),
         )
 
     # Step 5: red, but is anything changing? Two identical results in a row mean
@@ -357,7 +445,8 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
         return _allow(
             f"{goal.slug}: the anchor produced an identical result two turns in a "
             f"row (turn {turn}), so the run is not progressing. Stopping. Report "
-            "what is blocking it instead of retrying."
+            "what is blocking it instead of retrying.",
+            _mutable_surface(found),
         )
 
     return _deny(

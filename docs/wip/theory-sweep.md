@@ -344,7 +344,78 @@ D 是"路由何时决定"。业主直接点出来了。修法不是换名字,是
    (承重节实测约 5.9k),并加 `ESSENTIAL` 守卫:承重节装不下就**大声说出来**,而不是
    悄悄恢复一个看不见自己条款的运行。有测试钉住"承重节永不排在可选节后面"。
 
-## 十一、刻意还没做
+## 十一、读 protoss 那个裸 /goal 运行得到的东西(v2.1.0)
+
+业主让我去看一个**完全没用本 skill、只用宿主 `/goal`** 的真实长跑(LPF Kernel,Rust,
+`lpf-architecture.md` 已 362KB,git log 全是 `loop:` 前缀)。它跑得比我们的设计更好,
+而它给出的读数推翻了我三条判断。
+
+### 1. 最严重的一条:门的唯一硬权力,字段是错的
+
+我们发的是 `hookSpecificOutput.permissionDecision: "deny"`。那是 **PreToolUse** 的形状。
+CC 自己吐出的 schema 写明:Stop 的 `hookSpecificOutput` **只接受 `hookEventName` 和
+`additionalContext`**,阻塞走**顶层 `decision: "block"` + `reason`**。
+
+**所以门从建成起就没有真正拦住过任何东西。**而 254 个测试全部只验"我们的脚本发出了什么",
+没有一个验"宿主认不认"。这正是本项目自己在讲的 claims vs evidence,发生在项目自己身上。
+教训比这个 bug 更大:**payload 契约是一条 claim,直到发送者之外有东西同意它。**
+
+### 2. `/goal` 的真实机制不是"让它继续",是"每轮重附完整 condition"
+
+实测 `goal_status` 附件 = `{"met":false,"condition":"<全文>"}`,**每轮一次**。这才是业主
+中途不断加东西、而运行每次都能接住的原因。而我们的 SessionStart **只在会话边界注入**——
+轮与轮之间不注入。这是我们不如那个裸 `/goal` 的地方。
+
+现在用上了 `additionalContext`(CC 原话:"Feedback for the model; the conversation
+continues so the model can act on it"),按业主的判据装载:
+**提醒的内容 = 可修改表面,一字不差**。`### Next` / `### Lessons` / `### State` /
+未打勾的 `## Acceptance` 行,冻结节零泄漏(有测试钉)。
+推论:**冻结节不该出现在提醒里——它出现在那儿唯一的作用是诱使修改。**
+
+### 3. 门会在第 12 轮杀掉那个运行
+
+它的 stop condition 是「没有任何上限」→ 解析不出 → `DEFAULT_CEILING = 12` 静默生效 →
+第 13 次 Stop 报 "ceiling reached"。**它已经跑到 round 010、断言 26/69。**
+修法:`ceiling: none` / `ceiling: N` 成为**声明式 token**(优先于任何散文),
+`_ceiling` 返回三值(数字 / None=无上限 / 默认+未声明标记),
+解析不出时报 `CEILING_UNDECLARED`(advisory)。判据和 anchor 三出口同源:
+**业主声明的无上限不是"上限为 12"。**
+
+### 4. 我上一轮那条"主对话自己写代码"的建议,有活反例
+
+那个运行的 goal 原文:「我持有循环、独占 LEDGER.md 写权限、**不写任何代码**;执行方
+zcode(GLM-5.3 high)与 kimi(K3 high),构建轮发 GOAL.md、审查轮发 REVIEW.md」。
+**两个跨厂商执行方轮流承担构建轮与审查轮,各拿整个切片**——所以它是角色轮换,
+不是我们拒绝的按阶段切分。
+
+而且业主指出更根本的一点:**"who does the work" 是 material trade-off,按他 handbook
+属于 owner。**我把它写成 `No` 是越权。现在整张表是"推荐 + 依据 + 什么会翻转它",
+只有三行是 Constraint(lead 必须是业主在对话的那个 agent、anchor 机械、test-first),
+而这三条都不是偏好。
+
+### 5. 盲审:一个我完全没想到的控制,来自那个运行
+
+「由我按 JUDGE.md 七问**先盲审落盘 judge-review.md、再读它们的报告**」
+
+**裁判在听取选手陈述之前,先把自己的裁决写下来。**这是把上下文隔离用在**裁判**身上,
+而不只是审查者身上。它补的是"anchor 退出码说了算"补不了的洞:
+**退出码不能裁定哪些发现重要、也不能裁定一份报告对自己没检查的东西是否诚实。**
+已进 SKILL.md 第 6 问、`## Roles` 的 judge 角色、和 `agent-modes.md` 的专节。
+
+### 6. 压缩恢复要多说一句
+
+压缩后的模型**不知道自己丢了东西**,它把自己的摘要读成记忆。PreCompact 早就记了事件,
+但那条事实从没回到模型面前。现在 `source=compact` 时多注入一句:中间推理已经没了,
+"我试过 X" 这种回忆不作数,除非它在 `### Lessons`、事件日志或某个 commit 里。
+
+### 7. 文件即协议,而那个运行做得比我们细
+
+LEDGER.md(单写者)、GOAL.md / REVIEW.md(按轮次分发)、JUDGE.md(七问)、
+judge-review.md(盲审落盘)、TRAJECTORY.md + `tools/check-trajectory.sh`
+(证据↔commit 一一对应)。**全是 MD + 一个校验脚本,零编排器。**
+印证了我们"MD 是声称、JSONL 是证据、不写编排器"的判据。
+
+## 十二、刻意还没做
 
 - **74 道 eval 仍然只有题目没有成绩,连执行器都没有。**这是唯一还没有任何证据的一半:
   所有依赖"我照着做"的东西 —— 访谈顺序、9 条 refusal、means 标签、真教训 vs 事件、

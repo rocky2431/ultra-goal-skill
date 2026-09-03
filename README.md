@@ -265,6 +265,39 @@ and the model, not to a template engine.
 
 Its silence is not evidence that the design is right.
 
+## What the gate says, and to whom
+
+| Channel | Read by | Carries |
+|---|---|---|
+| `decision: "block"` + `reason` | the model, when the turn may not end | why, and the one thing to do first |
+| `additionalContext` | the model, on every turn that ends | **exactly the sections the run may change**, with current values |
+| `systemMessage` | you | one line of what happened |
+
+The middle row follows a rule worth stating alone: **what the gate reminds you of should be
+exactly what you may change.** A mutable section it never mentions is the one that goes
+stale; a frozen section it does mention is an invitation to edit. So the reminder holds
+`### Next`, `### Lessons`, `### State` and the still-open `## Acceptance` lines — nothing
+frozen.
+
+This corrects a belief that sat in the code for the gate's whole life: blocking was emitted
+as `hookSpecificOutput.permissionDecision`, which is the **PreToolUse** shape. Stop takes
+only `hookEventName` and `additionalContext` there and blocks on the top-level pair — so the
+one hard power in this design was wired to a field the host does not read, and every test
+checked what the script emitted rather than what the host honours. A payload contract is a
+claim until something outside the emitter agrees with it.
+
+## A ceiling you did not choose is not a ceiling
+
+`## Stop condition` takes a declared line: `ceiling: 6`, or **`ceiling: none`** for a run
+that should continue until the anchor is green however long that takes. Read first, before
+any prose.
+
+This was a live defect, and the case that found it was real: a long run whose stop condition
+said "no ceiling" would have been stopped by this gate at turn 13 while reporting *ceiling
+reached* — in the owner's own voice, at a number they never wrote. When neither a `ceiling:`
+line nor a turn count can be read, the gate now applies its default **and says that it is
+its own**, and `CEILING_UNDECLARED` warns at authoring time.
+
 ## Two severities, because two different things were being reported alike
 
 An artifact missing its anchor is broken. An artifact carrying nine `### State` entries
@@ -320,16 +353,28 @@ decide:
 | Review semantically | not whoever wrote it | the one real choice |
 | Fan out | one worker per subject | only where subjects are independent and **each has its own anchor** |
 
-**The main session writes the code, and that is deliberate.** Anthropic runs both patterns
+**Who writes the code is your call**, and the recommendation cuts both ways. For a small
+slice: the main session. Anthropic runs both patterns
 split by task type: "Claude Code uses this orchestrator-subagent pattern. The main agent
 writes code, edits files, and runs commands itself... This contrasts with the research
 system, where the lead agent delegates." The reason matters more than the authority:
 `### Lessons` and every dead end live in the main context, so a fresh coder subagent would
-restart the run at turn 1 every turn.
+restart the run at turn 1 every turn. **At scale it flips**, and there is a working
+counterexample on this machine: a long build where the lead holds the loop, owns one ledger,
+writes no code, and two cross-vendor executors alternate between build rounds and review
+rounds — each taking a whole slice, so it is a role rotation rather than the phase split this
+design refuses.
 
 The referee-and-player objection is answered somewhere else entirely — the **anchor's exit
 code decides**, with no model in that path, and the reviewer never receives the author's
 argument. Moving the referee out of the writer's hands is what the zero-trust layer is for.
+
+And there is a sharper answer still, taken from that production run: **the judge records its
+verdict before reading the executors' reports.** Run the anchor, write the verdict to
+`<slug>.judge-review.md`, and only then read what they said. That is context isolation
+applied to the judge rather than the reviewer, and it closes what "the exit code decides"
+does not — the exit code cannot settle which findings mattered, or whether a report was
+honest about what it never checked.
 
 **The only genuine choice in review is model independence**, because the two axes cure
 different diseases:
@@ -472,7 +517,7 @@ designed with its owner in the room has no validation set.
 python3 -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-251 tests: the validator's rules at two severities, the status projection, the
+268 tests: the validator's rules at two severities, the status projection, the
 claim-versus-measurement audit
 against a real Git repository, the gate's eight outcomes, the package surface, version
 consistency across three files, every relative link in `SKILL.md` resolving, and the shipped

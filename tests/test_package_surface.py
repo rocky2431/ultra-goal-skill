@@ -1043,12 +1043,42 @@ class RolesByStageTests(unittest.TestCase):
         self.assertIn("run `agent-delegate list --json` yourself", skill)
         self.assertIn("which agents exist is a fact", skill)
 
-    def test_the_stages_that_are_not_choices_say_so(self) -> None:
+    def test_every_stage_is_the_owners_to_assign(self) -> None:
+        """Who does the work is a material trade-off, so it is theirs.
+
+        An earlier version wrote "No" against three rows, which turned a strong
+        recommendation into a rule the Skill had no standing to make.
+        """
         skill = skill_text()
-        self.assertIn("| Stage | Who | Ask the owner? |", skill)
-        self.assertIn("**No** — an interview cannot be delegated", skill)
-        self.assertIn("a fresh coder restarts the run at turn 1 every turn", skill)
-        self.assertIn("**No** — mechanical", skill)
+        self.assertIn("**Every stage is the owner's to assign**", skill)
+        self.assertIn("| Stage | Recommend | Why, and what would change it |", skill)
+        # Only two rows are constraints, and each says which kind it is.
+        self.assertEqual(3, skill.count("**Constraint"))
+        self.assertIn("**But scale flips it**", skill)
+        # And the shape that flipped it is described rather than hinted at.
+        self.assertIn("two cross-vendor executors alternating build and review", skill)
+
+    def test_the_judge_is_recommended_to_judge_blind(self) -> None:
+        skill = skill_text()
+        self.assertIn("**Then who judges, and whether they judge blind.**", skill)
+        self.assertIn("been persuaded before it decided", skill)
+        self.assertIn("`<slug>.judge-review.md`", skill)
+        goal = (SKILL_ROOT / "assets" / "goal-package.md").read_text(encoding="utf-8")
+        self.assertIn("- **judge**: this session, **blind first**", goal)
+
+    def test_the_stop_hook_reminds_only_what_may_change(self) -> None:
+        skill = skill_text()
+        self.assertIn(
+            "**What it reminds you of is exactly what you may change.**", skill
+        )
+        self.assertIn('`decision: "block"`', skill)
+        self.assertIn("a frozen section it does mention is an invitation to edit", skill)
+
+    def test_an_unbounded_ceiling_is_declarable(self) -> None:
+        goal = (SKILL_ROOT / "assets" / "goal-package.md").read_text(encoding="utf-8")
+        self.assertIn("ceiling: 6", goal)
+        self.assertIn("Write `ceiling: none` instead", goal)
+        self.assertIn("a number you did not choose", goal)
 
     def test_the_two_review_axes_are_separated(self) -> None:
         skill, doc = skill_text(), self.reference()
@@ -1072,14 +1102,41 @@ class RolesByStageTests(unittest.TestCase):
         self.assertIn("## What is *not* on this page", doc)
         self.assertIn("**Loop versus graph is not a role question.**", doc)
 
-    def test_the_main_session_writes_the_code_with_the_evidence_for_it(self) -> None:
+    def test_who_writes_the_code_is_a_recommendation_with_both_sides(self) -> None:
+        """It is the owner's call, so the page argues rather than rules.
+
+        And it carries the counterexample: a production run on this machine
+        does the opposite - lead holds the loop, writes no code, two
+        cross-vendor executors alternate build and review rounds - and works.
+        """
         doc = self.reference()
-        self.assertIn("## Why the main session writes the code", doc)
+        self.assertIn("## Who writes the code: a recommendation, and the scale", doc)
+        self.assertIn("**This is the owner's call.**", doc)
+        self.assertIn("no standing to take", doc)
         self.assertIn("**The main agent writes code, edits", doc)
-        # The conflict-of-interest objection is answered, not ignored.
-        self.assertIn("referee and player", doc)
-        self.assertIn("exit code decides**", doc)
+        self.assertIn("**At scale it flips, and there is a working counterexample.**", doc)
+        self.assertIn("role rotation rather than", doc)
         self.assertIn("**Test-first is not a choice either.**", doc)
+
+    def test_judging_blind_closes_the_referee_hole(self) -> None:
+        doc = self.reference()
+        self.assertIn("## Judging blind", doc)
+        self.assertIn("records its verdict before reading", doc)
+        # And why "the anchor decides" was not already enough.
+        self.assertIn("persuaded before it decided", doc)
+        self.assertIn("the exit code does not settle which findings mattered", doc)
+
+    def test_the_two_gate_channels_are_documented(self) -> None:
+        doc = (SKILL_ROOT / "references" / "document-system.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("## What the gate says, and to whom", doc)
+        self.assertIn("**what the gate reminds you of should\nbe exactly what you may change.**", doc)
+        # The corrected belief is recorded where it can be read later.
+        self.assertIn("which is the **PreToolUse** shape", doc)
+        self.assertIn(
+            "a claim until something outside the emitter agrees with it", doc
+        )
 
     def test_declared_degradation_splits_fact_from_decision(self) -> None:
         doc = self.reference()

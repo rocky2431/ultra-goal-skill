@@ -83,6 +83,30 @@ may only move to passing after real testing.
 And `[x]` is a claim. It is written by the run, so it sits on the claims side of the line
 above, and the anchor's output is what settles it. `--audit` is where the two meet.
 
+## What the gate says, and to whom
+
+Two channels, and confusing them wastes the only per-turn contact the design has.
+
+| Channel | Read by | Carries |
+|---|---|---|
+| `decision: "block"` + `reason` | the model, when the turn may not end | why it may not end, and the one thing to do first |
+| `hookSpecificOutput.additionalContext` | the model, on every turn that does end | **exactly the sections the run may change**, with their current values |
+| `systemMessage` | the owner | one line of what happened |
+
+The middle row follows a rule worth stating on its own: **what the gate reminds you of should
+be exactly what you may change.** A mutable section it never mentions is the one that goes
+stale; a frozen section it does mention is an invitation to edit. So the reminder holds
+`### Next`, `### Lessons`, `### State` and the still-open `## Acceptance` lines, and nothing
+else - the frozen spec is re-injected at session boundaries, where the question is *what am I
+doing*, not here, where it is *what do I owe before this turn ends*.
+
+This corrects a belief that sat in the code for the whole life of the gate. Blocking was
+emitted as `hookSpecificOutput.permissionDecision`, which is the **PreToolUse** shape; Stop
+takes only `hookEventName` and `additionalContext` there and blocks on the top-level pair. So
+the one hard power in this design was wired to a field the host does not read - and every
+test checked what the script emitted rather than what the host honours. A payload contract is
+a claim until something outside the emitter agrees with it.
+
 ## Why the spec is frozen while a run is in flight
 
 A loop that can edit its own intent, anchor, or boundary will edit them — and the edit will

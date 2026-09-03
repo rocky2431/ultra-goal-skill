@@ -85,6 +85,17 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
             f"{last.get('outcome')}, exit {last.get('exit_code')}.",
             "",
         ]
+    if event.get("source") == "compact":
+        # A compacted model does not know it lost anything - it reads its own
+        # summary as memory. PreCompact already recorded that a compaction
+        # happened; this is the first time that fact reaches the model.
+        lines += [
+            "**This session was just compacted.** Your intermediate reasoning is gone,",
+            "and what remains is a summary of it. Do not trust a recollection of having",
+            "tried something: if it is not in `### Lessons`, in the event log, or in a",
+            "commit, treat it as unknown and check.",
+            "",
+        ]
     lines += ["Read `## Carry-over` before acting and rewrite it before finishing.", ""]
 
     head = "\n".join(lines)
