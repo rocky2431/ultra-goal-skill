@@ -1,13 +1,13 @@
 ---
-name: goal-engineering
+name: ultra-goal
 description: "Turn \"make an agent keep doing this\" into a goal a host will hold to: interview for intent, anchor, stop condition, boundary, droppable means and an adversarial verifier, refuse the shapes that fail, then emit the artifact - a goal line to paste, a workflow script, or a cross-vendor delegation package. Runnable, not a design note. Not for carrying out a goal already running."
 license: MIT
 metadata:
   author: rocky2431
-  version: "1.1.1"
+  version: "1.2.0"
 ---
 
-# Goal Engineering
+# UltraGoal
 
 The owner has an objective they want an agent to pursue without them in the room. Your job
 is to interview them until that objective has an intent, an anchor that cannot be argued
@@ -76,9 +76,12 @@ things depending on the request. "Make it stop after three turns" while a goal i
 **Modify**. "Upgrade the next package" while a goal is active is **Executing** — the run
 doing its job, and no business of this Skill's.
 
-When you are unsure, do the work rather than the interview. A missed activation costs one
-sentence offering to design the goal properly; a wrong activation costs a turn of the
-ceiling and replaces the run with a conversation.
+When you are unsure, do the work rather than the interview — and then **actually spend the
+sentence.** A missed activation costs one sentence offering to design the goal properly; a
+wrong activation costs a turn of the ceiling and replaces the run with a conversation. So:
+do the work, and if the objective was underspecified in a way that cost you something, say
+so once at the end, naming what was missing. That turns a miss into a lead instead of
+silence, and it is the only reason erring this way is cheap.
 
 ## Interview protocol
 
@@ -186,10 +189,44 @@ lost, read it and resume from the first unanswered question instead of starting 
    themselves; the intent, the anchor, and the boundary always stop and report.** A loop that
    can revise its own target drifts further from the owner the longer it runs, and that is
    the one failure no amount of anchoring catches.
+   **And "report" needs somewhere to land.** A stop-and-report that exists only as prose in
+   a session is gone at the next compaction, so it goes into `## Challenges from the run` in
+   the decisions record: the term, what the run hit, and what would settle it. See
+   *The one thing the goal can learn from* below.
 
 Read [references/loop-primitives.md](references/loop-primitives.md) for which loop
 primitive fits, and [references/graph-topology.md](references/graph-topology.md) when the
 answer is a graph.
+
+## The one thing the goal can learn from
+
+Look at what learns and what does not. `### Lessons` carries **method** forward: this
+approach failed for this cause, try that instead. `### Next` re-aims **within** the terms.
+Both improve how the work is done. Neither can say *the terms themselves are wrong* — that
+is frozen, and correctly so.
+
+So there is exactly one thing a run knows that the design side cannot: **which of the terms
+turned out to be unworkable in contact with reality.** And until now that was the only kind
+of turn that wrote nothing down. Every other outcome writes an event; "the goal is wrong"
+produced a sentence in a session that gets compacted away.
+
+`## Challenges from the run` is that channel, and it is deliberately small:
+
+| | |
+|---|---|
+| **Written by** | the run, and only the run — it is the one part of `decisions.md` the owner does not author |
+| **Ruled on by** | the owner. A challenge is not a decision, and `--status` counts them apart for that reason |
+| **Shape** | the term challenged, what the run hit, what would settle it. All three, or it is a complaint rather than an objection |
+| **Instead of** | editing the term. A run that edits the term has moved the goalpost; a run that challenges it has done the owner a favour |
+| **Read by** | the next Modify pass, which already has to read this file first — so the objection lands exactly where the next design pass is required to look |
+
+**Optional on purpose.** Most runs raise none, and demanding one per run would produce
+invented objections — the same failure as a reviewer who must find something. An empty
+section gets deleted, not filled.
+
+This is the edge that makes the goal itself iterate rather than only the method. Without it
+a wrong term survives every round: the anchor keeps failing, the lessons keep explaining
+*how* it failed, and nothing ever says *what was wrong to ask for*.
 
 ## Refuse these shapes
 
@@ -243,15 +280,17 @@ than with any machinery:
 run `<anchor command>` in this session and seen it <exact result> - do not claim completion
 from reasoning, and do not state <confidence claim> without that output. When you report on
 the anchor, name the turn and the exit code you saw rather than summarising it. Do not
-conclude <inference> from documents alone; reproduce it. If a means labelled droppable turns
-out not to serve the intent, drop it and write the argument into <slug>.decisions.md; never
-drop a load-bearing one, and never edit Intent, Boundary or Anchor - stop and report
-instead. State which turn you are on at the start of each turn. Rewrite the Carry-over
-section before you finish, including the single objective under `### Next`. Stop after <N>
-turns even if unmet, and say so.
+conclude <inference> from documents alone; reproduce it. You are the run for <slug>, not its
+designer: the terms were already agreed, so do not reopen them as an interview. If a means
+labelled droppable turns out not to serve the intent, drop it and write the argument into
+<slug>.decisions.md; never drop a load-bearing one, and never edit Intent, Boundary or
+Anchor - if one of those is wrong, stop and write a row under `## Challenges from the run`
+naming the term, what you hit, and what would settle it. State which turn you are on at the
+start of each turn. Rewrite the Carry-over section before you finish, including the single
+objective under `### Next`. Stop after <N> turns even if unmet, and say so.
 ```
 
-Eight clauses, each closing one hole:
+Nine clauses, each closing one hole:
 
 | Clause | Closes |
 |---|---|
@@ -260,7 +299,8 @@ Eight clauses, each closing one hole:
 | no confidence claim without that output | inappropriate confidence |
 | the verdict reported as a turn and an exit code | a verdict nobody can check against the log |
 | no conclusion from documents alone | inference beyond the data |
-| droppable means droppable, and nothing else | both silent scope drift and stopping at every surprise |
+| the run is the run, not the designer | this Skill re-activating inside its own output and interviewing nobody |
+| droppable means droppable; a wrong term gets challenged, not edited | silent scope drift, stopping at every surprise, and an objection that dies in the session |
 | state the turn at the start of each turn | losing count of the ceiling |
 | rewrite carry-over, `### Next` included | the run never learning, and never re-aiming |
 
@@ -291,6 +331,7 @@ fail:
 | Reflection | `### Lessons` | writes the next turn's input |
 | Carried state | `### State` | rewritten each turn |
 | Re-aim | `### Next` | exactly one objective, inside the frozen intent |
+| The run's objection to its own terms | `## Challenges from the run` in `<slug>.decisions.md` | written by the run, ruled on by the owner |
 | Edges (what happens in what order) | the clause order of `## Handoff` | authored once |
 | Proof an edge was actually taken | `<slug>.events.jsonl` | append-only, **written by the hooks and never by the run** |
 
@@ -367,6 +408,11 @@ do X".
 2. Find the decision the owner wants to change. **If the request contradicts a row already
    in the Rejected column, say so** and ask whether the reason has stopped holding. Do not
    quietly reverse a decision the owner made for a reason they may still hold.
+   **Read `## Challenges from the run` before anything else in that file.** If the run
+   objected to a term, that objection is the most informed thing in the record — it came
+   from contact with reality rather than from the interview — and it should be put to the
+   owner in this pass rather than left standing. Once ruled on, the row moves into the
+   decisions table (accepted, with the old term in Rejected) or is deleted with the reason.
 3. Change the artifact.
 4. **Edit the affected row** of the decisions record: the new decision replaces the old one
    in the Decision column, and the old one moves to Rejected with why it changed. Never
@@ -489,12 +535,21 @@ artifact that exists? Without one, nothing is read, nothing is written, no comma
 | `active` naming a missing artifact | Same, plus one line saying so |
 | A re-entered Stop (`stop_hook_active`) | Hard early exit — this is the guard against a gate that denies forever |
 | Anything raising an exception | Exit 0. A hook that cannot decide must let the host continue |
-| **Escape** | `rm .goals/active`, or `GOAL_ENGINEERING_HOOKS_DISABLED=1`. Neither needs the agent's cooperation |
+| **Escape** | `rm .goals/active`, or `ULTRA_GOAL_HOOKS_DISABLED=1`. Neither needs the agent's cooperation |
 
 `PostToolUse` is deliberately **not** registered: it fires once per tool call, so its cost
 scales with tool use, and its value duplicates what `SessionStart` already injects and what
 the goal text already demands each turn. It gets added when a real run shows the loop
 retrying a path its own `### Lessons` already ruled out — not before.
+
+`UserPromptSubmit` is not registered either, and it is the more tempting of the two: it
+could catch a wrong activation exactly, by checking whether the submitted prompt contains an
+artifact's own `## Handoff` block — an exact match against a file on disk, not a keyword
+guess. It stays unbuilt because the instruction-level fix comes first and has not been shown
+to fail: the exclusion is in this Skill's `description`, and the goal text itself says *you
+are the run, not its designer*, which reaches all four hosts rather than only this one. The
+trigger to build it: a real session where a pasted goal line pulled this Skill into an
+interview anyway.
 
 ### Wide latitude, zero trust in self-report
 

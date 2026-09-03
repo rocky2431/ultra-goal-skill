@@ -1,5 +1,5 @@
 {
-  "skill_name": "goal-engineering",
+  "skill_name": "ultra-goal",
   "adjacent_skills": {
     "agent-harness-design": "Design, audit, or evaluate an AI agent's execution layer: model/tool loops, authority and effects, context/state/recovery, orchestration, provider-native adapters, and model-harness safety, utility, or capability tax. Use only when the agent system is the subject.",
     "agent-delegation": "Use when handing a meaningful research, analysis, writing, operations, or coding mission to another agent while preserving worker agency, inherited authority, effect gates, receipts, and cycle limits.",
@@ -12,7 +12,7 @@
       "kind": "positive",
       "prompt": "I want an agent that checks our dependencies every week, opens an upgrade PR when there is a high-severity advisory, and stops when the audit is clean. Help me set that up properly.",
       "expected_skills": [
-        "goal-engineering"
+        "ultra-goal"
       ]
     },
     {
@@ -21,7 +21,7 @@
       "kind": "positive",
       "prompt": "Every morning I manually ask Claude to check CI, fix the flaky tests, and report. Turn this into something that runs itself with a clear stopping point.",
       "expected_skills": [
-        "goal-engineering"
+        "ultra-goal"
       ]
     },
     {
@@ -30,7 +30,7 @@
       "kind": "positive",
       "prompt": "Four agents from different vendors each own part of the review and I coordinate the results. Is that a loop or a graph, and what should I actually write?",
       "expected_skills": [
-        "goal-engineering"
+        "ultra-goal"
       ]
     },
     {
@@ -39,7 +39,7 @@
       "kind": "positive",
       "prompt": "My agent loop never knows when to quit and it keeps grading its own work as good. Help me define the exit criteria and who checks it.",
       "expected_skills": [
-        "goal-engineering"
+        "ultra-goal"
       ]
     },
     {
@@ -48,7 +48,7 @@
       "kind": "positive",
       "prompt": "The stages are fixed: review the diff on three dimensions in parallel, then verify each finding. I want the orchestration written down rather than rediscovered every run.",
       "expected_skills": [
-        "goal-engineering"
+        "ultra-goal"
       ]
     },
     {
@@ -111,11 +111,11 @@
       "kind": "ambiguous",
       "prompt": "Help me orchestrate these agents.",
       "expected_skills": [
-        "goal-engineering"
+        "ultra-goal"
       ],
       "accepted_skill_sets": [
         [
-          "goal-engineering"
+          "ultra-goal"
         ],
         [
           "agent-delegation"
@@ -130,11 +130,11 @@
       "kind": "ambiguous",
       "prompt": "Can you just make it keep going until it works?",
       "expected_skills": [
-        "goal-engineering"
+        "ultra-goal"
       ],
       "accepted_skill_sets": [
         [
-          "goal-engineering"
+          "ultra-goal"
         ],
         []
       ],
@@ -146,15 +146,15 @@
       "kind": "coexistence",
       "prompt": "Design the weekly audit loop, then actually hand the first round to Codex and Kimi.",
       "expected_skills": [
-        "goal-engineering"
+        "ultra-goal"
       ],
       "accepted_skill_sets": [
         [
-          "goal-engineering",
+          "ultra-goal",
           "agent-delegation"
         ],
         [
-          "goal-engineering"
+          "ultra-goal"
         ]
       ],
       "note": "This Skill compiles the artifact; delegation executes it. Designing without delegating is acceptable when the owner has not authorized the run.",
@@ -168,15 +168,15 @@
       "kind": "coexistence",
       "prompt": "Build the nightly migration loop, and decide which of its effects need approval before they run.",
       "expected_skills": [
-        "goal-engineering"
+        "ultra-goal"
       ],
       "accepted_skill_sets": [
         [
-          "goal-engineering",
+          "ultra-goal",
           "agent-harness-design"
         ],
         [
-          "goal-engineering"
+          "ultra-goal"
         ]
       ],
       "note": "The loop's boundary question overlaps the harness authority question; covering it inside the interview is acceptable, but the approval model itself is harness territory.",
@@ -190,7 +190,7 @@
       "kind": "positive",
       "prompt": "The weekly dependency loop is too aggressive - make it stop after three turns instead of six.",
       "expected_skills": [
-        "goal-engineering"
+        "ultra-goal"
       ],
       "note": "Intent is Modify: read the artifact and its decisions record, edit the affected row, re-validate. Do not run a fresh interview."
     },
@@ -200,7 +200,7 @@
       "kind": "positive",
       "prompt": "What loops do we have in this repo right now, and is the audit one still passing?",
       "expected_skills": [
-        "goal-engineering"
+        "ultra-goal"
       ],
       "note": "Intent is Inspect: report status and change nothing. Running the anchors needs the owner's consent first."
     },
@@ -210,11 +210,11 @@
       "kind": "ambiguous",
       "prompt": "Set up something that keeps our dependencies patched.",
       "expected_skills": [
-        "goal-engineering"
+        "ultra-goal"
       ],
       "accepted_skill_sets": [
         [
-          "goal-engineering"
+          "ultra-goal"
         ]
       ],
       "note": "If an artifact already covers this subject the intent is Modify, not Create. Status must be checked before the first question; silently writing a second artifact for the same job is the failure."
@@ -225,7 +225,7 @@
       "kind": "positive",
       "prompt": "My weekly upgrade loop keeps trying the same broken package upgrade every single week. It never seems to learn.",
       "expected_skills": [
-        "goal-engineering"
+        "ultra-goal"
       ],
       "note": "Intent is Modify. The diagnosis is a missing or unwired carry-over section: the loop wakes with an empty context and has nothing telling it which paths are already dead."
     },
@@ -243,7 +243,7 @@
       "kind": "positive",
       "prompt": "I want a recurring nightly check like this, and I run it from Kimi rather than Claude Code.",
       "expected_skills": [
-        "goal-engineering"
+        "ultra-goal"
       ],
       "note": "Same interview and same artifact; only the goal command's prefix changes. Kimi has /goal, so no wrapper is needed."
     },
@@ -269,7 +269,7 @@
       "kind": "positive",
       "prompt": "The weekly upgrade goal is running but six turns is too many - make it stop after three, and record why.",
       "expected_skills": [
-        "goal-engineering"
+        "ultra-goal"
       ],
       "why": "The mirror of the case above, and the reason the distinction has to be drawn on the request rather than on whether a goal is active: this one changes the terms, so it is Modify."
     }

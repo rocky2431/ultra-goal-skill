@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the mechanical surface of a goal-engineering artifact.
+"""Check the mechanical surface of a ultra-goal artifact.
 
 This validator observes facts only: file pairing, required sections, declared
 phases, known delegation targets, and JavaScript syntax. It never judges whether
@@ -177,7 +177,71 @@ def check_placeholders(path: Path, text: str, out: list[Finding]) -> None:
             return
 
 
+CHALLENGE_COLUMNS = {"term challenged", "what the run hit", "what would settle it"}
+
+
+def decisions_region(text: str) -> str:
+    """The decisions table only - everything before the first `## ` heading.
+
+    A challenge row is not a decision: the run wrote it, and the owner has not
+    ruled on it yet. Counting the two together would report an unresolved
+    objection as a settled decision, which is the one thing this record exists
+    to keep apart.
+    """
+    return text.split("\n## ", 1)[0]
+
+
+def check_challenges(path: Path, text: str, out: list[Finding]) -> None:
+    """The run's objections to its own terms, if it raised any.
+
+    Optional by design: most runs have none, and requiring one would invite an
+    invented objection. When the section is there its shape is checked, because
+    an objection with no evidence and no exit is just a complaint.
+    """
+    if "\n## Challenges" not in text:
+        return
+    body = text.split("\n## Challenges", 1)[1]
+    rows = [line.strip() for line in body.splitlines() if line.strip().startswith("|")]
+    header = next((r for r in rows if "term challenged" in r.lower()), None)
+    if header is None:
+        out.append(
+            Finding(
+                str(path),
+                "CHALLENGE_TABLE_MALFORMED",
+                "expected a table with Term challenged | What the run hit | What would "
+                "settle it columns",
+            )
+        )
+        return
+    cells = {c.strip().lower() for c in header.strip("|").split("|")}
+    if not CHALLENGE_COLUMNS <= cells:
+        out.append(
+            Finding(
+                str(path),
+                "CHALLENGE_TABLE_MALFORMED",
+                f"missing column(s): {', '.join(sorted(CHALLENGE_COLUMNS - cells))}",
+            )
+        )
+        return
+    for row in rows[rows.index(header) + 1 :]:
+        values = [c.strip() for c in row.strip("|").split("|")]
+        if set("".join(values)) <= set("- "):
+            continue
+        if len(values) < 3 or not all(values[:3]):
+            out.append(
+                Finding(
+                    str(path),
+                    "CHALLENGE_TABLE_MALFORMED",
+                    "a challenge must name the term, what the run hit, and what would "
+                    f"settle it - none of the three may be blank: {row}",
+                )
+            )
+            return
+
+
 def check_decisions(path: Path, text: str, out: list[Finding]) -> None:
+    check_challenges(path, text, out)
+    text = decisions_region(text)
     rows = [line.strip() for line in text.splitlines() if line.strip().startswith("|")]
     header = next((row for row in rows if "decision" in row.lower()), None)
     if header is None or not {"rejected", "why"} <= set(
@@ -652,12 +716,33 @@ def first_sentence(text: str) -> str | None:
     return None
 
 
+def challenge_count(record: Path) -> int:
+    """How many terms the run has objected to and the owner has not ruled on."""
+    if not record.is_file():
+        return 0
+    text = record.read_text(encoding="utf-8")
+    if "\n## Challenges" not in text:
+        return 0
+    body = text.split("\n## Challenges", 1)[1]
+    rows = [line.strip() for line in body.splitlines() if line.strip().startswith("|")]
+    header = next((r for r in rows if "term challenged" in r.lower()), None)
+    if header is None:
+        return 0
+    count = 0
+    for row in rows[rows.index(header) + 1 :]:
+        cells = [c.strip() for c in row.strip("|").split("|")]
+        if set("".join(cells)) <= set("- "):
+            continue
+        count += 1
+    return count
+
+
 def decision_count(record: Path) -> int:
     if not record.is_file():
         return 0
     rows = [
         line.strip()
-        for line in record.read_text(encoding="utf-8").splitlines()
+        for line in decisions_region(record.read_text(encoding="utf-8")).splitlines()
         if line.strip().startswith("|")
     ]
     header = next((row for row in rows if "decision" in row.lower()), None)
@@ -733,6 +818,7 @@ def describe(path: Path, kind: str) -> dict[str, object]:
         "phases": [],
         "workers": [],
         "decisions": decision_count(path.with_name(f"{slug_of(path)}.decisions.md")),
+        "challenges": challenge_count(path.with_name(f"{slug_of(path)}.decisions.md")),
         "anchor_result": None,
     }
     item["cadence"] = None
@@ -1066,7 +1152,12 @@ def print_status(state: dict[str, object]) -> None:
     if not artifacts:
         print("no artifacts found")
     for item in artifacts:
-        print(f"{item['slug']}  [{item['shape']}]  decisions={item['decisions']}")
+        line = f"{item['slug']}  [{item['shape']}]  decisions={item['decisions']}"
+        if item.get("challenges"):
+            # An unresolved objection to the terms is the most decision-shaped
+            # thing an inspect can surface, so it is never merely counted away.
+            line += f"  **challenges={item['challenges']}**"
+        print(line)
         if item["anchor"]:
             print(f"  anchor: {item['anchor']}")
         if item["stop_condition"]:

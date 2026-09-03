@@ -71,7 +71,7 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
     )
     return {
         "systemMessage": (
-            f"[goal-engineering] {goal.slug}: carry-over recorded before compaction "
+            f"[ultra-goal] {goal.slug}: carry-over recorded before compaction "
             f"({parts.get('state', 0)} state, {parts.get('lessons', 0)} lesson(s)). "
             f"Re-read `{goal.goal_path.name}` after compaction."
         )

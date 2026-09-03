@@ -11,9 +11,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = (
     REPO_ROOT
     / "plugins"
-    / "goal-engineering"
+    / "ultra-goal"
     / "skills"
-    / "goal-engineering"
+    / "ultra-goal"
     / "scripts"
     / "validate_artifact.py"
 )
@@ -669,6 +669,57 @@ class AuditTests(Harness):
         )
         self.assertEqual(2, result.returncode)
         self.assertIn("separate reports", result.stderr)
+
+
+class ChallengeTests(Harness):
+    """A challenge is the run's objection, not the owner's decision."""
+
+    RECORD = GOOD_DECISIONS + """
+
+## Challenges from the run
+
+| Term challenged | What the run hit | What would settle it |
+| --- | --- | --- |
+| Only the lockfile | `node-fetch` 3 needs two import sites changed, so the stated scope makes the advisory unfixable rather than deferred | Widen the scope to those two files, or drop `node-fetch` from this goal |
+"""
+
+    def test_a_well_formed_challenge_passes(self) -> None:
+        path = self.write("c.decisions.md", self.RECORD)
+        report = va.validate_paths([str(path)])
+        self.assertTrue(report.ok, report.findings)
+
+    def test_challenges_are_not_counted_as_decisions(self) -> None:
+        record = self.write("c.decisions.md", self.RECORD)
+        self.write("c.goal.md", GOOD_GOAL)
+        state = va.status_paths([str(self.dir)])
+        item = next(i for i in state["artifacts"] if i["slug"] == "c")
+        self.assertEqual(va.decision_count(record), item["decisions"])
+        self.assertEqual(1, item["challenges"])
+        # The whole point: an unresolved objection must not read as settled.
+        self.assertEqual(2, item["decisions"])
+
+    def test_a_blank_cell_makes_it_a_complaint_not_an_objection(self) -> None:
+        path = self.write(
+            "c.decisions.md",
+            self.RECORD.replace(
+                "| Widen the scope to those two files, or drop `node-fetch` from this goal |",
+                "|  |",
+            ),
+        )
+        self.assertIn("CHALLENGE_TABLE_MALFORMED", self.codes(path))
+
+    def test_a_missing_column_is_reported(self) -> None:
+        path = self.write(
+            "c.decisions.md",
+            self.RECORD.replace("| What would settle it |", "|"),
+        )
+        self.assertIn("CHALLENGE_TABLE_MALFORMED", self.codes(path))
+
+    def test_no_challenges_section_is_normal(self) -> None:
+        path = self.write("c.decisions.md", GOOD_DECISIONS)
+        report = va.validate_paths([str(path)])
+        self.assertTrue(report.ok, report.findings)
+        self.assertEqual(0, va.challenge_count(path))
 
 
 if __name__ == "__main__":

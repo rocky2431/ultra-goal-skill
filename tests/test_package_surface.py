@@ -11,8 +11,8 @@ import unittest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-PLUGIN_ROOT = REPO_ROOT / "plugins" / "goal-engineering"
-SKILL_ROOT = PLUGIN_ROOT / "skills" / "goal-engineering"
+PLUGIN_ROOT = REPO_ROOT / "plugins" / "ultra-goal"
+SKILL_ROOT = PLUGIN_ROOT / "skills" / "ultra-goal"
 
 sys.path.insert(0, str(SKILL_ROOT / "scripts"))
 import validate_artifact as va  # noqa: E402
@@ -42,11 +42,11 @@ class IdentityTests(unittest.TestCase):
         )
         entry = marketplace["plugins"][0]
 
-        self.assertEqual("goal-engineering", plugin["name"])
+        self.assertEqual("ultra-goal", plugin["name"])
         self.assertEqual(plugin["name"], entry["name"])
         self.assertEqual("./skills/", plugin["skills"])
-        self.assertEqual("./plugins/goal-engineering", entry["source"]["path"])
-        self.assertIn("name: goal-engineering", skill_text())
+        self.assertEqual("./plugins/ultra-goal", entry["source"]["path"])
+        self.assertIn("name: ultra-goal", skill_text())
         self.assertEqual(["Skills"], plugin["interface"]["capabilities"])
         self.assertLessEqual(len(plugin["interface"]["defaultPrompt"]), 128)
 
@@ -477,7 +477,7 @@ class GateAndDocumentSystemTests(unittest.TestCase):
         self.assertIn("**Seven of the eight steps allow.**", skill)
         self.assertIn("**A moved goalpost allows on purpose.**", skill)
         self.assertIn("`rm .goals/active`", skill)
-        self.assertIn("GOAL_ENGINEERING_HOOKS_DISABLED=1", skill)
+        self.assertIn("ULTRA_GOAL_HOOKS_DISABLED=1", skill)
         # PostToolUse's absence is a decision with a stated trigger to revisit.
         self.assertIn("`PostToolUse` is deliberately **not** registered", skill)
 
@@ -515,7 +515,7 @@ class EvalTests(unittest.TestCase):
         data = json.loads((SKILL_ROOT / "evals" / "evals.json").read_text(encoding="utf-8"))
         names = {case["name"] for case in data["evals"]}
         self.assertEqual(
-            ["no_skill", "agent-harness-design", "goal-engineering"],
+            ["no_skill", "agent-harness-design", "ultra-goal"],
             data["comparison_arms"],
         )
         self.assertGreaterEqual(len(data["evals"]), 12)
@@ -722,7 +722,7 @@ class ZeroTrustTests(unittest.TestCase):
         skill = skill_text()
         self.assertIn("| What may be given up, and what may not | `## Means` |", skill)
         self.assertIn("| Re-aim | `### Next` |", skill)
-        self.assertIn("Eight clauses, each closing one hole:", skill)
+        self.assertIn("Nine clauses, each closing one hole:", skill)
 
     def test_document_system_names_who_authors_which_side(self) -> None:
         doc = (SKILL_ROOT / "references" / "document-system.md").read_text(
@@ -788,9 +788,63 @@ class ActivationScopeTests(unittest.TestCase):
         )
         # The mirror case must stay positive, or the guard would silence Modify too.
         self.assertEqual(
-            ["goal-engineering"],
+            ["ultra-goal"],
             by_name["positive_modify_while_a_goal_is_active"]["expected_skills"],
         )
+
+
+class ChallengeChannelTests(unittest.TestCase):
+    """The only channel through which execution reaches the goal itself.
+
+    `### Lessons` carries method forward and `### Next` re-aims within the
+    terms; neither can say the terms are wrong. Before this existed, "the goal
+    is wrong" was the one outcome that wrote nothing down.
+    """
+
+    def test_the_skill_names_the_missing_edge(self) -> None:
+        skill = skill_text()
+        self.assertIn("## The one thing the goal can learn from", skill)
+        self.assertIn(
+            "| **Written by** | the run, and only the run", skill
+        )
+        # Optional on purpose: a mandatory objection is an invented one.
+        self.assertIn("**Optional on purpose.**", skill)
+        self.assertIn(
+            "| The run's objection to its own terms | `## Challenges from the run`", skill
+        )
+
+    def test_divergence_reporting_has_somewhere_to_land(self) -> None:
+        skill = skill_text()
+        self.assertIn('**And "report" needs somewhere to land.**', skill)
+
+    def test_modify_reads_the_objection_first(self) -> None:
+        skill = skill_text()
+        self.assertIn(
+            "**Read `## Challenges from the run` before anything else in that file.**",
+            skill,
+        )
+
+    def test_the_goal_text_makes_the_run_the_run(self) -> None:
+        skill = skill_text()
+        self.assertIn("You are the run for <slug>, not its", skill)
+        goal = (SKILL_ROOT / "assets" / "goal-package.md").read_text(encoding="utf-8")
+        handoff = goal.split("## Handoff", 1)[1]
+        self.assertIn("not its designer", handoff)
+        self.assertIn("## Challenges from the run", handoff)
+
+    def test_a_miss_is_paid_for_with_the_sentence(self) -> None:
+        self.assertIn("actually spend the\nsentence.**", skill_text())
+
+    def test_the_template_ships_a_worked_challenge(self) -> None:
+        record = (SKILL_ROOT / "assets" / "decisions-record.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("## Challenges from the run", record)
+        for column in (
+            "Term challenged", "What the run hit", "What would settle it"
+        ):
+            self.assertIn(column, record)
+        self.assertIn("an empty section should be deleted, not filled.", record)
 
 
 if __name__ == "__main__":

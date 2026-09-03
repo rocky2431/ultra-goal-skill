@@ -31,7 +31,7 @@ GOALS_DIR = ".goals"
 # first turn and compared on every later one.
 FROZEN_SECTIONS = ("intent", "boundary", "anchor")
 ACTIVE_MARKER = "active"
-DISABLE_ENV = "GOAL_ENGINEERING_HOOKS_DISABLED"
+DISABLE_ENV = "ULTRA_GOAL_HOOKS_DISABLED"
 # A slug names one artifact in `.goals/`. It is never a path.
 SLUG_MAX = 100
 

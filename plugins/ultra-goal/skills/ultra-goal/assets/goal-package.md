@@ -119,9 +119,13 @@ and do not call an upgrade safe without that output. When you report on the anch
 the turn and the exit code you saw rather than summarising it.
 Do not conclude why something broke from a changelog alone - reproduce it.
 Open a PR but do not merge it.
+You are the run for weekly-dep-upgrade, not its designer: the terms below were already
+agreed, so do not reopen them as an interview.
 If a means labelled droppable turns out not to serve the intent, drop it and write the
 argument into .goals/weekly-dep-upgrade.decisions.md; never drop a load-bearing one, and
-never edit Intent, Boundary or Anchor - stop and report instead.
+never edit Intent, Boundary or Anchor. If one of those turns out to be wrong, stop and
+write a row under `## Challenges from the run` in that same file naming the term, what you
+hit, and what would settle it - then say you stopped for that reason.
 State which turn you are on at the start of each turn.
 Rewrite the Carry-over section before you finish - State gets where the work stands,
 Lessons gets at most 3 causal findings, Next gets the single objective for the following
@@ -130,12 +134,12 @@ Commit once per turn as `goal(weekly-dep-upgrade) turn <N>: <summary> [anchor: g
 unknown]`. Stop after 6 turns even if unmet, and say so.
 ```
 
-Eight clauses, one hole each: objective inside a scope, anchor as the only accepted
+Nine clauses, one hole each: objective inside a scope, anchor as the only accepted
 evidence, no confidence claim without it, the verdict reported as a turn and an exit code
-rather than a summary, no conclusion from documents alone, droppable means droppable and
-nothing else, state the turn out loud, rewrite carry-over including Next. Host: Claude Code
-(recorded in the decisions record) - the objective is portable, the `/goal` prefix is what
-changes.
+rather than a summary, no conclusion from documents alone, **the run is the run and not the
+designer**, droppable means droppable with a wrong term challenged rather than edited,
+state the turn out loud, rewrite carry-over including Next. Host: Claude Code (recorded in
+the decisions record) - the objective is portable, the `/goal` prefix is what changes.
 
 First iteration should produce: the audit output, the version bumps it implies, the anchor
 command's real output, and a rewritten Carry-over section.

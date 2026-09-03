@@ -7,8 +7,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$PLUGIN_ROOT/skills/goal-engineering/scripts/goal_stop.py\"",
-            "commandWindows": "py -3 \"%PLUGIN_ROOT%\\skills\\goal-engineering\\scripts\\goal_stop.py\"",
+            "command": "python3 \"$PLUGIN_ROOT/skills/ultra-goal/scripts/goal_stop.py\"",
+            "commandWindows": "py -3 \"%PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_stop.py\"",
             "timeout": 200,
             "statusMessage": "Checking the loop's anchor"
           }
@@ -21,8 +21,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$PLUGIN_ROOT/skills/goal-engineering/scripts/goal_session_start.py\"",
-            "commandWindows": "py -3 \"%PLUGIN_ROOT%\\skills\\goal-engineering\\scripts\\goal_session_start.py\"",
+            "command": "python3 \"$PLUGIN_ROOT/skills/ultra-goal/scripts/goal_session_start.py\"",
+            "commandWindows": "py -3 \"%PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_session_start.py\"",
             "timeout": 10,
             "additionalContextLimit": 8000,
             "statusMessage": "Restoring the active loop"
@@ -36,8 +36,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$PLUGIN_ROOT/skills/goal-engineering/scripts/goal_pre_compact.py\"",
-            "commandWindows": "py -3 \"%PLUGIN_ROOT%\\skills\\goal-engineering\\scripts\\goal_pre_compact.py\"",
+            "command": "python3 \"$PLUGIN_ROOT/skills/ultra-goal/scripts/goal_pre_compact.py\"",
+            "commandWindows": "py -3 \"%PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_pre_compact.py\"",
             "timeout": 10,
             "statusMessage": "Recording the loop's carried state"
           }

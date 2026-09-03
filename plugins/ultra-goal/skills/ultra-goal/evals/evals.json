@@ -1,9 +1,9 @@
 {
-  "skill_name": "goal-engineering",
+  "skill_name": "ultra-goal",
   "comparison_arms": [
     "no_skill",
     "agent-harness-design",
-    "goal-engineering"
+    "ultra-goal"
   ],
   "evals": [
     {
@@ -250,7 +250,7 @@
       "id": 46,
       "name": "hook_pollution_is_answered_inside_the_hook",
       "prompt": "I don't want this Skill's hook firing in my other projects. Can I install without hooks?",
-      "expected_output": "Explains that the defence is inside the hook rather than in an install flag: without a .goals/active marker naming an existing artifact, nothing is read, nothing is written, and no command runs. Names the escape hatches (rm .goals/active, GOAL_ENGINEERING_HOOKS_DISABLED=1) and why an opt-in flag was rejected: it would leave the goal text claiming the anchor is the only accepted evidence while nothing executed it, which is a silent downgrade of evidence coverage."
+      "expected_output": "Explains that the defence is inside the hook rather than in an install flag: without a .goals/active marker naming an existing artifact, nothing is read, nothing is written, and no command runs. Names the escape hatches (rm .goals/active, ULTRA_GOAL_HOOKS_DISABLED=1) and why an opt-in flag was rejected: it would leave the goal text claiming the anchor is the only accepted evidence while nothing executed it, which is a silent downgrade of evidence coverage."
     },
     {
       "id": 47,

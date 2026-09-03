@@ -1,14 +1,14 @@
 {
-  "name": "rocky-goal-engineering",
+  "name": "rocky-ultra-goal",
   "interface": {
-    "displayName": "Goal Engineering"
+    "displayName": "UltraGoal"
   },
   "plugins": [
     {
-      "name": "goal-engineering",
+      "name": "ultra-goal",
       "source": {
         "source": "local",
-        "path": "./plugins/goal-engineering"
+        "path": "./plugins/ultra-goal"
       },
       "policy": {
         "installation": "AVAILABLE",

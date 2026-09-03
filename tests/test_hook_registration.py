@@ -184,15 +184,15 @@ class PlatformIdentityTests(Harness):
         path.write_text(json.dumps({"hooks": {"Stop": [{"matcher": "*", "hooks": [{
             "type": "command",
             "command": ('"C:\\Python312\\python.exe" "C:\\Users\\me\\.claude'
-                        '\\skills\\goal-engineering\\scripts\\goal_stop.py"'),
+                        '\\skills\\ultra-goal\\scripts\\goal_stop.py"'),
         }]}]}}, indent=2), encoding="utf-8")
         return path
 
     def test_a_backslash_registration_is_recognised(self) -> None:
         self.assertTrue(iu._tagged(
-            'py -3 "C:\\x\\goal-engineering\\scripts\\goal_stop.py"'))
+            'py -3 "C:\\x\\ultra-goal\\scripts\\goal_stop.py"'))
         self.assertTrue(iu._tagged(
-            'python3 "/home/me/goal-engineering/scripts/goal_stop.py"'))
+            'python3 "/home/me/ultra-goal/scripts/goal_stop.py"'))
         self.assertFalse(iu._tagged('python3 "/somebody/else/check.py"'))
         self.assertFalse(iu._tagged(None))
 

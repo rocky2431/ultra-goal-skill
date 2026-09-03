@@ -100,7 +100,7 @@ def _resolvable(command: str) -> bool:
 
 
 def _allow(reason: str) -> dict[str, Any]:
-    return {"systemMessage": f"[goal-engineering] {reason}"}
+    return {"systemMessage": f"[ultra-goal] {reason}"}
 
 
 def _deny(reason: str) -> dict[str, Any]:

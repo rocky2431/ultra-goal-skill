@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install the portable goal-engineering Skill at user scope."""
+"""Install the portable ultra-goal Skill at user scope."""
 
 from __future__ import annotations
 
@@ -15,9 +15,9 @@ import tempfile
 from typing import Any
 
 
-VERSION = "1.1.1"
-PACKAGE = "goal-engineering"
-MARKER_NAME = ".goal-engineering-managed.json"
+VERSION = "1.2.0"
+PACKAGE = "ultra-goal"
+MARKER_NAME = ".ultra-goal-managed.json"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILL_SOURCE = (
     REPO_ROOT
@@ -44,7 +44,7 @@ HOOK_HOSTS = ("claude",)
 # Matched against a normalised command string: a registration written on
 # Windows carries backslashes, and comparing them raw made every identity check
 # fail there - idempotence, doctor and uninstall all silently.
-HOOK_TAG = "goal-engineering/scripts/goal_"
+HOOK_TAG = "ultra-goal/scripts/goal_"
 
 
 def _tagged(command: object) -> bool:
@@ -216,7 +216,7 @@ def _write_settings(path: Path, settings: dict[str, Any], backup_dir: Path) -> N
     if path.exists():
         _backup_item(path, backup_dir / "settings.json")
     path.parent.mkdir(parents=True, exist_ok=True)
-    staging = path.with_name(f".{path.name}.goal-engineering.tmp")
+    staging = path.with_name(f".{path.name}.ultra-goal.tmp")
     staging.write_text(
         json.dumps(settings, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )

@@ -16,9 +16,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = (
     REPO_ROOT
     / "plugins"
-    / "goal-engineering"
+    / "ultra-goal"
     / "skills"
-    / "goal-engineering"
+    / "ultra-goal"
     / "scripts"
 )
 sys.path.insert(0, str(SCRIPTS))
@@ -218,7 +218,7 @@ class FailOpenTests(Harness):
                 "Stop",
                 lambda e, l: calls.append(e),
                 stdin_text=payload,
-                env={"GOAL_ENGINEERING_HOOKS_DISABLED": "1"},
+                env={"ULTRA_GOAL_HOOKS_DISABLED": "1"},
             ),
         )
         self.assertEqual([], calls)

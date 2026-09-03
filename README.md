@@ -1,4 +1,4 @@
-# Goal Engineering
+# UltraGoal
 
 An Agent Skill that interviews you into a **grounded** goal, then writes the prompt or
 script that pursues it until an anchor says it is met.
@@ -165,8 +165,8 @@ project assets that belong in Git and may be read by whichever agent a teammate 
 ## Install
 
 ```bash
-git clone https://github.com/rocky2431/goal-engineering-skill
-cd goal-engineering-skill
+git clone https://github.com/rocky2431/ultra-goal-skill
+cd ultra-goal-skill
 python3 scripts/install_user.py install                 # all supported hosts
 python3 scripts/install_user.py install --hosts claude   # or pick them
 python3 scripts/install_user.py doctor --json            # verify
@@ -177,7 +177,7 @@ recovery copy and refuses to overwrite an unmanaged Skill of the same name.
 `uninstall` removes only copies this installer manages.
 
 The repo also ships a plugin manifest (`.agents/plugins/marketplace.json` and
-`plugins/goal-engineering/.codex-plugin/plugin.json`) for hosts that install plugins
+`plugins/ultra-goal/.codex-plugin/plugin.json`) for hosts that install plugins
 directly from a Git marketplace.
 
 ## The gate
@@ -216,7 +216,7 @@ project, so it is pinned from nine angles in `tests/test_goal_hooks.py`, includi
 inactive project executes no anchor and that a handler which raises still exits 0.
 
 Escape hatches, neither of which needs the agent's cooperation: `rm .goals/active`, or
-`GOAL_ENGINEERING_HOOKS_DISABLED=1`.
+`ULTRA_GOAL_HOOKS_DISABLED=1`.
 
 Registration is idempotent, backs up `settings.json` first, preserves every hook it does not
 own, and `doctor` reports `missing` or `partial:<events>` if something later removes it.
@@ -259,6 +259,29 @@ Nothing auto-resolves a divergence, and the limits are stated rather than implie
 can write any file it can read, `events.jsonl` included. What defends the log is not
 permission but publication — it is committed, so a rewritten history is a diff. Making a
 moved goalpost **visible** is the achievable property; making it impossible is not.
+
+## The one thing the goal can learn from
+
+`### Lessons` carries method forward. `### Next` re-aims within the terms. Neither can say
+*the terms themselves are wrong* — that is frozen, and correctly so. So there is exactly one
+thing a run knows that the design side cannot: which term turned out to be unworkable in
+contact with reality. Until v1.2.0 that was the only outcome that wrote nothing down.
+
+`## Challenges from the run`, in the decisions record, is that channel:
+
+- **written by the run**, and only the run — the one part of that file its owner does not
+  author;
+- **ruled on by the owner**, so `--status` counts challenges apart from decisions and an
+  unresolved objection never reads as a settled decision;
+- **the term challenged, what the run hit, and what would settle it** — all three, or it is
+  a complaint rather than an objection;
+- **instead of editing the term.** A run that edits a frozen term has moved the goalpost; a
+  run that challenges it has done its owner a favour;
+- **read first by the next Modify pass**, which already had to read this file — so the
+  objection lands exactly where the next design pass is required to look.
+
+Optional on purpose: most runs raise none, and demanding one per run produces invented
+objections, the same failure as a reviewer who must find something.
 
 ## Adversarial review
 
@@ -313,13 +336,13 @@ where each would take over — as `optional_skills`, never as a dependency.
 ## Sources
 
 The guidance traces to primary sources, listed with URLs and a currency date in
-[references/research-basis.md](plugins/goal-engineering/skills/goal-engineering/references/research-basis.md).
+[references/research-basis.md](plugins/ultra-goal/skills/ultra-goal/references/research-basis.md).
 Anthropic's loop and multi-agent engineering posts are treated as doctrine; the July 2026
 "graph engineering" essays are treated as argument.
 
 The carry-over design rests on two papers, with what was taken and what was deliberately
 left behind spelled out in
-[references/evolution-and-scope.md](plugins/goal-engineering/skills/goal-engineering/references/evolution-and-scope.md):
+[references/evolution-and-scope.md](plugins/ultra-goal/skills/ultra-goal/references/evolution-and-scope.md):
 **SKILL.state** ([arXiv 2608.26263](https://arxiv.org/abs/2608.26263)) for explicit carried
 state over replayed history — including the finding that one five-field schema served 100
 task instances — and **WikiSkill** ([arXiv 2608.27454](https://arxiv.org/html/2608.27454))
@@ -334,7 +357,7 @@ designed with its owner in the room has no validation set.
 python3 -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-172 tests: the validator's rules, the status projection, the claim-versus-measurement audit
+187 tests: the validator's rules, the status projection, the claim-versus-measurement audit
 against a real Git repository, the gate's eight outcomes, the package surface, version
 consistency across three files, every relative link in `SKILL.md` resolving, and the shipped
 templates passing the shipped validator. Three are safety tests — that an anchor is never
