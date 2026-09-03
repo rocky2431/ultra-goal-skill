@@ -5,7 +5,7 @@ when_to_use: "When the owner wants work to keep running without them - \"make an
 license: MIT
 metadata:
   author: rocky2431
-  version: "2.4.0"
+  version: "2.5.0"
 ---
 
 # UltraGoal
@@ -715,7 +715,7 @@ exit code is a fact rather than an opinion about one.
 Read [references/zero-trust.md](references/zero-trust.md) for which control distrusts what,
 and [references/document-system.md](references/document-system.md) for which file owns what.
 
-## Validate, then hand off
+## Validate, then offer to start it
 
 ```bash
 python3 scripts/validate_artifact.py .goals --json
@@ -725,12 +725,49 @@ It checks mechanical facts only — pairing, required sections, declared phases,
 delegation targets, JavaScript syntax — and never edits the artifact. Fix what it reports;
 its silence is not evidence that the design is right.
 
-Then hand off in one line: the exact command the owner pastes, and what the first iteration
-should produce. Spell it out — this host's goal line, the workflow runtime's own entry point,
-or one delegation call per worker with its working directory and mission file. Assume no other Skill is installed to fill in the gaps, and state which effects the
-owner has already authorized and which still need approval.
+Then, once the design critic's objections have been ruled on, **offer to start the run, and
+start it if the owner says to.** Two skills, one door: the owner types `/ultra-goal` and
+never has to learn that arming a gate is a different file from designing a goal.
 
-Do not run it yourself unless the owner asks.
+Ask with three answers, because yes-or-no folds "those objections changed my mind" into
+"not now":
+
+> Artifact validated: `.goals/<slug>.goal.md`. Anchor `<command>`, ceiling `<n>`, `<k>`
+> acceptance lines open.
+>
+> **Start the run now?** That means `/ultra-goal:goal-run <slug>`, which arms the gate by
+> writing `.goals/active`: from then on a turn cannot end with the anchor red until the
+> stop condition is met, and `rm .goals/active` is the way out.
+>
+> - **start it** — I invoke it in this session and work turn 1
+> - **not yet** — nothing is armed; the artifact sits there and `/ultra-goal:goal-run
+>   <slug>` starts it later, in any session
+> - **change something first** — say what, and we amend before arming
+
+If they pick **start it**, say this once and then stop offering it: `/clear` before turn 1
+gives the run a clean context, and the SessionStart hook re-delivers the frozen terms and
+the carry-over by itself, so clearing loses nothing that the run needs. Their call, not
+yours - a run that keeps the interview in context is worse but not broken, and one more
+prompt before they can walk away is a real cost.
+
+Arming writes one file in this repository and `rm .goals/active` undoes it, so "start it"
+is authorization enough; nothing at this step reaches outside the machine. But never arm
+without asking, and never read silence or an unrelated reply as consent.
+
+**When they say start it, this manual stops applying to you.** Invoke
+`/ultra-goal:goal-run <slug>` and follow that file instead. It puts you in the run's seat,
+where the terms you just negotiated are frozen and your job is to satisfy them rather than
+to keep improving them. The host does not drop this Skill's content from the conversation
+after the handoff, so the pull to reopen the interview is real and outlives the handoff —
+these two sentences are the whole defence against it.
+
+The other two shapes have nothing to arm: a workflow script has the runtime's own entry
+point and a delegation triad is one call per worker. Offer those the same way, in the same
+three answers, naming the working directory and mission file.
+
+If the owner declines, hand off in one line anyway: the exact command they paste and what
+the first turn should produce. Assume no other Skill is installed to fill the gaps, and
+say which effects they have already authorized and which still need approval.
 
 ## Version this Skill
 

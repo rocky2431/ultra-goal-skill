@@ -1,6 +1,6 @@
 {
   "name": "ultra-goal",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "description": "Interview the owner into a grounded goal, then emit the runnable prompt or script that pursues it until an anchor says it is met.",
   "author": {
     "name": "rocky2431",

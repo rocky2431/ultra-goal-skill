@@ -116,7 +116,7 @@ class SkillContractTests(unittest.TestCase):
             "## Compile one artifact",
             "## Inspect what is running",
             "## Modify an existing loop",
-            "## Validate, then hand off",
+            "## Validate, then offer to start it",
             "## Recognize the intent first",
             "run the status command before the first question",
             "That record is also the interview's progress",
@@ -1380,3 +1380,52 @@ class ApertureTests(unittest.TestCase):
         generic word like `run`."""
         commands = sorted(p.stem for p in (PLUGIN_ROOT / "commands").glob("*.md"))
         self.assertEqual(["goal-run"], commands)
+
+
+class ChainedHandoffTests(unittest.TestCase):
+    """Two skills, one door: the goal skill offers, then invokes the run.
+
+    Keeping the run's manual in its own file is what stops a running turn from
+    reading the interview as still open. Making the owner type the second
+    command is a different thing, and it buys nothing - so the skill asks and
+    invokes it, the continuation pattern the owner's earlier harness used.
+    """
+
+    def test_the_offer_names_the_command_it_would_invoke(self) -> None:
+        skill = skill_text()
+        self.assertIn("**Start the run now?**", skill)
+        self.assertIn("`/ultra-goal:goal-run <slug>`", skill)
+
+    def test_the_offer_has_three_answers(self) -> None:
+        """Yes-or-no folds a changed mind into not-now."""
+        skill = skill_text()
+        for answer in ("**start it**", "**not yet**", "**change something first**"):
+            with self.subTest(answer=answer):
+                self.assertIn(answer, skill)
+
+    def test_arming_still_needs_the_owner_to_say_so(self) -> None:
+        """Chaining removes a keystroke, not the consent."""
+        skill = skill_text()
+        self.assertIn("never arm\nwithout asking", skill)
+        self.assertIn("never read silence or an unrelated reply as consent", skill)
+
+    def test_the_handoff_supersedes_the_interview_manual(self) -> None:
+        """The host keeps this Skill in context after the handoff, so the pull to
+        reopen frozen terms outlives the moment of handing off."""
+        skill = skill_text()
+        self.assertIn(
+            "**When they say start it, this manual stops applying to you.**", skill
+        )
+        self.assertIn("The host does not drop this Skill's content", skill)
+
+    def test_the_cheaper_alternative_is_named_once(self) -> None:
+        """Clearing gives the run a clean context, and the SessionStart hook
+        re-delivers what it needs - so the alternative costs one prompt, and the
+        owner is told rather than routed."""
+        skill = skill_text()
+        self.assertIn("`/clear` before turn 1", skill)
+        self.assertIn("SessionStart hook re-delivers the frozen terms", skill)
+        self.assertIn("Their call, not\nyours", skill)
+
+    def test_the_shapes_with_nothing_to_arm_are_offered_too(self) -> None:
+        self.assertIn("The other two shapes have nothing to arm", skill_text())
