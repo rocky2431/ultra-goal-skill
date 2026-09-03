@@ -470,3 +470,87 @@ class RecoveryHookTests(Harness):
         self.assertEqual(1, entry["state_items"])
         self.assertEqual(1, entry["lessons"])
         self.assertIn("carry_over_digest", entry)
+
+
+class FrozenSpecTests(Harness):
+    """The gate remembers which goal it was pointed at.
+
+    This is the one zero-trust control that is genuinely mechanical: the
+    quantity measured (a digest of three sections) is the quantity judged (did
+    the goal move). It allows rather than denies, because a run against an
+    edited spec should end and go back to the owner, not try harder.
+    """
+
+    def stop(self) -> dict:
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
+            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        return json.loads(result.stdout) if result.stdout.strip() else {}
+
+    def events(self) -> list[dict]:
+        path = self.cwd / ".goals" / "demo.events.jsonl"
+        if not path.is_file():
+            return []
+        return [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
+
+    def edit(self, old: str, new: str) -> None:
+        path = self.cwd / ".goals" / "demo.goal.md"
+        text = path.read_text(encoding="utf-8")
+        self.assertIn(old, text)
+        path.write_text(text.replace(old, new), encoding="utf-8")
+
+    def test_the_first_turn_records_the_frozen_digest(self) -> None:
+        self.make_loop()
+        self.stop()
+        self.assertTrue(self.events()[-1]["spec_digest"])
+
+    def test_a_fluid_edit_is_not_a_moved_goalpost(self) -> None:
+        self.make_loop()
+        self.stop()
+        self.edit("- nothing yet", "- one shard left")
+        payload = self.stop()
+        self.assertIn("Goal met", payload["systemMessage"])
+        self.assertEqual("anchor_checked", self.events()[-1]["event"])
+
+    def test_editing_the_intent_ends_the_turn_with_an_alarm(self) -> None:
+        self.make_loop()
+        self.stop()
+        self.edit("Keep the suite green.", "Keep the suite roughly green when easy.")
+        payload = self.stop()
+        self.assertIsNone(
+            payload.get("hookSpecificOutput", {}).get("permissionDecision"),
+            "a moved goalpost must end the turn, not force more work against it",
+        )
+        self.assertIn("no longer the goal the owner authorized", payload["systemMessage"])
+        entry = self.events()[-1]
+        self.assertEqual("frozen_spec_changed", entry["event"])
+        self.assertNotEqual(entry["spec_digest_first"], entry["spec_digest_now"])
+
+    def test_editing_the_anchor_is_also_a_moved_goalpost(self) -> None:
+        self.make_loop()
+        self.stop()
+        self.edit("Stop when `true` succeeds", "Stop when `true` basically succeeds")
+        self.assertEqual("anchor_checked", self.events()[-1]["event"],
+                         "the stop condition is Firm, not Frozen")
+        self.edit(f"```\n{GREEN}\n```", '```\ntrue # relaxed\n```')
+        self.stop()
+        self.assertEqual("frozen_spec_changed", self.events()[-1]["event"])
+
+    def test_the_anchor_does_not_run_once_the_spec_has_moved(self) -> None:
+        witness = self.cwd / "anchor-ran"
+        command = f'"{sys.executable}" -c "open(r\'{witness}\', \'a\').close()"'
+        self.make_loop(goal=GOAL.replace(f"```\n{GREEN}\n```", f"```\n{command}\n```"))
+        self.stop()
+        self.assertTrue(witness.exists())
+        witness.unlink()
+        self.edit("Keep the suite green.", "Keep it vaguely green.")
+        self.stop()
+        self.assertFalse(
+            witness.exists(),
+            "running the anchor after the spec moved would prove the wrong thing",
+        )

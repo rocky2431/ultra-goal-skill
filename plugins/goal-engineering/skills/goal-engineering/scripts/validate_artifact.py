@@ -19,6 +19,9 @@ import subprocess
 import sys
 import tempfile
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from goal_hooks import frozen_digest  # noqa: E402
+
 
 KNOWN_TARGETS = ("claude", "codex", "hermes", "kimi", "opencode", "zcode")
 PLACEHOLDERS = ("TO" + "DO:", "TB" + "D", "<FILL", "XX" + "X:")
@@ -33,11 +36,21 @@ GOAL_SECTIONS = (
     ("boundary", "BOUNDARY_MISSING", "the artifact has no stated boundary"),
     ("stop condition", "STOP_CONDITION_MISSING", "the artifact has no stop condition"),
     ("anchor", "ANCHOR_MISSING", "the artifact has no anchor"),
+    ("means", "MEANS_MISSING", "the artifact does not separate its means from its intent, "
+     "so dropping one is indistinguishable from scope drift"),
     ("verification", "VERIFIER_NOT_DECLARED", "no independent verifier is declared"),
 )
+# A means is something believed necessary to reach the intent. The label says
+# whether the run may abandon it on evidence, and the owner sets the label - that
+# is the whole point of the section, so an unlabelled means is not a means.
+MEANS_LABELS = ("load-bearing", "droppable")
+BULLET_LINE = re.compile(r"(?m)^\s*[-*]\s+(.*\S)\s*$")
 # `## Cadence` and `## Carry-over` are conditional: an unattended run needs both,
 # a one-shot goal needs neither.
-ROLE_FIELDS = ("target", "mission", "anchor")
+# `inputs` is what keeps the review independent. Different vendors buy different
+# blind spots; only stating what a role is given keeps the main agent's own
+# argument for its work out of the reviewer's context.
+ROLE_FIELDS = ("target", "mission", "anchor", "inputs")
 # The critic's job is to discretize its disagreement, which is what turns it into
 # an auditable object instead of a plausible rebuttal. Three classes, named.
 DISAGREEMENT_CLASSES = ("agreement", "evidence-backed", "concern-based")
@@ -339,6 +352,24 @@ def check_goal(path: Path, text: str, out: list[Finding]) -> None:
                 )
             )
 
+    means = found.get("means")
+    if means is not None:
+        unlabelled = [
+            line
+            for line in BULLET_LINE.findall(means)
+            if not any(f"[{label}]" in line.lower() for label in MEANS_LABELS)
+        ]
+        if unlabelled:
+            out.append(
+                Finding(
+                    str(path),
+                    "MEANS_UNLABELLED",
+                    f"{len(unlabelled)} means carry no `[load-bearing]` or `[droppable]` "
+                    f"label, starting with {unlabelled[0][:60]!r}: without one the run "
+                    "cannot tell an authorized abandonment from scope drift",
+                )
+            )
+
     anchor = found.get("anchor", "")
     if anchor and not COMMAND.search(anchor):
         out.append(
@@ -403,17 +434,36 @@ def check_goal(path: Path, text: str, out: list[Finding]) -> None:
 
     if carry_over:
         parts = carry_over_parts(carry_over)
-        missing = [name for name in ("state", "lessons") if name not in parts]
+        missing = [
+            name for name in ("state", "lessons", "next") if name not in parts
+        ]
         if missing:
             out.append(
                 Finding(
                     str(path),
                     "CARRYOVER_SECTIONS_MISSING",
-                    "carry-over needs `### State` (where the work stands) and "
-                    f"`### Lessons` (why something failed and what to do instead); "
+                    "carry-over needs `### State` (where the work stands), "
+                    "`### Lessons` (why something failed and what to do instead) and "
+                    "`### Next` (the one objective for the next round); "
                     f"missing: {', '.join(missing)}",
                 )
             )
+        # One entry, not a list. A list of next objectives is a plan, and a goal
+        # that has grown a plan is a graph that should have been authored as one.
+        nxt = parts.get("next")
+        if nxt is not None:
+            entries = len(BULLET.findall(nxt))
+            if entries > 1:
+                out.append(
+                    Finding(
+                        str(path),
+                        "NEXT_NOT_SINGLE",
+                        f"`### Next` holds {entries} entries: it takes exactly one "
+                        "objective, derived from this round's verdict and inside the "
+                        "frozen intent. A list of them is a plan, and a goal with a "
+                        "plan is a graph that should have been authored as one",
+                    )
+                )
         for name, cap, code in (
             ("state", STATE_MAX, "STATE_UNPRUNED"),
             ("lessons", LESSONS_MAX, "LESSONS_UNPRUNED"),
@@ -589,6 +639,12 @@ def first_command(text: str) -> str | None:
     return inline.group(1).strip() if inline is not None else None
 
 
+def first_bullet(text: str) -> str | None:
+    """The first bullet's own line, which for `### Next` is the whole content."""
+    match = BULLET_LINE.search(text)
+    return match.group(1).strip() if match is not None else None
+
+
 def first_sentence(text: str) -> str | None:
     for line in text.splitlines():
         if line.strip():
@@ -623,17 +679,19 @@ SHAPES = {
 }
 
 
-def last_anchor_check(artifact: Path) -> dict[str, object] | None:
-    """Read the newest anchor result from the goal's event log, if any.
+def read_log(artifact: Path) -> list[dict[str, object]]:
+    """Every event the hooks recorded for this artifact, oldest first.
 
-    The log is written by the hooks, never by this validator. A malformed line
-    is skipped rather than fatal - a broken log must not make status unusable.
+    The log is written by the hooks and never by this validator. That asymmetry
+    is the point: the artifact and the commit messages are what the model says
+    happened, and this is what the machine measured. A malformed line is skipped
+    rather than fatal - a broken log must not make the report unusable.
     """
     log = artifact.with_name(f"{slug_of(artifact)}.events.jsonl")
+    entries: list[dict[str, object]] = []
     try:
         if not log.is_file():
-            return None
-        newest = None
+            return entries
         for line in log.read_text(encoding="utf-8").splitlines():
             line = line.strip()
             if not line:
@@ -642,18 +700,25 @@ def last_anchor_check(artifact: Path) -> dict[str, object] | None:
                 entry = json.loads(line)
             except (json.JSONDecodeError, UnicodeError):
                 continue
-            if isinstance(entry, dict) and entry.get("event") == "anchor_checked":
-                newest = entry
-        if newest is None:
-            return None
-        return {
-            "turn": newest.get("turn"),
-            "outcome": newest.get("outcome"),
-            "exit_code": newest.get("exit_code"),
-            "at": newest.get("ts"),
-        }
+            if isinstance(entry, dict):
+                entries.append(entry)
     except (OSError, UnicodeError):
+        return entries
+    return entries
+
+
+def last_anchor_check(artifact: Path) -> dict[str, object] | None:
+    """The newest anchor result from the goal's event log, if any."""
+    checks = [e for e in read_log(artifact) if e.get("event") == "anchor_checked"]
+    if not checks:
         return None
+    newest = checks[-1]
+    return {
+        "turn": newest.get("turn"),
+        "outcome": newest.get("outcome"),
+        "exit_code": newest.get("exit_code"),
+        "at": newest.get("ts"),
+    }
 
 
 def describe(path: Path, kind: str) -> dict[str, object]:
@@ -672,6 +737,7 @@ def describe(path: Path, kind: str) -> dict[str, object]:
     }
     item["cadence"] = None
     item["carry_over"] = None
+    item["next"] = None
     item["start_command"] = None
     item["last_check"] = last_anchor_check(path)
     if kind == "goal":
@@ -687,6 +753,9 @@ def describe(path: Path, kind: str) -> dict[str, object]:
                 name: len(BULLET.findall(parts.get(name, "")))
                 for name in ("state", "lessons")
             }
+            # What the run is aiming at next is the single most useful line
+            # about a goal already in flight, so it is shown, not counted.
+            item["next"] = first_bullet(parts.get("next", ""))
         handoff = found.get("handoff", "")
         start = FENCE.search(handoff)
         item["start_command"] = (
@@ -778,6 +847,220 @@ def status_paths(paths: list[str], run_anchors: bool = False) -> dict[str, objec
     }
 
 
+# The per-turn commit convention. The verdict in the subject line is the model's
+# claim about the turn; the event log is the machine's measurement of it.
+CLAIM = re.compile(
+    r"^goal\((?P<slug>[^)]+)\)\s+turn\s+(?P<turn>\d+)\s*:\s*"
+    r"(?P<summary>.*?)\s*\[anchor:\s*(?P<verdict>green|red|unknown)\s*\]\s*$",
+    re.I,
+)
+
+
+def git_claims(artifact: Path) -> dict[int, dict[str, str]] | None:
+    """Claims parsed from the commits that touched this artifact, by turn.
+
+    Selected by the slug in the subject line, not by which files the commit
+    touched: most turns change source and never touch the artifact, so a
+    pathspec filter would drop exactly the turns worth auditing. Measured -
+    filtering by path hid two of three claims in a scratch run.
+
+    None means the history could not be read at all - no Git, or not a work
+    tree - which is itself the finding: without history there is nothing to
+    audit the log against. A later commit for the same turn wins, so an amended
+    turn is audited as amended.
+    """
+    slug = slug_of(artifact)
+    try:
+        completed = subprocess.run(
+            [
+                "git", "log", "--reverse", "--format=%h%x1f%s",
+                "-F", f"--grep=goal({slug}) turn",
+            ],
+            cwd=str(artifact.parent),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    claims: dict[int, dict[str, str]] = {}
+    for line in completed.stdout.splitlines():
+        sha, _, subject = line.partition("\x1f")
+        match = CLAIM.match(subject.strip())
+        if match is None or match.group("slug") != slug:
+            continue
+        claims[int(match.group("turn"))] = {
+            "commit": sha.strip(),
+            "verdict": match.group("verdict").lower(),
+            "summary": match.group("summary"),
+        }
+    return claims
+
+
+def audit_artifact(path: Path) -> tuple[dict[str, object], list[Finding]]:
+    """Put what the run claimed beside what the gate measured.
+
+    Neither side is trusted over the other: a divergence is reported, not
+    resolved. The value is that a human can see exactly which turn stopped
+    matching its evidence, which is the question "where did it go wrong"
+    reduces to.
+    """
+    out: list[Finding] = []
+    events = read_log(path)
+    checks = [e for e in events if e.get("event") == "anchor_checked"]
+    measured = {e.get("turn"): e for e in checks}
+    claims = git_claims(path)
+
+    if claims is None:
+        out.append(
+            Finding(
+                str(path),
+                "HISTORY_UNAVAILABLE",
+                "no readable Git history for this artifact, so the run's claims cannot "
+                "be checked against the gate's measurements - the trace is the only "
+                "thing that makes a finished run reviewable",
+            )
+        )
+        claims = {}
+
+    if claims and not checks:
+        out.append(
+            Finding(
+                str(path),
+                "GATE_NEVER_RAN",
+                f"{len(claims)} turn(s) were committed but the event log holds no anchor "
+                "check: every verdict in the history is self-reported. Install the hooks "
+                "on this host, or say plainly that the run was ungated",
+            )
+        )
+
+    rows: list[dict[str, object]] = []
+    for turn in sorted(set(claims) | {t for t in measured if isinstance(t, int)}):
+        claim = claims.get(turn)
+        check = measured.get(turn)
+        row = {
+            "turn": turn,
+            "claimed": claim["verdict"] if claim else None,
+            "measured": check.get("outcome") if check else None,
+            "exit_code": check.get("exit_code") if check else None,
+            "commit": claim["commit"] if claim else None,
+            "at": check.get("ts") if check else None,
+        }
+        rows.append(row)
+        if claim and check is None and checks:
+            out.append(
+                Finding(
+                    str(path),
+                    "CLAIM_UNWITNESSED",
+                    f"turn {turn} claims `[anchor: {claim['verdict']}]` in {claim['commit']} "
+                    "but the gate recorded no check for that turn: the verdict came from "
+                    "the run's own account of itself",
+                )
+            )
+        elif claim and check and claim["verdict"] != check.get("outcome"):
+            out.append(
+                Finding(
+                    str(path),
+                    "CLAIM_CONTRADICTED",
+                    f"turn {turn} claims `[anchor: {claim['verdict']}]` in {claim['commit']} "
+                    f"but the gate measured {check.get('outcome')} (exit "
+                    f"{check.get('exit_code')}). The measurement is the evidence; the "
+                    "commit message is the claim",
+                )
+            )
+
+    # Did the goalposts move? Two ways to find out, both from machine-written
+    # facts: the gate said so on some turn, or the file on disk no longer
+    # matches the digest recorded on turn 1.
+    baseline = next(
+        (c.get("spec_digest") for c in checks if c.get("spec_digest")), None
+    )
+    now = None
+    if path.suffix == ".md" and classify(path) == "goal":
+        try:
+            now = frozen_digest(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError):
+            now = None
+    moved = [e for e in events if e.get("event") == "frozen_spec_changed"]
+    if moved or (baseline and now and baseline != now):
+        turns = ", ".join(str(e.get("turn")) for e in moved) or "after the last turn"
+        out.append(
+            Finding(
+                str(path),
+                "FROZEN_SPEC_CHANGED",
+                f"`## Intent`, `## Boundary` or `## Anchor` changed during the run "
+                f"({turns}): {baseline} at turn 1 versus {now or 'unknown'} now. Whatever "
+                "the anchor proved, it did not prove the goal the owner authorized",
+            )
+        )
+    return {
+        "slug": slug_of(path),
+        "path": str(path),
+        "rows": rows,
+        "spec_digest_first": baseline,
+        "spec_digest_now": now,
+    }, out
+
+
+def audit_paths(paths: list[str]) -> dict[str, object]:
+    """Audit every artifact under `paths`, plus the ordinary validation."""
+    report = validate_paths(paths)
+    findings = list(report.findings)
+    audits: list[dict[str, object]] = []
+    seen: set[Path] = set()
+    for raw in paths:
+        path = Path(raw).expanduser()
+        candidates = (
+            sorted(child for child in path.rglob("*") if child.is_file())
+            if path.is_dir()
+            else [path]
+        )
+        for candidate in candidates:
+            kind = classify(candidate)
+            if kind is None or kind == "decisions":
+                continue
+            resolved = candidate.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            audit, found = audit_artifact(candidate)
+            audits.append(audit)
+            findings.extend(found)
+    return {
+        "ok": not findings,
+        "audits": audits,
+        "findings": [f.as_dict() for f in findings],
+    }
+
+
+def print_audit(state: dict[str, object]) -> None:
+    for audit in state["audits"]:
+        print(f"{audit['slug']}")
+        rows = audit["rows"]
+        if not rows:
+            print("  no turns recorded and none claimed")
+        else:
+            print("  turn  claimed   measured  exit  commit")
+            for row in rows:
+                print(
+                    f"  {str(row['turn']):<5} {str(row['claimed'] or '-'):<9} "
+                    f"{str(row['measured'] or '-'):<9} "
+                    f"{str(row['exit_code'] if row['exit_code'] is not None else '-'):<5} "
+                    f"{row['commit'] or '-'}"
+                )
+        if audit["spec_digest_first"]:
+            same = audit["spec_digest_first"] == audit["spec_digest_now"]
+            print(
+                f"  frozen spec: {audit['spec_digest_first']} at turn 1, "
+                f"{audit['spec_digest_now'] or 'unknown'} now"
+                f" ({'unchanged' if same else 'CHANGED'})"
+            )
+    for finding in state["findings"]:
+        print(f"{finding['path']}: {finding['code']}: {finding['message']}")
+
+
 def print_status(state: dict[str, object]) -> None:
     artifacts = state["artifacts"]
     if not artifacts:
@@ -795,6 +1078,8 @@ def print_status(state: dict[str, object]) -> None:
             print(
                 f"  carry-over: {counts['state']} state, {counts['lessons']} lesson(s)"
             )
+        if item["next"]:
+            print(f"  next:   {item['next']}")
         if item["start_command"]:
             print(f"  starts by: {item['start_command']}")
         check = item.get("last_check")
@@ -825,6 +1110,11 @@ def main() -> int:
         help="Report the current shape, anchor, and stop condition of each artifact",
     )
     parser.add_argument(
+        "--audit",
+        action="store_true",
+        help="Put each turn's committed claim beside the gate's measurement of it",
+    )
+    parser.add_argument(
         "--run-anchors",
         action="store_true",
         help="With --status, execute each anchor command and report its exit code",
@@ -833,7 +1123,17 @@ def main() -> int:
     if args.run_anchors and not args.status:
         print("Error: --run-anchors requires --status", file=sys.stderr)
         return 2
+    if args.audit and args.status:
+        print("Error: --audit and --status are separate reports", file=sys.stderr)
+        return 2
     try:
+        if args.audit:
+            state = audit_paths(args.paths)
+            if args.json:
+                print(json.dumps(state, ensure_ascii=False, indent=2))
+            else:
+                print_audit(state)
+            return 0 if state["ok"] else 1
         if args.status:
             state = status_paths(args.paths, run_anchors=args.run_anchors)
             if args.json:

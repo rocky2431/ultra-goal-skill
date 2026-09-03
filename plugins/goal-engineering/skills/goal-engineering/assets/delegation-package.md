@@ -18,12 +18,14 @@ agree - which is the false consensus this protocol exists to break.
 - target: codex
 - mission: Review `src/settlement/` for overflow on partial fills, reentrancy, external-call ordering, and gas regressions. Every finding cites file:line and the command whose output proves it. Report "no finding" for a dimension only if you actually exercised it, and name the command you ran.
 - anchor: `forge test --match-path test/Settlement.t.sol`
+- inputs: the frozen contents of `src/settlement/`, the acceptance criteria above, and the anchor's own output. Not the orchestrator's account of why the code is correct - a reviewer given the author's argument reviews the argument.
 
 ## Critic
 
 - target: kimi
 - mission: Audit the reviewer's review, not the code. Sort every point into exactly one of agreement, evidence-backed disagreement (cite what shows it), or concern-based disagreement (say what evidence would settle it). Treat any "no finding" that names no command as unexercised rather than clean.
 - anchor: `forge test --match-path test/Settlement.t.sol`
+- inputs: the reviewer's review and the same frozen source. Not the orchestrator's opinion of the review, and not the reviewer's reasoning about its own confidence.
 
 ## Convergence
 

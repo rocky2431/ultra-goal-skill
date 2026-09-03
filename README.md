@@ -42,8 +42,15 @@ Skill installed to do any of that.
    gets made* is the distinction.
 
 2. **Interviews** you, one question per turn, each carrying a recommended answer: intent,
-   anchor, stop condition, boundary, verifier, split. It looks up anything the repository
-   can answer instead of asking you, and it refuses to emit an artifact with no anchor.
+   anchor, stop condition, **means**, boundary, verifier, split, surface, divergence. It
+   looks up anything the repository can answer instead of asking you, and it refuses to
+   emit an artifact with no anchor.
+
+   The means question is the one that decides how much latitude the run has. You label each
+   means `[load-bearing]` or `[droppable]`; the run may abandon a droppable one on evidence
+   and must record the argument, and may not touch a load-bearing one at all. Without the
+   labels, abandoning a feature is indistinguishable from scope drift, so the agent has to
+   either stop at every surprise or drop things quietly — and neither is what you wanted.
 
 3. **Compiles** one machine-consumable artifact — and stops there. Running it is not this
    Skill's job.
@@ -88,9 +95,14 @@ without `--status`.
    | How it became true | `git log -p <slug>.goal.md` — the diffs *are* the evolution |
    | What each iteration did | the commit message — one line per iteration |
 
-   Because the history is in Git, the document never has to hold it. Carry-over has two
-   parts with different budgets: `### State` (where the work stands, at most 8) and
-   `### Lessons` (**why** something failed and what to do instead, at most 3). The Lessons
+   Because the history is in Git, the document never has to hold it. Carry-over has three
+   parts with different budgets: `### State` (where the work stands, at most 8),
+   `### Lessons` (**why** something failed and what to do instead, at most 3), and
+   `### Next` (the single objective for the following round, inside the frozen intent —
+   exactly one, because a list of them is a plan and a goal with a plan should have been
+   authored as a graph). `### Next` is the edge that closes the loop: without it a run
+   re-attempts the same objective until the anchor goes green or the ceiling hits. The
+   Lessons
    cap comes from Reflexion, which bounds its reflection memory at 1-3 because entries the
    model must reason over compete with the work for the same budget.
 
@@ -139,9 +151,10 @@ each turn. Rewrite the Carry-over section before you finish. Stop after <N> turn
 unmet, and say so.
 ```
 
-Six clauses, one hole each: scope creep, claiming success from reasoning, inappropriate
-confidence, inference beyond the data, losing count of the ceiling, and the loop never
-learning. The same text pastes into all four hosts.
+Eight clauses, one hole each: scope creep, claiming success from reasoning, inappropriate
+confidence, a verdict nobody can check against the log, inference beyond the data, silent
+scope drift, losing count of the ceiling, and the run never learning or re-aiming. The same
+text pastes into all four hosts.
 
 **A workflow script needs a workflow runtime.** Only Claude Code has one, so elsewhere the
 Skill will not emit that shape — the file would be something nothing can run.
@@ -183,9 +196,16 @@ timed out — is **unknown**, not failed. A timeout measures elapsed time and ha
 success or failure, so reporting it as either is how a mechanical gate starts lying. Unknown
 lets the turn end and says the result is unverified.
 
-**Six of the seven steps allow.** Ceiling reached, loop not progressing, anchor unrunnable,
-anchor green, no anchor, no active loop — all let the turn end and say why. It refuses only
-when it is certain.
+**Seven of the eight steps allow.** Frozen spec changed, ceiling reached, run not
+progressing, anchor unrunnable, anchor green, no anchor, no active goal — all let the turn
+end and say why. It refuses only when it is certain.
+
+**It also remembers which goal it was pointed at.** On the first turn the gate records a
+digest of `## Intent`, `## Boundary` and `## Anchor`; on every later turn it compares. When
+they differ the run is no longer pursuing the goal you authorized, so the turn ends loudly
+and the anchor is not run at all — proving something about an edited spec proves the wrong
+thing. It allows rather than denies on purpose: the answer to a moved goalpost is to hand
+the decision back, not to work harder against it.
 
 ### What it costs a project that never asked for one
 
@@ -218,6 +238,27 @@ whether a topology is the right one — that part is the design, and design belo
 and the model, not to a template engine.
 
 Its silence is not evidence that the design is right.
+
+## Claims, measurements, and the audit
+
+The run authors the artifact, its carried state, its commit messages and its reviews. All of
+that is a **claim**. The hooks author `<slug>.events.jsonl` — exit codes, output digests,
+spec digests — and only that is a **measurement**. Wide latitude for the model is exactly
+why the small set of checkable facts has to stay out of its hands.
+
+```bash
+python3 scripts/validate_artifact.py .goals --audit
+```
+
+Each turn's committed verdict beside the verdict the gate measured for that turn, with every
+divergence named: a claim the log contradicts, a claim for a turn the gate never saw, a run
+with no gate at all, a moved frozen spec, or no history to audit against. On a run that went
+wrong, the first row where the two part company is where to start reading.
+
+Nothing auto-resolves a divergence, and the limits are stated rather than implied: the run
+can write any file it can read, `events.jsonl` included. What defends the log is not
+permission but publication — it is committed, so a rewritten history is a diff. Making a
+moved goalpost **visible** is the achievable property; making it impossible is not.
 
 ## Adversarial review
 
@@ -293,10 +334,12 @@ designed with its owner in the room has no validation set.
 python3 -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-142 tests: the validator's rules, the status projection, the package surface, version
+172 tests: the validator's rules, the status projection, the claim-versus-measurement audit
+against a real Git repository, the gate's eight outcomes, the package surface, version
 consistency across three files, every relative link in `SKILL.md` resolving, and the shipped
-templates passing the shipped validator. Two are safety tests — that an anchor is never
-executed unasked, and that the validator never edits an artifact.
+templates passing the shipped validator. Three are safety tests — that an anchor is never
+executed unasked, that it is not executed once the frozen spec has moved, and that the
+validator never edits an artifact.
 
 ## License
 

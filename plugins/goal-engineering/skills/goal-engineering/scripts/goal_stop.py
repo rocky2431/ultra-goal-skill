@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """Stop hook: the anchor gate.
 
-Seven steps, six of which let the turn end. A mechanical gate's default has to
-be "allow" - it only refuses in the one case it is certain about.
+Eight steps, seven of which let the turn end. A mechanical gate's default has
+to be "allow" - it only refuses in the one case it is certain about.
 
 It refuses exactly once: the anchor ran, and it was red. Everything else -
-ceiling reached, run not progressing, anchor unrunnable, anchor green - lets
-the turn end and says why.
+frozen spec changed, ceiling reached, run not progressing, anchor unrunnable,
+anchor green - lets the turn end and says why.
+
+A changed frozen spec is the newest of those and the least obvious. It allows
+rather than denies on purpose: if the intent, the boundary or the anchor moved,
+the run is no longer pursuing the goal the owner authorized, and denying the
+stop would only make it work harder on a target nobody agreed to. The right
+response is to end the turn loudly and put it back in front of the owner.
 
 The third outcome is the one that is easy to leave out and expensive to get
 wrong. An anchor that cannot run is not a failed anchor; it is an unknown, and
@@ -32,8 +38,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from goal_hooks import (  # noqa: E402
     ActiveGoal,
     append_event,
+    frozen_digest,
     read_events,
     run_hook,
+    sections,
 )
 
 
@@ -50,23 +58,6 @@ TURNS = re.compile(r"(\d+)\s+turns?\b", re.I)
 # platform. They are kept as a fallback, but the primary check happens before
 # the command runs, where it can be answered by looking rather than inferring.
 UNRUNNABLE_EXITS = {126, 127, 9009}
-
-
-def _section(text: str, heading: str) -> str | None:
-    found: dict[str, str] = {}
-    current: str | None = None
-    body: list[str] = []
-    for line in text.splitlines():
-        if line.startswith("## "):
-            if current is not None:
-                found[current] = "\n".join(body)
-            current = line[3:].strip().lower()
-            body = []
-        elif current is not None:
-            body.append(line)
-    if current is not None:
-        found[current] = "\n".join(body)
-    return found.get(heading)
 
 
 def _first_command(text: str) -> str | None:
@@ -128,8 +119,8 @@ def _signature(outcome: str, exit_code: int | None, digest: str) -> str:
 
 def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
     spec = goal.goal_path.read_text(encoding="utf-8")
-    anchor_section = _section(spec, "anchor")
-    anchor = _first_command(anchor_section or "")
+    found = sections(spec)
+    anchor = _first_command(found.get("anchor") or "")
     if not anchor:
         return _allow(
             f"{goal.slug}: no runnable anchor in `## Anchor`, so nothing can be "
@@ -139,12 +130,36 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
     events = read_events(goal)
     checks = [e for e in events if e.get("event") == "anchor_checked"]
     turn = len(checks) + 1
+    digest = frozen_digest(spec)
 
-    stop_section = _section(spec, "stop condition") or ""
+    # Step 3: did the frozen spec move? Compared against the first turn's
+    # record, not the previous one, so a change followed by a change back is
+    # still a change. Allows, and says so loudly - see the module docstring.
+    first = next((c.get("spec_digest") for c in checks if c.get("spec_digest")), None)
+    if first is not None and first != digest:
+        append_event(
+            goal,
+            {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "event": "frozen_spec_changed",
+                "turn": turn,
+                "spec_digest_first": first,
+                "spec_digest_now": digest,
+            },
+        )
+        return _allow(
+            f"{goal.slug}: `## Intent`, `## Boundary` or `## Anchor` has changed since "
+            f"turn 1 ({first} -> {digest}). Those are frozen for the duration of the "
+            "run, so this is no longer the goal the owner authorized. Stopping. Report "
+            "what changed and why, and let the owner reopen the interview - do not "
+            "carry on against the edited spec."
+        )
+
+    stop_section = found.get("stop condition") or ""
     ceiling_match = TURNS.search(stop_section)
     ceiling = int(ceiling_match.group(1)) if ceiling_match else DEFAULT_CEILING
 
-    # Step 3: the ceiling is the owner's, and it wins even when the goal is unmet.
+    # Step 4: the ceiling is the owner's, and it wins even when the goal is unmet.
     if turn > ceiling:
         append_event(
             goal,
@@ -160,7 +175,7 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
             "goal. Stopping. Report what is left rather than claiming success."
         )
 
-    # Step 5: is the anchor even runnable? Answered by looking, not by inference.
+    # Step 6: is the anchor even runnable? Answered by looking, not by inference.
     if not _resolvable(anchor):
         append_event(
             goal,
@@ -173,6 +188,7 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
                 "exit_code": None,
                 "output_digest": "",
                 "signature": "unknown:unresolvable:",
+                "spec_digest": digest,
                 "tail": "executable not found",
             },
         )
@@ -182,7 +198,7 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
             "say the result is unverified; do not guess either way."
         )
 
-    # Step 6+7: run it. Three outcomes, not two.
+    # Step 7+8: run it. Three outcomes, not two.
     try:
         completed = subprocess.run(
             anchor,
@@ -205,8 +221,8 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
     except (OSError, ValueError) as exc:
         exit_code, output, outcome = None, str(exc), "unknown"
 
-    digest = hashlib.sha256(output.encode("utf-8", "replace")).hexdigest()[:12]
-    signature = _signature(outcome, exit_code, digest)
+    output_digest = hashlib.sha256(output.encode("utf-8", "replace")).hexdigest()[:12]
+    signature = _signature(outcome, exit_code, output_digest)
     append_event(
         goal,
         {
@@ -216,8 +232,9 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
             "anchor": anchor,
             "outcome": outcome,
             "exit_code": exit_code,
-            "output_digest": digest,
+            "output_digest": output_digest,
             "signature": signature,
+            "spec_digest": digest,
             "tail": output.splitlines()[-1][:200] if output else "",
         },
     )
@@ -235,7 +252,7 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
             f"{goal.slug}: anchor `{anchor}` passed on turn {turn}. Goal met."
         )
 
-    # Step 4: red, but is anything changing? Two identical results in a row mean
+    # Step 5: red, but is anything changing? Two identical results in a row mean
     # the run is spinning, and denying the stop again would only spin it more.
     previous = checks[-1].get("signature") if checks else None
     if previous == signature:

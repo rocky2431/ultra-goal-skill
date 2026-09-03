@@ -47,6 +47,29 @@ The term dates to July 2026; the practice does not. Treat these as argument, not
   prefix-cache asymmetry.
   https://sangampandey.info/blog/graph-engineering-agent-loops-to-graphs
 
+## Adversarial review
+
+- *Adversarial Review* (arXiv 2608.18167) — the M/R/C triad this Skill's `## Verification`
+  and delegation packages implement. Built one step at a time (zero-shot, self-refine, one
+  reviewer, two reviewers, a five-agent panel, then AR), each step added to fix a measured
+  failure of the last. Three findings carry the design: AR outperformed the five-agent panel
+  using three agents; adding independent reviewers alone did not reliably improve results;
+  and the naive protocol reproduced **false consensus**, which the three disagreement classes
+  exist to break. It was evaluated as a portable pure-text protocol handed to an autonomous
+  agent, with no orchestrator program — which is why this Skill emits text and not a DSL.
+  https://arxiv.org/html/2608.18167
+- Google Antigravity, *Teamwork: When AI Becomes a Research Partner* (2026-08-27) — a
+  multi-agent framework for long-horizon work in which agents propose, critique and refine
+  each other's output over hours or days. The line that endorses the shape here:
+  "A pattern is a specification rather than an executable program. It contains no
+  orchestration code of its own."
+  Ships five patterns selected per task, and requires candidate changes to pass
+  independent verification before a milestone is approved, with a Critic performing the
+  independent review. URL and quotation re-verified 2026-09-04; an earlier draft of this file
+  cited a mistyped URL.
+  https://antigravity.google/blog/teamwork-when-ai-becomes-a-research-partner
+  https://antigravity.google/docs/teamwork/
+
 ## Reflection and bounded memory
 
 - Shinn et al., *Reflexion: Language Agents with Verbal Reinforcement Learning* (NeurIPS

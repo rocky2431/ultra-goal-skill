@@ -184,7 +184,10 @@ class SkillContractTests(unittest.TestCase):
         for tier in ("**Frozen**", "**Firm**", "**Fluid**"):
             self.assertIn(tier, skill)
         self.assertIn("write the row in `decisions.md`", skill)
-        self.assertIn("Nothing mechanical enforces the Firm tier", skill)
+        # Which tier is enforced by what is the load-bearing distinction here:
+        # one is measured, the other is asked for.
+        self.assertIn("**Frozen is mechanically observed**", skill)
+        self.assertIn("**Firm is enforced socially**", skill)
 
     def test_document_system_maps_a_spec_driven_harness(self) -> None:
         doc = (SKILL_ROOT / "references" / "document-system.md").read_text(
@@ -254,7 +257,9 @@ class SkillContractTests(unittest.TestCase):
         handoff = goal.split("## Handoff", 1)[1]
         self.assertIn("Read the Carry-over section", handoff)
         self.assertIn("Rewrite the Carry-over section", handoff)
-        self.assertIn("Commit once with a one-line summary", handoff)
+        self.assertIn("### Next", goal)
+        self.assertIn("Commit once per turn as `goal(weekly-dep-upgrade) turn", handoff)
+        self.assertIn("Next gets the single objective", handoff)
 
     def test_behaviour_evals_cover_the_whole_lifecycle(self) -> None:
         data = json.loads(
@@ -446,8 +451,9 @@ class TemplateTests(unittest.TestCase):
 class GateAndDocumentSystemTests(unittest.TestCase):
     def test_interview_asks_about_surface_and_divergence(self) -> None:
         skill = skill_text()
-        self.assertIn("7. **Read and write surface**", skill)
-        self.assertIn("8. **Divergence handling**", skill)
+        self.assertIn("4. **Means**", skill)
+        self.assertIn("8. **Read and write surface**", skill)
+        self.assertIn("9. **Divergence handling**", skill)
         # The recommended default for divergence is the one rule no mechanism
         # can enforce, so it has to be stated plainly.
         self.assertIn(
@@ -468,7 +474,8 @@ class GateAndDocumentSystemTests(unittest.TestCase):
         skill = skill_text()
         self.assertIn("## The gate: what the hooks do, and what they cost", skill)
         self.assertIn("**Three outcomes, not two.**", skill)
-        self.assertIn("**Six of the seven steps allow.**", skill)
+        self.assertIn("**Seven of the eight steps allow.**", skill)
+        self.assertIn("**A moved goalpost allows on purpose.**", skill)
         self.assertIn("`rm .goals/active`", skill)
         self.assertIn("GOAL_ENGINEERING_HOOKS_DISABLED=1", skill)
         # PostToolUse's absence is a decision with a stated trigger to revisit.
@@ -654,6 +661,89 @@ class HygieneTests(unittest.TestCase):
             if machine_path in text or unfinished in text:
                 offenders.append(path.relative_to(REPO_ROOT).as_posix())
         self.assertEqual([], offenders)
+
+
+class ZeroTrustTests(unittest.TestCase):
+    """Wide latitude and zero trust in self-report are one decision.
+
+    These pin the parts that are easy to quietly overstate: which side of the
+    claim/measurement line each file sits on, and what the controls do not
+    prove.
+    """
+
+    def test_skill_separates_claims_from_measurements(self) -> None:
+        skill = skill_text()
+        self.assertIn("### Wide latitude, zero trust in self-report", skill)
+        self.assertIn("| the run | the artifact", skill)
+        self.assertIn("| the hooks | `<slug>.events.jsonl`", skill)
+        # The honest limit has to be in SKILL.md, not only in the reference.
+        self.assertIn("Making a moved goalpost **visible** is the achievable property", skill)
+
+    def test_the_audit_command_is_documented_and_reads_only(self) -> None:
+        skill = skill_text()
+        self.assertIn("validate_artifact.py .goals --audit", skill)
+        self.assertIn("It reads Git history and the event log; it runs nothing.", skill)
+
+    def test_zero_trust_reference_states_the_criterion_and_the_limits(self) -> None:
+        doc = (SKILL_ROOT / "references" / "zero-trust.md").read_text(encoding="utf-8")
+        self.assertIn(
+            "**Mechanize a check only when the quantity measured is the quantity "
+            "judged.**",
+            doc,
+        )
+        # The rows that answer "no" are the whole point of having a criterion.
+        for observation in ("a timeout", "a similarity score", "a line-count ceiling"):
+            self.assertIn(observation, doc)
+        self.assertIn("**Visible, not impossible**", doc)
+        self.assertIn("## Deliberately not mechanized", doc)
+        # Input isolation is a different control from vendor choice, and the
+        # reference has to say why or the two get conflated.
+        self.assertIn("Different vendors buy **different blind spots**", doc)
+
+    def test_new_refusals_name_the_contagion_and_the_missing_receipt(self) -> None:
+        skill = skill_text()
+        self.assertIn("**A verdict with no receipt**", skill)
+        self.assertIn("**The reviewer gets the author's argument**", skill)
+
+    def test_role_inputs_are_specified_where_they_can_be_checked(self) -> None:
+        ar = (SKILL_ROOT / "references" / "adversarial-review.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("## What each role is given", ar)
+        self.assertIn("M's explanation, M's confidence", ar)
+        # And it admits where the check is not mechanical.
+        self.assertIn("the rule is stated\nrather than checked", ar)
+        delegation = (SKILL_ROOT / "assets" / "delegation-package.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertEqual(2, delegation.count("- inputs:"))
+
+    def test_means_and_next_are_nodes_in_the_graph(self) -> None:
+        skill = skill_text()
+        self.assertIn("| What may be given up, and what may not | `## Means` |", skill)
+        self.assertIn("| Re-aim | `### Next` |", skill)
+        self.assertIn("Eight clauses, each closing one hole:", skill)
+
+    def test_document_system_names_who_authors_which_side(self) -> None:
+        doc = (SKILL_ROOT / "references" / "document-system.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("## The one distinction that decides who writes what", doc)
+        self.assertIn("**claims**", doc)
+        self.assertIn("**measurements**", doc)
+        self.assertIn("Nothing here auto-resolves a divergence.", doc)
+
+    def test_research_basis_cites_the_review_protocol_and_the_framework(self) -> None:
+        text = (SKILL_ROOT / "references" / "research-basis.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("arxiv.org/html/2608.18167", text)
+        self.assertIn(
+            "antigravity.google/blog/teamwork-when-ai-becomes-a-research-partner", text
+        )
+        self.assertIn(
+            "A pattern is a specification rather than an executable program.", text
+        )
 
 
 if __name__ == "__main__":

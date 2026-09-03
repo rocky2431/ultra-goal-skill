@@ -4,7 +4,7 @@ description: "Turn \"make an agent keep doing this\" into a goal the host will a
 license: MIT
 metadata:
   author: rocky2431
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Goal Engineering
@@ -32,7 +32,7 @@ into their CLI and walks away from, a workflow script, or a delegation package o
 consume.
 
 The goal's own boundary — what it may touch, and which of its effects need approval before
-they run — is question 4 below and belongs here. A broader authority model for an agent
+they run — is question 5 below and belongs here. A broader authority model for an agent
 that is not pursuing a goal does not: answer that directly instead of building a goal
 around it.
 
@@ -91,13 +91,22 @@ interesting cases are in between. Three tiers, and the middle one is the one wor
 
 | Tier | What | Changeable mid-run | On change |
 |---|---|---|---|
-| **Frozen** | `## Intent`, `## Boundary`'s three refusals, `## Anchor` | **No** | Stop and report; this reopens the interview and lands in `decisions.md` |
-| **Firm** | the stop condition's threshold, the turn ceiling, who verifies, the cadence | Yes | Allowed, but **write the row in `decisions.md`** - a silently moved threshold is indistinguishable from a moved goal |
-| **Fluid** | `### State`, `### Lessons`, how the work actually gets done | Yes | Just do it; that is what they are for |
+| **Frozen** | `## Intent`, `## Boundary`'s three refusals, `## Anchor`, and `## Means`'s labels | **No** | Stop and report; this reopens the interview and lands in `decisions.md` |
+| **Firm** | the stop condition's threshold, the turn ceiling, who verifies, the cadence, and **dropping a means labelled droppable** | Yes | Allowed, but **write the row in `decisions.md`** - a silently moved threshold is indistinguishable from a moved goal |
+| **Fluid** | `### State`, `### Lessons`, `### Next`, how the work actually gets done | Yes | Just do it; that is what they are for |
 
-Nothing mechanical enforces the Firm tier - a threshold edit looks like any other edit. It is
-enforced socially, by asking for the row. What makes that worth doing anyway: the row is what
-tells a later reader whether the loop met a goal or met a goal that had been made easier.
+The Firm tier is where the latitude lives. Dropping a droppable means is a real decision the
+run is authorized to make on its own — that is the difference between an agent with judgement
+and an agent that stops at every surprise — and the price of making it is one row saying what
+the evidence was.
+
+Two different things enforce these tiers, and it is worth knowing which is which.
+**Frozen is mechanically observed**: the gate digests `## Intent`, `## Boundary` and
+`## Anchor` on the first turn and compares on every later one, so a moved goalpost ends the
+turn with an alarm and shows up in `--audit`.
+**Firm is enforced socially**, by asking for the row — a threshold edit looks like any other
+edit. What makes the asking worth it: the row is what tells a later reader whether the run
+met a goal or met a goal that had been made easier.
 
 ## Interview in this order
 
@@ -117,7 +126,14 @@ lost, read it and resume from the first unanswered question instead of starting 
 3. **Stop condition** — when does it stop? Express it with the anchor plus a ceiling
    (`0 high-severity advisories, or 6 turns`). The owner defines "good enough"; the moment
    the agent decides that for itself, the loop optimizes its own comfort.
-4. **Boundary** — three refusals, not one. A specified agent needs all three, and each
+4. **Means** — what do you believe it takes to get there, and **which of those would you
+   give up if it turned out not to serve the intent?** Label each one `[load-bearing]` or
+   `[droppable]`. This is the question that decides how much latitude the run actually has:
+   without the labels, abandoning a feature is indistinguishable from scope drift, so the
+   run must either stop on everything or drop things quietly. Neither is what you want. The
+   labels are yours; the argument for using one is the agent's, and it costs a row in
+   `decisions.md`.
+5. **Boundary** — three refusals, not one. A specified agent needs all three, and each
    answers a different way loops go wrong in production:
    - **Scope**: what must it never touch? Paths, effects, and the commit gate. Anything
      reversible inside the boundary needs no approval; anything outside does.
@@ -126,19 +142,21 @@ lost, read it and resume from the first unanswered question instead of starting 
      being grounded.
    - **Inference**: what must it never conclude from documents alone? A changelog, an
      issue thread, or another agent's report explains nothing until it is reproduced.
-5. **Verifier** — who checks the result, and **who checks the checker?** Two roles, because
+6. **Verifier** — who checks the result, and **who checks the checker?** Two roles, because
    one is measurably not enough: a reviewer with a fresh context (an agent grading its own
    output praises it), plus a critic that audits the *review* rather than the code. Name the
-   round cap too. See [references/adversarial-review.md](references/adversarial-review.md);
+   round cap too, and name **what each role is given**: the reviewer gets the frozen
+   artifact, the criteria, and the anchor's output — never the author's account of why the
+   work is correct, because a reviewer handed that account reviews the account. See [references/adversarial-review.md](references/adversarial-review.md);
    the short version is that three roles beat a five-agent panel, and the third role is why.
-6. **Shape and split** — confirm loop or graph. If graph, the split must follow **context
+7. **Shape and split** — confirm loop or graph. If graph, the split must follow **context
    boundaries**, never workflow phases (see the refusals below), and each worker needs its
    own anchor.
-7. **Read and write surface** — what does each turn *read*, and what does it *write*? This
+8. **Read and write surface** — what does each turn *read*, and what does it *write*? This
    sharpens the boundary from "don't touch X" into "reads A, writes B", and it decides what
    `## Carry-over` has to hold: whatever a turn can read for itself does not belong there,
    and whatever it cannot must.
-8. **Divergence handling** — when reality and the plan disagree, does the loop adjust itself
+9. **Divergence handling** — when reality and the plan disagree, does the loop adjust itself
    or stop and report? Where is the line? **Recommended default: execution details adjust
    themselves; the intent, the anchor, and the boundary always stop and report.** A loop that
    can revise its own target drifts further from the owner the longer it runs, and that is
@@ -162,6 +180,8 @@ Name the refusal, name the cheap alternative, and go back to the relevant questi
 | One optimized metric, alone | Optimized hard enough, it stops measuring what it once did | Pair it with a counter-metric that catches the cheap way to win |
 | Nodes added for sophistication | Every extra agent is another failure point and 3-10x the tokens | Ship the loop; promote to a graph when it provably breaks |
 | **False consensus** — two agents both say "looks fine" | That is one opinion reported twice, and a loop cannot tell it from verification | A critic that audits the *review*, sorting each point into agreement / evidence-backed disagreement / concern-based disagreement |
+| **A verdict with no receipt** — "tests pass", "the anchor is green" | The log the gate writes is the evidence; a sentence is a claim, and after a compaction the run cannot tell its own claims from its evidence either | Report the turn and the exit code seen, and let `--audit` compare them |
+| **The reviewer gets the author's argument** | Handed an explanation of why the work is right, a reviewer reviews the explanation; this is context contagion, and it survives changing vendors | Give the reviewer the frozen artifact, the criteria, and the anchor's output — nothing about the author's confidence |
 | **Reviewers split by domain** — one per concern, reports merged | Nobody audits either report, and the orchestrator has no independent evidence to arbitrate; measured as unreliable | Domains become one reviewer's checklist; add a critic instead of a second reviewer |
 
 Read [references/anti-patterns.md](references/anti-patterns.md) for the failure modes
@@ -196,22 +216,28 @@ than with any machinery:
 ```
 /goal <what to achieve, inside <scope>>. You have not met this goal until you have actually
 run `<anchor command>` in this session and seen it <exact result> - do not claim completion
-from reasoning, and do not state <confidence claim> without that output. Do not conclude
-<inference> from documents alone; reproduce it. State which turn you are on at the start of
-each turn. Rewrite the Carry-over section before you finish. Stop after <N> turns even if
-unmet, and say so.
+from reasoning, and do not state <confidence claim> without that output. When you report on
+the anchor, name the turn and the exit code you saw rather than summarising it. Do not
+conclude <inference> from documents alone; reproduce it. If a means labelled droppable turns
+out not to serve the intent, drop it and write the argument into <slug>.decisions.md; never
+drop a load-bearing one, and never edit Intent, Boundary or Anchor - stop and report
+instead. State which turn you are on at the start of each turn. Rewrite the Carry-over
+section before you finish, including the single objective under `### Next`. Stop after <N>
+turns even if unmet, and say so.
 ```
 
-Six clauses, each closing one hole:
+Eight clauses, each closing one hole:
 
 | Clause | Closes |
 |---|---|
 | objective inside a scope | scope creep |
 | anchor as the only accepted evidence | claiming success from reasoning |
 | no confidence claim without that output | inappropriate confidence |
+| the verdict reported as a turn and an exit code | a verdict nobody can check against the log |
 | no conclusion from documents alone | inference beyond the data |
+| droppable means droppable, and nothing else | both silent scope drift and stopping at every surprise |
 | state the turn at the start of each turn | losing count of the ceiling |
-| rewrite carry-over before finishing | the loop never learning |
+| rewrite carry-over, `### Next` included | the run never learning, and never re-aiming |
 
 The turn clause matters more than it looks. A host may hand the model a live iteration count
 — Claude Code attaches `{condition, iterations, durationMs, tokens}` to every turn under an
@@ -233,13 +259,15 @@ fail:
 |---|---|---|
 | North Star | `## Intent` | **frozen** — the run may never edit it |
 | Scope / confidence / inference limits | `## Boundary` | frozen |
+| What may be given up, and what may not | `## Means` | labels frozen; dropping a droppable one costs a `decisions.md` row |
 | Mechanical gate | `## Anchor` | executed, exit code only |
 | Adversarial review — reviewer | `## Verification` | fresh context, verdict advisory |
 | Adversarial review — critic | `## Verification` | audits the review, not the artifact |
 | Reflection | `### Lessons` | writes the next turn's input |
 | Carried state | `### State` | rewritten each turn |
+| Re-aim | `### Next` | exactly one objective, inside the frozen intent |
 | Edges (what happens in what order) | the clause order of `## Handoff` | authored once |
-| Proof an edge was actually taken | `<slug>.events.jsonl` | append-only |
+| Proof an edge was actually taken | `<slug>.events.jsonl` | append-only, **written by the hooks and never by the run** |
 
 Checked against the four ways a single loop fails, plus the way a graph of loops fails:
 
@@ -247,7 +275,7 @@ Checked against the four ways a single loop fails, plus the way a graph of loops
 |---|---|
 | Goodhart — the metric gets gamed | `## Verification` is the paired counter-check; the anchor is the half that cannot be argued with |
 | **False consensus — the check agrees without evidence** | the critic sorts each point into agreement / evidence-backed / concern-based, and the reviewer must answer with evidence |
-| Blindness upward — the loop cannot question its target | `## Intent` is frozen; question 8 sends target-level divergence back to the owner |
+| Blindness upward — the loop cannot question its target | `## Intent` is frozen; question 9 sends target-level divergence back to the owner |
 | Conflict — independent loops undermine each other | one operating loop per artifact, so there is no collision surface |
 | Measurement decay — nobody watches the watcher | the anchor runs for real every turn, and reports *unknown* when it cannot |
 | Circularity — everything confirms everything, nothing touches reality | the anchor is the one node whose verdict passes through no model at all |
@@ -290,7 +318,16 @@ decisions its record holds, and any validation finding.
 them, recomputed on every call — so the report cannot drift out of date the way a tracked
 state file would.
 
-Add `--run-anchors` to execute each anchor and report its exit code. That answers the only
+```bash
+python3 scripts/validate_artifact.py .goals --audit
+```
+
+Puts each turn's committed verdict beside the verdict the gate measured for that turn, and
+names every row where they disagree. This is the reverse-tracing view: on a run that went
+wrong, the first row where claim and measurement part company is where to start reading.
+It reads Git history and the event log; it runs nothing.
+
+Add `--run-anchors` to `--status` to execute each anchor and report its exit code. That answers the only
 question that really matters about a running loop — *did the work actually land?* — but it
 runs commands the artifact names, in a shell. Ask the owner first, and never run it against
 an artifact you have not read.
@@ -328,11 +365,20 @@ So any artifact with a `## Cadence` — it will be started more than once — ge
 Without that instruction the section stays empty forever and the loop never improves. A goal
 started once and watched needs neither section.
 
-It has two parts, with different jobs and different budgets:
+It has three parts, with different jobs and different budgets:
 
 - **`### State`** — where the work stands. Facts, cheap to carry: what is left, what the
   last green build was, which shard is next. At most 8.
 - **`### Lessons`** — **why something failed and what to do instead.** At most 3.
+- **`### Next`** — the one objective for the next round, derived from this round's anchor
+  verdict and the review findings that survived it, inside the frozen intent. **Exactly
+  one.** A list of them is a plan, and a goal that has grown a plan should have been
+  authored as a graph — which is also why there is no task ledger here.
+
+`### Next` is the edge that closes the loop. Without it a run re-attempts the same objective
+until the anchor goes green or the ceiling hits; with it, each round aims at what the last
+round's evidence actually implies. The frozen intent is what keeps re-aiming from becoming
+drifting.
 
 The Lessons budget is not arbitrary. Reflexion (arXiv 2303.11366) bounds its reflection
 memory at 1-3 entries, because entries the model must actually reason over compete with the
@@ -386,7 +432,7 @@ They turn the anchor from a sentence in a prompt into a gate that actually runs.
 
 | Hook | Does | Can it block? |
 |---|---|---|
-| `Stop` | Runs the anchor. Seven steps, six of which let the turn end | **Yes, in exactly one case**: the anchor ran and was red |
+| `Stop` | Digests the frozen spec, then runs the anchor. Eight steps, seven of which let the turn end | **Yes, in exactly one case**: the anchor ran and was red |
 | `SessionStart` | Re-injects the frozen spec and the carried state after a restart or resume | No |
 | `PreCompact` | Records the carried state and the fact of the compaction into the event log | No |
 
@@ -396,9 +442,15 @@ mechanical gate starts lying, and a timeout is the clearest case: it measures el
 and reports it as success or failure, two things it has no access to. Unknown lets the turn
 end and says the result is unverified.
 
-**Six of the seven steps allow.** The gate refuses only when it is certain. Ceiling reached,
-loop not progressing, anchor unrunnable, anchor green, no anchor at all, no active loop — all
-let the turn end and say why.
+**Seven of the eight steps allow.** The gate refuses only when it is certain. Frozen spec
+changed, ceiling reached, run not progressing, anchor unrunnable, anchor green, no anchor at
+all, no active goal — all let the turn end and say why.
+
+**A moved goalpost allows on purpose.** The gate records a digest of `## Intent`,
+`## Boundary` and `## Anchor` on the first turn and compares it on every later one. When it
+differs, the run is no longer pursuing the goal the owner authorized — and denying the stop
+would only make it work harder against a target nobody agreed to. So the turn ends, loudly,
+and the owner gets the decision back.
 
 ### What it costs a project that never asked for one
 
@@ -419,7 +471,30 @@ scales with tool use, and its value duplicates what `SessionStart` already injec
 the goal text already demands each turn. It gets added when a real run shows the loop
 retrying a path its own `### Lessons` already ruled out — not before.
 
-Read [references/document-system.md](references/document-system.md) for which file owns what.
+### Wide latitude, zero trust in self-report
+
+The run picks its own method, drops means that stop serving the intent, and rewrites its own
+carried state. Every one of those is a semantic judgement and none of them is mechanically
+checkable. **That is exactly why the few facts that are checkable must be kept out of the
+run's hands:**
+
+| Written by | What | Read as |
+|---|---|---|
+| the run | the artifact, `### Lessons`, the commit message, a review | a claim |
+| the hooks | `<slug>.events.jsonl` — exit codes, output digests, spec digests | evidence |
+
+Nothing sits in between, and `--audit` is the comparison. A divergence is reported, never
+resolved: the gate does not know *why* turn 4 claimed green, only that it measured red.
+
+Two limits, stated because a control that oversells itself is worse than no control. The run
+can write any file it can read, `events.jsonl` included — what stops tampering is that the
+log is committed, so a rewritten history shows up in `git log` instead of passing silently.
+Making a moved goalpost **visible** is the achievable property; making it impossible is not.
+And the review's verdict stays advisory: only the anchor may deny a stop, because only its
+exit code is a fact rather than an opinion about one.
+
+Read [references/zero-trust.md](references/zero-trust.md) for which control distrusts what,
+and [references/document-system.md](references/document-system.md) for which file owns what.
 
 ## Validate, then hand off
 

@@ -8,7 +8,7 @@ observations that arrive between them.
 |---|---|---|---|---|---|
 | `<slug>.goal.md` — spec sections | the specification | owner + agent, together | Ask and explicit Modify **only** | **frozen for the duration of a run** | yes |
 | `<slug>.goal.md` — `## Carry-over` | the execution state | the running agent | before finishing **every** turn | rewritten, never appended | yes |
-| `<slug>.events.jsonl` | the observations | the hooks (and workers) | every turn | **append-only, never edited** | yes |
+| `<slug>.events.jsonl` | the observations | **the hooks, never the run** | every turn | **append-only, never edited** | yes |
 | `<slug>.decisions.md` | the decision tree | owner + agent | Ask and Modify | rows edited, never appended | yes |
 | `.goals/.work/*` | worker intermediates | each delegated worker | while a round runs | disposable | **no** |
 | `.goals/active` | which goal is running | owner or agent | on start and stop | one line | no |
@@ -30,6 +30,25 @@ decisions.md ──defines──► goal.md spec sections   [FROZEN during a run
                      .goals/.work/  ─────►  git commit (one per turn)
                      [disposable, gitignored]
 ```
+
+## The one distinction that decides who writes what
+
+Read the "who writes it" column again. Every row is on one side or the other of a single
+line, and the line is what makes the trace worth keeping:
+
+| Authored by | Files | What it is |
+|---|---|---|
+| the run | the spec sections, `## Carry-over`, the commit subject, a review | **claims** |
+| the hooks | `<slug>.events.jsonl` | **measurements** |
+| the owner (with the agent) | `<slug>.decisions.md` | authorizations |
+
+`validate_artifact.py .goals --audit` is the join: each turn's committed verdict beside the
+verdict the gate measured for that turn. Rows that agree are unremarkable. The first row
+where they part company is the answer to "where did this go wrong", which is the only
+question a finished run is ever asked.
+
+Nothing here auto-resolves a divergence. The log cannot know why a turn claimed green; it
+knows only what it measured.
 
 ## Why the spec is frozen while a run is in flight
 

@@ -81,6 +81,25 @@ preserved dissent, evidence and accountability.
 - **Cap**: at most 5 inner rounds, then take the review as it stands. An unbounded review
   loop is the review-side version of a loop with no ceiling.
 
+## What each role is given
+
+Choosing different vendors buys **different blind spots**. It does not buy independence, and
+conflating the two is the easiest way to think this protocol is stronger than it is. Hand two
+different models the same account of why a change is correct and both will tend to review the
+account rather than the change.
+
+So the isolation that matters is over inputs:
+
+| Role | Receives | Does not receive |
+|---|---|---|
+| R | the frozen artifact, the acceptance criteria, the anchor's raw output | M's explanation, M's confidence, M's summary of what it tried |
+| C | R's review and the same frozen artifact | M's opinion of the review, R's account of its own confidence |
+
+State this per role in the delegation package as an `inputs:` field, where it is mechanically
+checkable. In a single-agent goal package `## Verification` is prose and the rule is stated
+rather than checked - pattern-matching prose for the right words would be keyword-guessing
+wearing the costume of a check.
+
 ## Choosing R and C
 
 Where the roles are separate agents, **give them different underlying models.** Agents differ

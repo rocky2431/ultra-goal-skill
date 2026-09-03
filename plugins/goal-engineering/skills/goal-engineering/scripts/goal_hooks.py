@@ -18,6 +18,7 @@ hook that blocked forever because its own check was broken.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -26,6 +27,9 @@ from typing import Any, Callable
 
 
 GOALS_DIR = ".goals"
+# The sections a run may never edit. Their digest is recorded by the gate on the
+# first turn and compared on every later one.
+FROZEN_SECTIONS = ("intent", "boundary", "anchor")
 ACTIVE_MARKER = "active"
 DISABLE_ENV = "GOAL_ENGINEERING_HOOKS_DISABLED"
 # A slug names one artifact in `.goals/`. It is never a path.
@@ -162,3 +166,36 @@ def read_events(goal: ActiveGoal) -> list[dict[str, Any]]:
     except (OSError, UnicodeError):
         return events
     return events
+
+
+def sections(text: str) -> dict[str, str]:
+    """Map lowercased `## ` headings to their body text."""
+    found: dict[str, str] = {}
+    current: str | None = None
+    body: list[str] = []
+    for line in text.splitlines():
+        if line.startswith("## "):
+            if current is not None:
+                found[current] = "\n".join(body)
+            current = line[3:].strip().lower()
+            body = []
+        elif current is not None:
+            body.append(line)
+    if current is not None:
+        found[current] = "\n".join(body)
+    return found
+
+
+def frozen_digest(spec: str) -> str:
+    """Digest exactly the sections the run may not edit.
+
+    Machine-written and machine-compared, which is the only reason it is worth
+    anything: the model authors the artifact, so its own account of whether the
+    goal moved is a claim. This is not tamper-proof - an agent can write any
+    file it can read - but the event log is committed, so a moved goalpost turns
+    up in `--audit` and in `git log` instead of passing silently. Making it
+    visible is the achievable property; making it impossible is not.
+    """
+    parts = sections(spec)
+    joined = "\n".join(parts.get(name, "") for name in FROZEN_SECTIONS)
+    return hashlib.sha256(joined.encode("utf-8", "replace")).hexdigest()[:12]

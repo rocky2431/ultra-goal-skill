@@ -71,6 +71,12 @@ Stop when `pnpm audit --audit-level=high` reports 0 findings, or after 6 turns.
 pnpm test -- --run
 ```
 
+## Means
+
+- `[load-bearing]` move versions through `package.json` and the lockfile only
+- `[droppable]` clear every advisory in one pass - drop it when one dependency needs a
+  source change to move
+
 ## Verification
 
 A reviewer with a fresh context reviews the diff; a critic then audits that review rather
@@ -94,6 +100,10 @@ Read this before acting; rewrite it before finishing. Drop anything no longer tr
 - `@types/node` 22 breaks tsconfig because the bundler resolver rejects its new
   conditional exports - pin at 20 and revisit when tsconfig moves to `node20`
 
+### Next
+
+- get `packages/api` to a green anchor with `@types/node` pinned at 20
+
 ## Handoff
 
 ```
@@ -113,12 +123,14 @@ that share a model share its blind spots.
 - target: codex
 - mission: Review the diff for overflow on partial fills, reentrancy, and gas regressions. Cite file:line and the command whose output proves each finding.
 - anchor: `forge test --match-path test/Settlement.t.sol`
+- inputs: the frozen diff, the acceptance criteria, and the anchor's own output. Not the orchestrator's account of why the change is correct.
 
 ## Critic
 
 - target: kimi
 - mission: Audit the reviewer's review, not the code. Classify every point as exactly one of agreement, evidence-backed disagreement, or concern-based disagreement.
 - anchor: `forge test --match-path test/Settlement.t.sol`
+- inputs: the reviewer's review and the same frozen diff. Not the orchestrator's opinion of the review.
 
 ## Convergence
 
@@ -442,6 +454,223 @@ class DirectoryAndCliTests(Harness):
         self.assertEqual(before, path.read_bytes())
 
 
+class MeansTests(Harness):
+    """The section that decides how much latitude a run actually has.
+
+    Without labels, abandoning a feature is indistinguishable from scope drift,
+    so the run has to either stop on every surprise or drop things quietly.
+    """
+
+    def test_valid_means_section_passes(self) -> None:
+        self.write("m.decisions.md", GOOD_DECISIONS)
+        path = self.write("m.goal.md", GOOD_GOAL)
+        report = va.validate_paths([str(path)])
+        self.assertTrue(report.ok, report.findings)
+
+    def test_missing_means_is_reported(self) -> None:
+        self.write("m.decisions.md", GOOD_DECISIONS)
+        path = self.write("m.goal.md", GOOD_GOAL.replace("## Means", "## Notes"))
+        self.assertIn("MEANS_MISSING", self.codes(path))
+
+    def test_unlabelled_means_is_reported(self) -> None:
+        self.write("m.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "m.goal.md", GOOD_GOAL.replace("`[load-bearing]` ", "").replace(
+                "`[droppable]` ", ""
+            )
+        )
+        self.assertIn("MEANS_UNLABELLED", self.codes(path))
+
+    def test_either_label_satisfies_it(self) -> None:
+        self.write("m.decisions.md", GOOD_DECISIONS)
+        for label in ("[load-bearing]", "[droppable]"):
+            path = self.write(
+                "m.goal.md",
+                GOOD_GOAL.replace("`[load-bearing]`", f"`{label}`").replace(
+                    "`[droppable]`", f"`{label}`"
+                ),
+            )
+            self.assertNotIn("MEANS_UNLABELLED", self.codes(path), label)
+
+
+class NextTests(Harness):
+    """`### Next` is the edge that closes the loop, and it takes exactly one entry."""
+
+    def test_missing_next_is_reported_with_the_other_subsections(self) -> None:
+        self.write("n.decisions.md", GOOD_DECISIONS)
+        path = self.write("n.goal.md", GOOD_GOAL.replace("### Next", "### Plans"))
+        report = va.validate_paths([str(path)])
+        codes = {f.code for f in report.findings}
+        self.assertIn("CARRYOVER_SECTIONS_MISSING", codes)
+        message = next(
+            f.message for f in report.findings if f.code == "CARRYOVER_SECTIONS_MISSING"
+        )
+        self.assertIn("next", message)
+
+    def test_more_than_one_next_entry_is_a_plan(self) -> None:
+        self.write("n.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "n.goal.md",
+            GOOD_GOAL.replace(
+                "- get `packages/api` to a green anchor with `@types/node` pinned at 20",
+                "- get `packages/api` green\n- then `packages/web`\n- then release",
+            ),
+        )
+        self.assertIn("NEXT_NOT_SINGLE", self.codes(path))
+
+
+class RoleInputTests(Harness):
+    """Different vendors buy different blind spots; only `inputs` buys independence."""
+
+    def test_reviewer_without_inputs_is_reported(self) -> None:
+        self.write("d.decisions.md", GOOD_DECISIONS)
+        stripped = GOOD_DELEGATION.replace(
+            "- inputs: the frozen diff, the acceptance criteria, and the anchor's own "
+            "output. Not the orchestrator's account of why the change is correct.\n",
+            "",
+        )
+        path = self.write("d.delegation.md", stripped)
+        report = va.validate_paths([str(path)])
+        self.assertIn("ROLE_FIELD_MISSING", {f.code for f in report.findings})
+        self.assertTrue(
+            any("inputs" in f.message for f in report.findings), report.findings
+        )
+
+
+class AuditTests(Harness):
+    """Claims versus measurements, which is the whole reverse-tracing story.
+
+    These use a real Git repository because the claim side of the comparison is
+    the commit subject, and parsing it wrong is exactly the bug this class was
+    written after: filtering `git log` by the artifact's path hid every turn
+    that changed only source, which is most of them.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.run_git("init", "-q", ".")
+        self.run_git("config", "user.email", "t@e.st")
+        self.run_git("config", "user.name", "t")
+        self.write("demo.decisions.md", GOOD_DECISIONS)
+        self.artifact = self.write("demo.goal.md", GOOD_GOAL)
+        self.run_git("add", "-A")
+        self.run_git("commit", "-qm", "chore: add the artifact")
+
+    def run_git(self, *args: str) -> None:
+        subprocess.run(
+            ["git", *args], cwd=str(self.dir), check=True, capture_output=True
+        )
+
+    def digest(self) -> str:
+        """The artifact's real frozen digest, so only the tests that mean to
+        move the goalposts move them."""
+        return va.frozen_digest(self.artifact.read_text(encoding="utf-8"))
+
+    def log(self, *entries: dict) -> None:
+        import json as _json
+
+        (self.dir / "demo.events.jsonl").write_text(
+            "\n".join(_json.dumps(e) for e in entries) + "\n", encoding="utf-8"
+        )
+
+    def claim(self, turn: int, verdict: str, touch_artifact: bool = False) -> None:
+        if touch_artifact:
+            self.artifact.write_text(
+                self.artifact.read_text(encoding="utf-8") + "\n", encoding="utf-8"
+            )
+            self.run_git("add", "-A")
+            self.run_git(
+                "commit", "-qm", f"goal(demo) turn {turn}: work [anchor: {verdict}]"
+            )
+            return
+        self.run_git(
+            "commit",
+            "--allow-empty",
+            "-qm",
+            f"goal(demo) turn {turn}: work [anchor: {verdict}]",
+        )
+
+    def audit_codes(self) -> list[str]:
+        _, findings = va.audit_artifact(self.artifact)
+        return sorted({f.code for f in findings})
+
+    def test_agreeing_claim_and_measurement_report_nothing(self) -> None:
+        self.log({"event": "anchor_checked", "turn": 1, "outcome": "green",
+                  "exit_code": 0, "spec_digest": self.digest()})
+        self.claim(1, "green")
+        self.assertEqual([], self.audit_codes())
+
+    def test_a_claim_the_gate_contradicts_is_reported(self) -> None:
+        self.log({"event": "anchor_checked", "turn": 1, "outcome": "red",
+                  "exit_code": 1, "spec_digest": self.digest()})
+        self.claim(1, "green")
+        self.assertIn("CLAIM_CONTRADICTED", self.audit_codes())
+
+    def test_a_claim_with_no_check_for_that_turn_is_reported(self) -> None:
+        self.log({"event": "anchor_checked", "turn": 1, "outcome": "green",
+                  "exit_code": 0, "spec_digest": self.digest()})
+        self.claim(1, "green")
+        self.claim(2, "green")
+        self.assertIn("CLAIM_UNWITNESSED", self.audit_codes())
+
+    def test_claims_are_found_when_the_turn_never_touched_the_artifact(self) -> None:
+        """Regression: a pathspec filter dropped 2 of 3 claims in a scratch run.
+
+        Most turns change source and leave the artifact alone, so selecting
+        commits by the slug in the subject is the only correct filter.
+        """
+        self.log({"event": "anchor_checked", "turn": 1, "outcome": "green",
+                  "exit_code": 0, "spec_digest": self.digest()})
+        self.claim(1, "green")  # empty commit: touches nothing at all
+        audit, _ = va.audit_artifact(self.artifact)
+        rows = {row["turn"]: row for row in audit["rows"]}
+        self.assertEqual("green", rows[1]["claimed"])
+        self.assertEqual("green", rows[1]["measured"])
+
+    def test_a_later_commit_for_the_same_turn_wins(self) -> None:
+        self.log({"event": "anchor_checked", "turn": 1, "outcome": "red",
+                  "exit_code": 1, "spec_digest": self.digest()})
+        self.claim(1, "green")
+        self.claim(1, "red")
+        self.assertEqual([], self.audit_codes())
+
+    def test_claims_with_no_event_log_at_all_are_reported_as_ungated(self) -> None:
+        self.claim(1, "green")
+        codes = self.audit_codes()
+        self.assertIn("GATE_NEVER_RAN", codes)
+        self.assertNotIn("CLAIM_UNWITNESSED", codes)
+
+    def test_a_moved_frozen_spec_is_reported(self) -> None:
+        self.log({"event": "anchor_checked", "turn": 1, "outcome": "green",
+                  "exit_code": 0, "spec_digest": "not-the-current-digest"})
+        self.claim(1, "green")
+        self.assertIn("FROZEN_SPEC_CHANGED", self.audit_codes())
+
+    def test_an_unchanged_frozen_spec_is_not_reported(self) -> None:
+        digest = va.frozen_digest(self.artifact.read_text(encoding="utf-8"))
+        self.log({"event": "anchor_checked", "turn": 1, "outcome": "green",
+                  "exit_code": 0, "spec_digest": digest})
+        self.claim(1, "green")
+        self.assertNotIn("FROZEN_SPEC_CHANGED", self.audit_codes())
+
+    def test_no_history_is_itself_the_finding(self) -> None:
+        outside = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: None)
+        (outside / "demo.goal.md").write_text(GOOD_GOAL, encoding="utf-8")
+        (outside / "demo.decisions.md").write_text(GOOD_DECISIONS, encoding="utf-8")
+        _, findings = va.audit_artifact(outside / "demo.goal.md")
+        self.assertIn("HISTORY_UNAVAILABLE", {f.code for f in findings})
+
+    def test_audit_and_status_are_separate_reports(self) -> None:
+        result = subprocess.run(
+            [sys.executable, str(VALIDATOR), str(self.dir), "--audit", "--status"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(2, result.returncode)
+        self.assertIn("separate reports", result.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -484,6 +713,12 @@ class StatusTests(Harness):
         self.assertIn("pnpm test", loop["anchor"])
         self.assertIn("pnpm audit", loop["stop_condition"])
         self.assertEqual(2, loop["decisions"])
+        # What it is aiming at next is the most useful single line about a goal
+        # already in flight, so status shows it rather than counting it.
+        self.assertEqual(
+            "get `packages/api` to a green anchor with `@types/node` pinned at 20",
+            loop["next"],
+        )
 
         graph = by_slug["fix-flaky-tests"]
         self.assertEqual("graph-single-vendor", graph["shape"])
