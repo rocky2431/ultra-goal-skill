@@ -5,7 +5,7 @@ when_to_use: "When the owner wants work to keep running without them - \"make an
 license: MIT
 metadata:
   author: rocky2431
-  version: "2.5.0"
+  version: "2.5.1"
 ---
 
 # UltraGoal
@@ -746,7 +746,14 @@ Ask with three answers, because yes-or-no folds "those objections changed my min
 
 If they pick **start it**, say this once and then stop offering it: `/clear` before turn 1
 gives the run a clean context, and the SessionStart hook re-delivers the frozen terms and
-the carry-over by itself, so clearing loses nothing that the run needs. Their call, not
+the carry-over by itself, so clearing loses nothing that the run needs.
+
+Tell them the rest of it too: **injection is not activation.** The hooks reference has
+SessionStart's `additionalContext` as context the model can see and act on, and it sits
+there until the owner's first message. So the clean-context path is three steps rather than
+one - arm the gate, stop there, and let them `/clear` and send any single line (`continue`
+does it) - and a run sitting idle after a clear looks exactly like a run that is stuck,
+which is the failure this sentence exists to prevent. Their call, not
 yours - a run that keeps the interview in context is worse but not broken, and one more
 prompt before they can walk away is a real cost.
 

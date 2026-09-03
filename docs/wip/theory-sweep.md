@@ -483,14 +483,62 @@ forked 会话此前完全没有注入)、`Stop` 会收到 **`last_assistant_mess
 - **74 道 eval 仍然只有题目没有成绩,连执行器都没有。**这是唯一还没有任何证据的一半:
   所有依赖"我照着做"的东西 —— 访谈顺序、9 条 refusal、means 标签、真教训 vs 事件、
   挑战条款而不是改条款、不在粘贴的 goal 行上激活 —— 全部零测量。
-- **一次真实运行也没跑过。**这台机器上真实 `.goals/` 制品为零,hook 从未安装
-  (`doctor: hooks=missing`)。
+- **一次真实运行也没跑过。**插件已按 user scope 装好(2.5.1,4 skills + 4 hooks),
+  但 `ultra-trading` 已清场,真实 `.goals/` 制品为零。
 - 第三节"缺的"第 5 条(`init.sh` 一类"怎么把项目跑起来")**判定为不做**:第一次真实运行里
   锚本身就是环境契约(`.venv/bin/python -m ...`),venv 不存在 → 锚 unknown → 第一轮的活
   就是让它可执行。再加一个 `init.sh` 是第二份同职责的东西。
 - **`claude plugin eval` 存在**,是 CC 一等公民功能(`<eval dir>/**/case.yaml` 或
   `prompt.md` + `graders/*.md`)。我们那 74 道题格式不对,但**执行器不需要自己写**。这是
   eval 那个空白的具体修法,也是下一个大项目。
-- 第三节"冲突 3"仍未裁决:我们的两个恢复 hook 走的是 context reset 那一路,而 Anthropic
-  在更强的模型上**把 reset 整个删掉了**。这两个 hook 可能是在防一个已经不存在的缺陷。
-  判据已写进 `anti-patterns.md`,但没有实测。
+
+## 十六、敞口与交接(2026-09-04)
+
+**业主问的是"暴露在用户面前的敞口是不是只有一个"。答案是不是:当时有五个。**
+
+`/` 菜单里同时有主 skill、开跑命令、三个角色 skill;而且 reference 写明 plugin skill
+的 bare 名字也能调("The bare `/fancy` also invokes the skill unless another command
+already uses that name"),所以 user scope 安装等于把 `/review`、`/critic` 两个通用词占
+到了这台机器的每个项目里 —— 正是当初 `goal` → `ultra-goal` 改名时躲的那类碰撞,我在自己
+内部又犯一次。
+
+更硬的一条:`commands/ultra-goal.md` 和 `skills/ultra-goal/`(`name: ultra-goal`)**抢同
+一个命令名**,必然一个盖掉另一个。**没去查谁赢,直接消除** —— 命令改名 `goal-run`。
+
+修法两条都来自 reference,不是发明:
+- `user-invocable: false` —— "Claude Code hides it from the `/` menu and doesn't run it
+  when you type `/name`",且表格明确 You: No / Claude: Yes。三个角色加上它,菜单和 bare
+  别名一起消失,运行照样能调。
+- 命令名不能是通用词,因为 bare 别名落在全局菜单里。
+
+**两个 skill 保留,但交接不再要业主敲第二条命令。**这是业主指出的老 UBP 模式,从 git 里
+读出来的原文有两半:`commands/ultra-plan.md` 末尾是 "`/clear` then: `/ultra-dev`",
+`commands/ultra-research.md` 是 "**User gate** — halt at [C] Continue, do not
+auto-proceed"。**两半都保留:**闸门做成三个答案(是/否会把"那些异议让我改主意了"折进
+"暂时不跑");`/clear` 只提一次、不做成路由。
+
+保留两个文件的理由不是组织形式,是**续跑的会话不该加载设计者手册**;合并会把这条一起丢掉。
+
+### `/clear` 之后到底发生什么(实测)
+
+拿出厂模板在 scratch 里喂了一个 `{"hook_event_name":"SessionStart","source":"clear",
+"cwd":...}`,hook 注入 **7966 字符**,含 intent/boundary/anchor/carry-over/acceptance/
+stop/means/roles/verification,只丢 `## Cadence` 且明说丢了。"下一步干嘛"来自
+`### Next` 一行加未打勾的 `## Acceptance` —— **这才是"每轮必须重写 carry-over"的真正
+理由:那不是记录,是给下一个自己写工单。**
+
+**但注入不等于启动。**reference 把 SessionStart 的 `additionalContext` 定义为模型"can
+see and act on"的上下文,它躺着等业主的第一条消息。所以干净上下文那条路是三步:上膛 →
+停 → 业主 `/clear` 再说任意一句。这句话已经写进 SKILL.md,因为**清完之后干坐着的运行,
+和卡住的运行长得一模一样**。
+
+顺带撞到 fail-open 的真实行为:第一次喂的事件漏了 `hook_event_name` 和 `cwd`,hook
+**退出码 0、一个字不输出**。设计如此,但也意味着"什么都没发生"和"坏了"外观相同 ——
+判断它是否工作只能看有没有那段注入,不能看有没有报错。
+
+### 还没验的
+
+- **CC 真的按那个形状发 SessionStart 事件** —— 上面验的是"给定事件,hook 产出什么",
+  不是"宿主真发这个事件"。只有真 `/clear` 一次才能验,这是重启后第一件该做的事。
+- **菜单里真的少了三个角色** —— `user-invocable: false` 的效果目前只有 reference 背书,
+  没有眼睛看过。

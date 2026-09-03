@@ -1427,5 +1427,14 @@ class ChainedHandoffTests(unittest.TestCase):
         self.assertIn("SessionStart hook re-delivers the frozen terms", skill)
         self.assertIn("Their call, not\nyours", skill)
 
+    def test_the_owner_is_told_that_injection_is_not_activation(self) -> None:
+        """A cleared session holds the spec but does nothing until the owner
+        sends a line, so an owner who expects the run to resume by itself sees
+        an idle session and reads it as broken."""
+        skill = skill_text()
+        self.assertIn("**injection is not activation.**", skill)
+        self.assertIn("send any single line", skill)
+        self.assertIn("looks exactly like a run that is stuck", skill)
+
     def test_the_shapes_with_nothing_to_arm_are_offered_too(self) -> None:
         self.assertIn("The other two shapes have nothing to arm", skill_text())
