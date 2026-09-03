@@ -45,7 +45,12 @@ INLINE = re.compile(r"`([^`\n]+)`")
 ANCHOR_COMMENT = re.compile(r"(?m)^\s*//\s*anchor:\s*(.+?)\s*$")
 ANCHOR_TIMEOUT_SECONDS = 300
 BULLET = re.compile(r"(?m)^\s*[-*]\s+\S")
-CARRYOVER_MAX_ITEMS = 20
+# Reflexion (arXiv 2303.11366) bounds its reflection memory at 1-3 entries, because
+# entries the model must actually reason over compete for the same budget as the work.
+# State entries are cheaper to carry, so they get a looser budget.
+LESSONS_MAX = 3
+STATE_MAX = 8
+SUBSECTION = re.compile(r"(?m)^###\s+(\w+)\s*$")
 
 
 @dataclass(frozen=True)
@@ -121,6 +126,25 @@ def meta_block(text: str) -> tuple[str, int] | None:
             if depth == 0:
                 return text[match.end() - 1 : index + 1], match.start()
     return None
+
+
+def carry_over_parts(text: str) -> dict[str, str]:
+    """Split a carry-over section into its lowercased `### ` sub-sections."""
+    parts: dict[str, str] = {}
+    current: str | None = None
+    body: list[str] = []
+    for line in text.splitlines():
+        match = SUBSECTION.match(line)
+        if match is not None:
+            if current is not None:
+                parts[current] = "\n".join(body)
+            current = match.group(1).strip().lower()
+            body = []
+        elif current is not None:
+            body.append(line)
+    if current is not None:
+        parts[current] = "\n".join(body)
+    return parts
 
 
 def check_placeholders(path: Path, text: str, out: list[Finding]) -> None:
@@ -347,15 +371,36 @@ def check_goal(path: Path, text: str, out: list[Finding]) -> None:
             )
         )
 
-    if carry_over and len(BULLET.findall(carry_over)) > CARRYOVER_MAX_ITEMS:
-        out.append(
-            Finding(
-                str(path),
-                "CARRYOVER_UNPRUNED",
-                f"more than {CARRYOVER_MAX_ITEMS} carry-over items: prune what is no "
-                "longer true instead of appending - Git holds the history",
+    if carry_over:
+        parts = carry_over_parts(carry_over)
+        missing = [name for name in ("state", "lessons") if name not in parts]
+        if missing:
+            out.append(
+                Finding(
+                    str(path),
+                    "CARRYOVER_SECTIONS_MISSING",
+                    "carry-over needs `### State` (where the work stands) and "
+                    f"`### Lessons` (why something failed and what to do instead); "
+                    f"missing: {', '.join(missing)}",
+                )
             )
-        )
+        for name, cap, code in (
+            ("state", STATE_MAX, "STATE_UNPRUNED"),
+            ("lessons", LESSONS_MAX, "LESSONS_UNPRUNED"),
+        ):
+            body = parts.get(name)
+            if body is None:
+                continue
+            count = len(BULLET.findall(body))
+            if count > cap:
+                out.append(
+                    Finding(
+                        str(path),
+                        code,
+                        f"{count} {name} entries exceeds {cap}: prune what is no longer "
+                        "true instead of appending - Git holds the history",
+                    )
+                )
 
 
 def check_delegation(path: Path, text: str, out: list[Finding]) -> None:
@@ -523,7 +568,11 @@ def describe(path: Path, kind: str) -> dict[str, object]:
         item["cadence"] = first_command(cadence) or first_sentence(cadence)
         carry_over = found.get("carry-over")
         if carry_over is not None:
-            item["carry_over"] = len(BULLET.findall(carry_over))
+            parts = carry_over_parts(carry_over)
+            item["carry_over"] = {
+                name: len(BULLET.findall(parts.get(name, "")))
+                for name in ("state", "lessons")
+            }
         handoff = found.get("handoff", "")
         start = FENCE.search(handoff)
         item["start_command"] = (
@@ -625,7 +674,10 @@ def print_status(state: dict[str, object]) -> None:
         if item["cadence"]:
             print(f"  cadence: {item['cadence']}")
         if item["carry_over"] is not None:
-            print(f"  carry-over: {item['carry_over']} item(s)")
+            counts = item["carry_over"]
+            print(
+                f"  carry-over: {counts['state']} state, {counts['lessons']} lesson(s)"
+            )
         if item["start_command"]:
             print(f"  starts by: {item['start_command']}")
         if item["phases"]:

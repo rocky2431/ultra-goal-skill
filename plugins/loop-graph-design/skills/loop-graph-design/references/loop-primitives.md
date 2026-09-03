@@ -63,3 +63,24 @@ Two things to keep right when a goal runs unwatched:
 - **The ceiling has to be in the text.** Nothing else will refuse to run forever.
 - **Carry-over matters even within a single run**, because compaction empties the context
   mid-goal just as surely as a week between runs does.
+
+## Lessons are reflections, not a log
+
+Reflexion (arXiv 2303.11366) splits the work three ways: an Actor that acts, an Evaluator
+that scores, and a Self-Reflection step that turns a sparse signal - a failing test, a red
+build - into "nuanced and specific feedback" stored in memory for the next trial. The
+reflection step is the one that makes the next attempt different, and it is the one agents
+skip by default.
+
+Two of its findings shape the carry-over contract:
+
+- **Bound the memory.** Reflexion caps stored experiences at Ω, "usually set to 1-3", to fit
+  the context budget. Entries the model must reason over are not free; a list of twenty is a
+  log, and a log gets skimmed.
+- **Amplify the signal into language.** A binary pass/fail carries almost no information for
+  the next attempt. The value is in the sentence that says *which action* led to the failure
+  and *what to do instead* - what the paper calls the credit assignment problem.
+
+So `### Lessons` asks for a cause and a next action. "The build failed" is the signal.
+"The build fails without a committed lockfile because CI runs `--frozen-lockfile` - commit
+the lockfile in the same change" is the reflection. Only the second one changes anything.

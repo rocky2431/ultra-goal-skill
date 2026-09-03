@@ -85,8 +85,16 @@ without `--status`.
    | How it became true | `git log -p <slug>.goal.md` — the diffs *are* the evolution |
    | What each iteration did | the commit message — one line per iteration |
 
-   Because the history is in Git, the document never has to hold it. A carry-over section
-   that only grows has become a log; the validator reports more than 20 items as unpruned.
+   Because the history is in Git, the document never has to hold it. Carry-over has two
+   parts with different budgets: `### State` (where the work stands, at most 8) and
+   `### Lessons` (**why** something failed and what to do instead, at most 3). The Lessons
+   cap comes from Reflexion, which bounds its reflection memory at 1-3 because entries the
+   model must reason over compete with the work for the same budget.
+
+   A lesson is a cause and a next action, never an event. "The build failed" is the signal;
+   "the build fails without a committed lockfile because CI runs `--frozen-lockfile` —
+   commit the lockfile in the same change" is the reflection. Only the second one changes
+   the next iteration.
 
 6. **Keeps lessons in the project.** What a loop learns is true of one repository — one
    project's dead end is another project's correct answer. It never gets promoted to
@@ -120,13 +128,17 @@ absence. Cross-vendor delegation works on all of them.
 gets closed in the goal text itself, not with machinery around the host:
 
 ```
-/goal <objective, inside <boundary>>. You have not met this goal until you have actually
-run `<anchor>` in this session and seen it <exact result>. Do not claim completion from
-reasoning. Stop after <N> turns even if unmet, and say so.
+/goal <objective, inside <scope>>. You have not met this goal until you have actually run
+`<anchor>` in this session and seen it <exact result> - do not claim completion from
+reasoning, and do not state <confidence claim> without that output. Do not conclude
+<inference> from documents alone; reproduce it. State which turn you are on at the start of
+each turn. Rewrite the Carry-over section before you finish. Stop after <N> turns even if
+unmet, and say so.
 ```
 
-Three clauses: the objective with its boundary, the anchor as the only accepted evidence,
-and the ceiling. The same text pastes into all four hosts.
+Six clauses, one hole each: scope creep, claiming success from reasoning, inappropriate
+confidence, inference beyond the data, losing count of the ceiling, and the loop never
+learning. The same text pastes into all four hosts.
 
 **A workflow script needs a workflow runtime.** Only Claude Code has one, so elsewhere the
 Skill will not emit that shape — the file would be something nothing can run.
@@ -210,7 +222,7 @@ designed with its owner in the room has no validation set.
 python3 -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-72 tests: the validator's rules, the status projection, the package surface, version
+78 tests: the validator's rules, the status projection, the package surface, version
 consistency across three files, every relative link in `SKILL.md` resolving, and the shipped
 templates passing the shipped validator. Two are safety tests — that an anchor is never
 executed unasked, and that the validator never edits an artifact.

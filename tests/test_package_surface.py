@@ -153,17 +153,49 @@ class SkillContractTests(unittest.TestCase):
         # And what we deliberately did not take from them.
         self.assertIn("deliberately do **not** take", reference)
 
+    def test_boundary_asks_for_three_refusals(self) -> None:
+        """4D-ARE names three failures a specification must prevent; the interview
+        asks about each rather than folding them into one 'boundary' question."""
+        skill = skill_text()
+        self.assertIn("three refusals, not one", skill)
+        for refusal in ("**Scope**", "**Confidence**", "**Inference**"):
+            self.assertIn(refusal, skill)
+        self.assertIn("until it is reproduced", skill)
+        goal = (SKILL_ROOT / "assets" / "goal-package.md").read_text(encoding="utf-8")
+        for refusal in ("**Scope.**", "**Confidence.**", "**Inference.**"):
+            self.assertIn(refusal, goal)
+
+    def test_lessons_are_reflections_with_a_cited_budget(self) -> None:
+        skill = skill_text()
+        self.assertIn("A lesson is a cause and a next action, not an event.", skill)
+        self.assertIn("arXiv 2303.11366", skill)
+        self.assertIn("At most 3", skill)
+        self.assertIn("Twenty lessons is a log nobody reads", skill)
+        primitives = (SKILL_ROOT / "references" / "loop-primitives.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("## Lessons are reflections, not a log", primitives)
+        self.assertIn("credit assignment problem", primitives)
+        research = (SKILL_ROOT / "references" / "research-basis.md").read_text(
+            encoding="utf-8"
+        )
+        for source in ("arxiv.org/abs/2303.11366", "arxiv.org/pdf/2601.04556",
+                       "arxiv.org/abs/2305.04091"):
+            self.assertIn(source, research)
+
     def test_unattended_goal_template_wires_the_carry_over(self) -> None:
         goal = (SKILL_ROOT / "assets" / "goal-package.md").read_text(encoding="utf-8")
         self.assertIn("## Cadence", goal)
         self.assertIn("## Carry-over", goal)
+        self.assertIn("### State", goal)
+        self.assertIn("### Lessons", goal)
         self.assertIn("Read this before acting; rewrite it before finishing", goal)
         # The prompt the owner actually runs must carry the same instruction, or the
         # section never gets written.
         handoff = goal.split("## Handoff", 1)[1]
         self.assertIn("Read the Carry-over section", handoff)
         self.assertIn("Rewrite the Carry-over section", handoff)
-        self.assertIn("commit once with a one-line summary", handoff)
+        self.assertIn("Commit once with a one-line summary", handoff)
 
     def test_behaviour_evals_cover_the_whole_lifecycle(self) -> None:
         data = json.loads(
@@ -192,6 +224,10 @@ class SkillContractTests(unittest.TestCase):
             "ceiling_must_be_in_the_goal_text",
             "no_scheduling_machinery_when_the_owner_starts_it_by_hand",
             "carry_over_survives_compaction_not_just_reruns",
+            "boundary_is_three_refusals_not_one",
+            "a_lesson_must_be_a_cause_and_a_next_action",
+            "lessons_are_capped_at_three",
+            "the_turn_number_is_said_out_loud",
         ):
             self.assertIn(required, names)
 
@@ -249,8 +285,16 @@ class SkillContractTests(unittest.TestCase):
         # The pasteable goal line, with all three clauses that make it hold.
         self.assertIn("/goal ", handoff)
         self.assertIn("You have not met this goal until you have actually", handoff)
-        self.assertIn("do not claim\ncompletion from reasoning", handoff)
+        self.assertIn("do not claim completion from reasoning about the code", handoff)
         self.assertIn("Stop after 6 turns even if unmet", handoff)
+        # A1: the turn must be said out loud, or the ceiling is estimated by feel.
+        self.assertIn("State which turn you are on at the start of each turn", handoff)
+        # A3: all three refusals reach the pasted text, not just the document.
+        self.assertIn("never application source or CI config", handoff)
+        self.assertIn("do not call an upgrade safe without that output", handoff)
+        self.assertIn("Do not conclude why something broke", handoff)
+        # A4: carry-over is rewritten in two parts, lessons bounded.
+        self.assertIn("Lessons gets at most 3 causal findings", handoff)
         # And it names the hosts it can be pasted into.
         for host in ("Claude Code", "Codex", "Kimi", "zCode"):
             self.assertIn(host, handoff)

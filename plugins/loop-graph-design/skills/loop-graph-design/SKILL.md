@@ -4,7 +4,7 @@ description: "Turn \"make an agent keep doing this\" into a goal the host will a
 license: MIT
 metadata:
   author: rocky2431
-  version: "0.6.0"
+  version: "0.7.0"
 ---
 
 # Loop Graph Design
@@ -92,8 +92,15 @@ lost, read it and resume from the first unanswered question instead of starting 
 3. **Stop condition** — when does it stop? Express it with the anchor plus a ceiling
    (`0 high-severity advisories, or 6 turns`). The owner defines "good enough"; the moment
    the agent decides that for itself, the loop optimizes its own comfort.
-4. **Boundary** — what must it never touch? Name paths, effects, and the commit gate.
-   Anything reversible inside the boundary needs no approval; anything outside does.
+4. **Boundary** — three refusals, not one. A specified agent needs all three, and each
+   answers a different way loops go wrong in production:
+   - **Scope**: what must it never touch? Paths, effects, and the commit gate. Anything
+     reversible inside the boundary needs no approval; anything outside does.
+   - **Confidence**: what must it never claim without the anchor's output? "Safe",
+     "passing", "done" are claims, and a loop that makes them from reasoning has stopped
+     being grounded.
+   - **Inference**: what must it never conclude from documents alone? A changelog, an
+     issue thread, or another agent's report explains nothing until it is reproduced.
 5. **Verifier** — who checks the result? It must be an agent that never saw the generator's
    reasoning. An agent grading its own output praises it. Also name what makes the verifier
    fail closed, or it will pass the work after a superficial look.
@@ -149,14 +156,31 @@ is met. That is the gap this Skill closes, and it closes it in the goal text its
 than with any machinery:
 
 ```
-/goal <what to achieve, inside <boundary>>. You have not met this goal until you have
-actually run `<anchor command>` in this session and seen it <exact result>. Do not claim
-completion from reasoning about the code. Stop after <N> turns even if unmet, and say so.
+/goal <what to achieve, inside <scope>>. You have not met this goal until you have actually
+run `<anchor command>` in this session and seen it <exact result> - do not claim completion
+from reasoning, and do not state <confidence claim> without that output. Do not conclude
+<inference> from documents alone; reproduce it. State which turn you are on at the start of
+each turn. Rewrite the Carry-over section before you finish. Stop after <N> turns even if
+unmet, and say so.
 ```
 
-Three clauses, each doing one job: the objective, the anchor as the only accepted evidence,
-and the ceiling. Written this way the same text works on all four hosts, and on the fifth as
-a plain prompt.
+Six clauses, each closing one hole:
+
+| Clause | Closes |
+|---|---|
+| objective inside a scope | scope creep |
+| anchor as the only accepted evidence | claiming success from reasoning |
+| no confidence claim without that output | inappropriate confidence |
+| no conclusion from documents alone | inference beyond the data |
+| state the turn at the start of each turn | losing count of the ceiling |
+| rewrite carry-over before finishing | the loop never learning |
+
+The turn clause matters more than it looks. A host may hand the model a live iteration count
+— Claude Code attaches `{condition, iterations, durationMs, tokens}` to every turn under an
+active goal — but the model will not use it unless told to. Saying the number out loud each
+turn makes the ceiling real rather than a number it estimates by feel.
+
+Written this way the same text works on all four hosts, and on the fifth as a plain prompt.
 
 Record which host it was written for in the decisions record — the objective is portable, the
 command that starts it is not.
@@ -237,15 +261,33 @@ So any artifact with a `## Cadence` — it will be started more than once — ge
 Without that instruction the section stays empty forever and the loop never improves. A goal
 started once and watched needs neither section.
 
-A few lines, in whatever form each takes: a path already proven dead, a standing fact the
-next iteration needs, where the work stopped.
+It has two parts, with different jobs and different budgets:
 
-**Rewrite, never append.** An item that stops being true gets deleted, and the validator
-reports more than 20 items as unpruned. Three places, three jobs:
+- **`### State`** — where the work stands. Facts, cheap to carry: what is left, what the
+  last green build was, which shard is next. At most 8.
+- **`### Lessons`** — **why something failed and what to do instead.** At most 3.
+
+The Lessons budget is not arbitrary. Reflexion (arXiv 2303.11366) bounds its reflection
+memory at 1-3 entries, because entries the model must actually reason over compete with the
+work for the same budget. Twenty lessons is a log nobody reads.
+
+**A lesson is a cause and a next action, not an event.** This is the difference between a
+loop that learns and one that keeps a diary:
+
+| Not a lesson | A lesson |
+|---|---|
+| "the build failed" | "the build fails without a committed lockfile because CI runs `--frozen-lockfile` — commit the lockfile in the same change" |
+| "`@types/node` 22 broke" | "`@types/node` 22 breaks tsconfig because the bundler resolver rejects its new conditional exports — pin at 20 until tsconfig moves to `node20`" |
+
+The left column is what an agent writes by default. Asking for the right column is the whole
+mechanism: it forces the credit assignment that makes the next iteration different.
+
+**Rewrite, never append.** An entry that stops being true gets deleted. Three places, three
+jobs:
 
 | What you want to see | Where it lives |
 |---|---|
-| What is true now | the `## Carry-over` section — current only |
+| What is true now | `### State` and `### Lessons` — current only, pruned |
 | How it became true | `git log -p <slug>.goal.md` — the diffs *are* the evolution |
 | What each iteration did | the commit message — one line per iteration |
 

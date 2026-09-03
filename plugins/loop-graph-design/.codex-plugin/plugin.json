@@ -1,6 +1,6 @@
 {
   "name": "loop-graph-design",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Interview the owner into a grounded agent loop, then emit the runnable prompt or script that starts it.",
   "author": {
     "name": "rocky2431",

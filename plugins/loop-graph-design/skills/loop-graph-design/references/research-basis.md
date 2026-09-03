@@ -47,6 +47,27 @@ The term dates to July 2026; the practice does not. Treat these as argument, not
   prefix-cache asymmetry.
   https://sangampandey.info/blog/graph-engineering-agent-loops-to-graphs
 
+## Reflection and bounded memory
+
+- Shinn et al., *Reflexion: Language Agents with Verbal Reinforcement Learning* (NeurIPS
+  2023) — the Actor / Evaluator / Self-Reflection split, verbal feedback as a "semantic
+  gradient", the credit assignment problem, and the episodic memory bound Ω "usually set to
+  1-3". This is the basis for the `### Lessons` cap and for asking for a cause plus a next
+  action rather than an event.
+  https://arxiv.org/abs/2303.11366
+
+## Design-time specification
+
+- Yu and Zhao, *4D-ARE: 4-Dimensional Attribution-Driven Agent Requirements Engineering*
+  (2026) — argues design-time specification is the higher-leverage intervention over runtime
+  reasoning frameworks, and names three failures a specification must prevent:
+  hallucination beyond data, scope creep, and inappropriate confidence. This is the basis
+  for splitting the boundary question into scope, confidence, and inference.
+  https://arxiv.org/pdf/2601.04556
+- Wang et al., *Plan-and-Solve Prompting* (ACL 2023) — devise a plan, then execute it;
+  aimed at missing-step errors in zero-shot chain of thought.
+  https://arxiv.org/abs/2305.04091
+
 ## Failure taxonomy
 
 - Cemri et al., *Why Do Multi-Agent LLM Systems Fail?* — 14 failure modes catalogued

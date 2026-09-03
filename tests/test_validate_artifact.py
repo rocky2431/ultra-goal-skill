@@ -83,8 +83,14 @@ Delegate review to a fresh agent that never saw the upgrade reasoning.
 
 Read this before acting; rewrite it before finishing. Drop anything no longer true.
 
-- `@types/node` 22 breaks tsconfig under `moduleResolution: bundler` - do not retry
+### State
+
 - remaining after iteration 6: `packages/api`
+
+### Lessons
+
+- `@types/node` 22 breaks tsconfig because the bundler resolver rejects its new
+  conditional exports - pin at 20 and revisit when tsconfig moves to `node20`
 
 ## Handoff
 
@@ -494,21 +500,58 @@ class CarryOverTests(Harness):
         )
         self.assertIn("CARRYOVER_NOT_WIRED", self.codes(path))
 
-    def test_an_unpruned_carry_over_is_reported(self) -> None:
-        self.write("up.decisions.md", GOOD_DECISIONS)
-        bloat = "\n".join(f"- lesson number {n}" for n in range(25))
+    def test_carry_over_needs_both_sub_sections(self) -> None:
+        self.write("cs.decisions.md", GOOD_DECISIONS)
+        path = self.write("cs.goal.md", GOOD_GOAL.replace("### Lessons", "### Notes"))
+        self.assertIn("CARRYOVER_SECTIONS_MISSING", self.codes(path))
+
+    def test_more_than_three_lessons_is_reported(self) -> None:
+        """Reflexion bounds its reflection memory at 1-3 entries; so do we."""
+        self.write("le.decisions.md", GOOD_DECISIONS)
+        bloat = "\n".join(f"- lesson {n} because reason {n} - do X" for n in range(4))
         path = self.write(
-            "up.goal.md",
+            "le.goal.md",
+            GOOD_GOAL.replace(
+                "- `@types/node` 22 breaks tsconfig because the bundler resolver rejects its new\n"
+                "  conditional exports - pin at 20 and revisit when tsconfig moves to `node20`",
+                bloat,
+            ),
+        )
+        self.assertIn("LESSONS_UNPRUNED", self.codes(path))
+
+    def test_three_lessons_is_allowed(self) -> None:
+        self.write("l3.decisions.md", GOOD_DECISIONS)
+        three = "\n".join(f"- lesson {n} because reason {n} - do X" for n in range(3))
+        path = self.write(
+            "l3.goal.md",
+            GOOD_GOAL.replace(
+                "- `@types/node` 22 breaks tsconfig because the bundler resolver rejects its new\n"
+                "  conditional exports - pin at 20 and revisit when tsconfig moves to `node20`",
+                three,
+            ),
+        )
+        self.assertNotIn("LESSONS_UNPRUNED", self.codes(path))
+
+    def test_an_unpruned_state_list_is_reported(self) -> None:
+        self.write("st.decisions.md", GOOD_DECISIONS)
+        bloat = "\n".join(f"- state item {n}" for n in range(12))
+        path = self.write(
+            "st.goal.md",
             GOOD_GOAL.replace("- remaining after iteration 6: `packages/api`", bloat),
         )
-        self.assertIn("CARRYOVER_UNPRUNED", self.codes(path))
+        self.assertIn("STATE_UNPRUNED", self.codes(path))
 
-    def test_status_reports_the_carry_over_size(self) -> None:
+    def test_status_reports_state_and_lessons_separately(self) -> None:
+        self.write("sp.decisions.md", GOOD_DECISIONS)
+        self.write("sp.goal.md", GOOD_GOAL)
+        item = va.status_paths([str(self.dir)])["artifacts"][0]
+        self.assertEqual(1, item["carry_over"]["state"])
+        self.assertEqual(1, item["carry_over"]["lessons"])
+
+    def test_status_reports_the_cadence(self) -> None:
         self.write("weekly-dep-upgrade.decisions.md", GOOD_DECISIONS)
         self.write("weekly-dep-upgrade.goal.md", GOOD_GOAL)
-        state = va.status_paths([str(self.dir)])
-        item = state["artifacts"][0]
-        self.assertEqual(2, item["carry_over"])
+        item = va.status_paths([str(self.dir)])["artifacts"][0]
         self.assertEqual("/loop 1w", item["cadence"])
 
 

@@ -15,7 +15,7 @@ import tempfile
 from typing import Any
 
 
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 PACKAGE = "loop-graph-design"
 MARKER_NAME = ".loop-graph-design-managed.json"
 REPO_ROOT = Path(__file__).resolve().parents[1]
