@@ -40,9 +40,13 @@ DEFAULT_CEILING = 12
 FENCE = re.compile(r"```[a-z]*\n(.+?)\n```", re.S)
 INLINE = re.compile(r"`([^`\n]+)`")
 TURNS = re.compile(r"(\d+)\s+turns?\b", re.I)
-# 127 = command not found, 126 = found but not executable. Neither is a verdict
-# about the work; both mean the anchor itself is broken.
-UNRUNNABLE_EXITS = {126, 127}
+# The anchor itself being broken is not a verdict about the work.
+#   POSIX: 127 command not found, 126 found but not executable.
+#   Windows: cmd.exe returns 9009 for a command it does not recognise.
+# Missing 9009 meant the third outcome did not exist on Windows at all - a
+# missing anchor there was reported as a failing one, which is exactly the lie
+# this distinction exists to prevent. CI on windows-latest caught it.
+UNRUNNABLE_EXITS = {126, 127, 9009}
 
 
 def _section(text: str, heading: str) -> str | None:

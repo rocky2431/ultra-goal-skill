@@ -25,6 +25,11 @@ sys.path.insert(0, str(SCRIPTS))
 import loop_hooks as lh  # noqa: E402
 
 
+# `true` and `test -f` are not commands on cmd.exe, so the fixtures drive the
+# gate through the interpreter running the tests - present on every platform.
+GREEN = f'"{sys.executable}" -c "raise SystemExit(0)"'
+RED = f'"{sys.executable}" -c "raise SystemExit(1)"'
+
 GOAL = """# Goal: demo
 
 ## Intent
@@ -46,7 +51,7 @@ Stop when `true` succeeds, or after 4 turns.
 ## Anchor
 
 ```
-true
+__ANCHOR__
 ```
 
 ## Verification
@@ -75,6 +80,9 @@ Read this before acting; rewrite it before finishing.
 /goal Keep the suite green.
 ```
 """
+
+
+GOAL = GOAL.replace("__ANCHOR__", GREEN)
 
 
 class Harness(unittest.TestCase):
@@ -136,8 +144,10 @@ class ActivationTests(Harness):
         self.assertIsNotNone(found)
         self.assertEqual("demo", found.slug)
         self.assertTrue(found.goal_path.is_file())
-        self.assertEqual(".loops/demo.events.jsonl", str(
-            found.events_path.relative_to(self.cwd)))
+        self.assertEqual(
+            ".loops/demo.events.jsonl",
+            found.events_path.relative_to(self.cwd).as_posix(),
+        )
 
     def test_activation_check_has_no_side_effects(self) -> None:
         self.make_loop()
@@ -277,7 +287,7 @@ class AnchorGateTests(Harness):
     Exactly one of them refuses to let the turn end."""
 
     def stop(self, anchor: str, ceiling: str = "4 turns") -> dict:
-        goal = GOAL.replace("```\ntrue\n```", f"```\n{anchor}\n```").replace(
+        goal = GOAL.replace(f"```\n{GREEN}\n```", f"```\n{anchor}\n```").replace(
             "or after 4 turns", f"or after {ceiling}"
         )
         self.make_loop(goal=goal)
@@ -301,13 +311,13 @@ class AnchorGateTests(Harness):
         return [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
 
     def test_green_anchor_lets_the_turn_end(self) -> None:
-        payload = self.stop("true")
+        payload = self.stop(GREEN)
         self.assertIsNone(self.decision(payload))
         self.assertIn("Goal met", payload["systemMessage"])
         self.assertEqual("green", self.events()[-1]["outcome"])
 
     def test_red_anchor_denies_the_stop(self) -> None:
-        payload = self.stop("false")
+        payload = self.stop(RED)
         self.assertEqual("deny", self.decision(payload))
         reason = payload["hookSpecificOutput"]["permissionDecisionReason"]
         self.assertIn("still failing", reason)
@@ -324,7 +334,7 @@ class AnchorGateTests(Harness):
         self.assertEqual("unknown", self.events()[-1]["outcome"])
 
     def test_a_goal_with_no_runnable_anchor_lets_the_turn_end(self) -> None:
-        goal = GOAL.replace("```\ntrue\n```", "it should feel right")
+        goal = GOAL.replace(f"```\n{GREEN}\n```", "it should feel right")
         self.make_loop(goal=goal)
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "loop_stop.py")],
@@ -355,7 +365,7 @@ class AnchorGateTests(Harness):
 
     def test_an_identical_result_twice_stops_the_spin(self) -> None:
         """Denying again would only spin it more, so it lets go and reports."""
-        first = self.stop("false")
+        first = self.stop(RED)
         self.assertEqual("deny", self.decision(first))
         second = subprocess.run(
             [sys.executable, str(SCRIPTS / "loop_stop.py")],
@@ -371,7 +381,10 @@ class AnchorGateTests(Harness):
         loops = self.cwd / ".loops"
         loops.mkdir()
         (loops / "demo.goal.md").write_text(
-            GOAL.replace("```\ntrue\n```", f"```\ntouch {witness}\n```"),
+            GOAL.replace(
+                f"```\n{GREEN}\n```",
+                f'```\n"{sys.executable}" -c "open(r\'{witness}\', \'w\').close()"\n```',
+            ),
             encoding="utf-8",
         )
         # no `active` marker
@@ -385,7 +398,7 @@ class AnchorGateTests(Harness):
         self.assertFalse(witness.exists(), "an inactive project must run no anchor")
 
     def test_escape_hatch_removing_the_marker_disarms_the_gate(self) -> None:
-        self.make_loop(goal=GOAL.replace("```\ntrue\n```", "```\nfalse\n```"))
+        self.make_loop(goal=GOAL.replace(f"```\n{GREEN}\n```", f"```\n{RED}\n```"))
         (self.cwd / ".loops" / "active").unlink()
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "loop_stop.py")],

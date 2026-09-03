@@ -39,7 +39,7 @@ class Harness(unittest.TestCase):
         for event, groups in (self.settings().get("hooks") or {}).items():
             for group in groups:
                 for entry in group.get("hooks", []):
-                    if iu.HOOK_TAG in entry.get("command", ""):
+                    if iu._tagged(entry.get("command")):
                         found.append(event)
         return sorted(found)
 
