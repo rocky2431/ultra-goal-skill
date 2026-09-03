@@ -1,0 +1,6 @@
+interface:
+  display_name: "Goal Engineering"
+  short_description: "Turn a vague objective into a goal an agent can hold to"
+  default_prompt: "Use $goal-engineering to turn an objective into a goal with an anchor, a boundary, and an owner-defined stop condition."
+policy:
+  allow_implicit_invocation: true

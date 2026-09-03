@@ -11,8 +11,8 @@ import unittest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-PLUGIN_ROOT = REPO_ROOT / "plugins" / "loop-graph-design"
-SKILL_ROOT = PLUGIN_ROOT / "skills" / "loop-graph-design"
+PLUGIN_ROOT = REPO_ROOT / "plugins" / "goal-engineering"
+SKILL_ROOT = PLUGIN_ROOT / "skills" / "goal-engineering"
 
 sys.path.insert(0, str(SKILL_ROOT / "scripts"))
 import validate_artifact as va  # noqa: E402
@@ -42,11 +42,11 @@ class IdentityTests(unittest.TestCase):
         )
         entry = marketplace["plugins"][0]
 
-        self.assertEqual("loop-graph-design", plugin["name"])
+        self.assertEqual("goal-engineering", plugin["name"])
         self.assertEqual(plugin["name"], entry["name"])
         self.assertEqual("./skills/", plugin["skills"])
-        self.assertEqual("./plugins/loop-graph-design", entry["source"]["path"])
-        self.assertIn("name: loop-graph-design", skill_text())
+        self.assertEqual("./plugins/goal-engineering", entry["source"]["path"])
+        self.assertIn("name: goal-engineering", skill_text())
         self.assertEqual(["Skills"], plugin["interface"]["capabilities"])
         self.assertLessEqual(len(plugin["interface"]["defaultPrompt"]), 128)
 
@@ -110,7 +110,7 @@ class SkillContractTests(unittest.TestCase):
             "## Three tiers of frozen",
             "**False consensus**",
             "Reviewers split by domain",
-            "loop(<slug>) turn <N>:",
+            "goal(<slug>) turn <N>:",
             "## Make the loop evolve",
             "read it before acting and rewrite it before finishing",
             "**Rewrite, never append.**",
@@ -310,7 +310,7 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("do **not** emit `<slug>.workflow.js`", skill)
         # Artifacts are project assets, not one tool's private configuration.
         self.assertNotIn(".claude/workflows", skill)
-        self.assertIn(".loops/", skill)
+        self.assertIn(".goals/", skill)
         # Activation scope must not name one host's commands either.
         # Host slash-commands belong in the goal-mode section and nowhere else.
         # Matched inside backticks so filenames like <slug>.goal.md do not count.
@@ -469,8 +469,8 @@ class GateAndDocumentSystemTests(unittest.TestCase):
         self.assertIn("## The gate: what the hooks do, and what they cost", skill)
         self.assertIn("**Three outcomes, not two.**", skill)
         self.assertIn("**Six of the seven steps allow.**", skill)
-        self.assertIn("`rm .loops/active`", skill)
-        self.assertIn("LOOP_GRAPH_HOOKS_DISABLED=1", skill)
+        self.assertIn("`rm .goals/active`", skill)
+        self.assertIn("GOAL_ENGINEERING_HOOKS_DISABLED=1", skill)
         # PostToolUse's absence is a decision with a stated trigger to revisit.
         self.assertIn("`PostToolUse` is deliberately **not** registered", skill)
 
@@ -489,7 +489,7 @@ class GateAndDocumentSystemTests(unittest.TestCase):
         self.assertIn("### Lessons", doc)
         self.assertIn("stop and report", doc)
         # multi-worker storage, and what is thrown away
-        self.assertIn(".loops/.work/", doc)
+        self.assertIn(".goals/.work/", doc)
         self.assertIn("gitignored", doc)
         self.assertIn("Workers never share a transcript", doc)
         self.assertIn("The orchestrator runs the anchor, not the workers", doc)
@@ -508,7 +508,7 @@ class EvalTests(unittest.TestCase):
         data = json.loads((SKILL_ROOT / "evals" / "evals.json").read_text(encoding="utf-8"))
         names = {case["name"] for case in data["evals"]}
         self.assertEqual(
-            ["no_skill", "agent-harness-design", "loop-graph-design"],
+            ["no_skill", "agent-harness-design", "goal-engineering"],
             data["comparison_arms"],
         )
         self.assertGreaterEqual(len(data["evals"]), 12)
@@ -600,8 +600,8 @@ class HygieneTests(unittest.TestCase):
         anchor is the only accepted evidence" while nothing executes it - a
         silent downgrade of evidence coverage, which is worse than the pollution
         it avoids. The pollution is instead handled inside the hooks: no
-        `.loops/active`, no work. That early exit is pinned by
-        tests/test_loop_hooks.py, which is now the load-bearing test.
+        `.goals/active`, no work. That early exit is pinned by
+        tests/test_goal_hooks.py, which is now the load-bearing test.
         """
         files = [
             path
@@ -615,14 +615,14 @@ class HygieneTests(unittest.TestCase):
 
         # Every shipped hook must route through the shared early exit.
         scripts = SKILL_ROOT / "scripts"
-        hook_scripts = sorted(p.name for p in scripts.glob("loop_*.py"))
+        hook_scripts = sorted(p.name for p in scripts.glob("goal_*.py"))
         self.assertEqual(
-            ["loop_hooks.py", "loop_pre_compact.py", "loop_session_start.py",
-             "loop_stop.py"],
+            ["goal_hooks.py", "goal_pre_compact.py", "goal_session_start.py",
+             "goal_stop.py"],
             hook_scripts,
         )
         for name in hook_scripts:
-            if name == "loop_hooks.py":
+            if name == "goal_hooks.py":
                 continue
             source = (scripts / name).read_text(encoding="utf-8")
             self.assertIn("run_hook(", source, name)

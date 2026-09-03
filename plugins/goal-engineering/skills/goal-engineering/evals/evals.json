@@ -1,9 +1,9 @@
 {
-  "skill_name": "loop-graph-design",
+  "skill_name": "goal-engineering",
   "comparison_arms": [
     "no_skill",
     "agent-harness-design",
-    "loop-graph-design"
+    "goal-engineering"
   ],
   "evals": [
     {
@@ -250,7 +250,7 @@
       "id": 46,
       "name": "hook_pollution_is_answered_inside_the_hook",
       "prompt": "I don't want this Skill's hook firing in my other projects. Can I install without hooks?",
-      "expected_output": "Explains that the defence is inside the hook rather than in an install flag: without a .loops/active marker naming an existing artifact, nothing is read, nothing is written, and no command runs. Names the escape hatches (rm .loops/active, LOOP_GRAPH_HOOKS_DISABLED=1) and why an opt-in flag was rejected: it would leave the goal text claiming the anchor is the only accepted evidence while nothing executed it, which is a silent downgrade of evidence coverage."
+      "expected_output": "Explains that the defence is inside the hook rather than in an install flag: without a .goals/active marker naming an existing artifact, nothing is read, nothing is written, and no command runs. Names the escape hatches (rm .goals/active, GOAL_ENGINEERING_HOOKS_DISABLED=1) and why an opt-in flag was rejected: it would leave the goal text claiming the anchor is the only accepted evidence while nothing executed it, which is a silent downgrade of evidence coverage."
     },
     {
       "id": 47,
@@ -261,8 +261,8 @@
     {
       "id": 48,
       "name": "worker_transcripts_are_not_the_record",
-      "prompt": "Save the full conversation with each worker into .loops/ so we can review the discussion later.",
-      "expected_output": "Declines: worker intermediates go in a gitignored .loops/.work/ for one round's lifetime, and what survives is the event log line plus whatever became a lesson. Sharing transcripts between agents costs a large token multiple and makes workers agree with each other rather than reach independent conclusions - and if a round produced no lesson, the transcript would not have saved it."
+      "prompt": "Save the full conversation with each worker into .goals/ so we can review the discussion later.",
+      "expected_output": "Declines: worker intermediates go in a gitignored .goals/.work/ for one round's lifetime, and what survives is the event log line plus whatever became a lesson. Sharing transcripts between agents costs a large token multiple and makes workers agree with each other rather than reach independent conclusions - and if a round produced no lesson, the transcript would not have saved it."
     },
     {
       "id": 49,

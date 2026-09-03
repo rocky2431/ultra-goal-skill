@@ -1,0 +1,20 @@
+{
+  "name": "goal-engineering",
+  "version": "1.0.0",
+  "description": "Interview the owner into a grounded goal, then emit the runnable prompt or script that pursues it until an anchor says it is met.",
+  "author": {
+    "name": "rocky2431",
+    "url": "https://github.com/rocky2431"
+  },
+  "repository": "https://github.com/rocky2431/goal-engineering-skill",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Goal Engineering",
+    "shortDescription": "Turn a vague objective into a goal an agent can hold to",
+    "longDescription": "Adds a provider-neutral Skill for goal engineering: it interviews the owner for a goal's intent, anchor, quantified stop condition, boundary, droppable means, and adversarial verifier, refuses the shapes that fail in production, and compiles a machine-consumable artifact - a /goal package to paste into any host's goal mode, a workflow script, or a cross-vendor delegation triad. Meaning stays model-authored; only the package surface and the machine-measured evidence are mechanically checked.",
+    "developerName": "rocky2431",
+    "category": "Developer Tools",
+    "capabilities": ["Skills"],
+    "defaultPrompt": "Use $goal-engineering to turn an objective into a goal with an anchor, a boundary, and an owner-defined stop condition."
+  }
+}

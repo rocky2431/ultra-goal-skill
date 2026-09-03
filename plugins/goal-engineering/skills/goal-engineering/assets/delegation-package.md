@@ -43,5 +43,5 @@ The critic's mission file carries the reviewer's review as its input. Neither re
 accepted without its anchor command's real output: a role's claim of success is a claim, and
 the orchestrator runs the anchor itself.
 
-Worker intermediates go in `.loops/.work/` and are not committed. What survives the round is
+Worker intermediates go in `.goals/.work/` and are not committed. What survives the round is
 the event-log line and whatever became a lesson.

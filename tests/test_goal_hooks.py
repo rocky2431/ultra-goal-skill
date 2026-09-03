@@ -16,13 +16,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = (
     REPO_ROOT
     / "plugins"
-    / "loop-graph-design"
+    / "goal-engineering"
     / "skills"
-    / "loop-graph-design"
+    / "goal-engineering"
     / "scripts"
 )
 sys.path.insert(0, str(SCRIPTS))
-import loop_hooks as lh  # noqa: E402
+import goal_hooks as lh  # noqa: E402
 
 
 # `true` and `test -f` are not commands on cmd.exe, so the fixtures drive the
@@ -92,11 +92,11 @@ class Harness(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
 
     def make_loop(self, slug: str = "demo", goal: str = GOAL) -> Path:
-        loops = self.cwd / ".loops"
-        loops.mkdir(exist_ok=True)
-        (loops / f"{slug}.goal.md").write_text(goal, encoding="utf-8")
-        (loops / "active").write_text(f"{slug}\n", encoding="utf-8")
-        return loops
+        goals = self.cwd / ".goals"
+        goals.mkdir(exist_ok=True)
+        (goals / f"{slug}.goal.md").write_text(goal, encoding="utf-8")
+        (goals / "active").write_text(f"{slug}\n", encoding="utf-8")
+        return goals
 
     def snapshot(self) -> set[str]:
         return {
@@ -107,63 +107,63 @@ class Harness(unittest.TestCase):
 
 
 class ActivationTests(Harness):
-    def test_no_loops_directory_is_inactive(self) -> None:
-        self.assertIsNone(lh.active_loop(self.cwd))
+    def test_no_goals_directory_is_inactive(self) -> None:
+        self.assertIsNone(lh.active_goal(self.cwd))
 
-    def test_loops_directory_without_active_marker_is_inactive(self) -> None:
-        (self.cwd / ".loops").mkdir()
-        (self.cwd / ".loops" / "x.goal.md").write_text(GOAL, encoding="utf-8")
-        self.assertIsNone(lh.active_loop(self.cwd))
+    def test_goals_directory_without_active_marker_is_inactive(self) -> None:
+        (self.cwd / ".goals").mkdir()
+        (self.cwd / ".goals" / "x.goal.md").write_text(GOAL, encoding="utf-8")
+        self.assertIsNone(lh.active_goal(self.cwd))
 
     def test_active_marker_pointing_at_a_missing_goal_is_inactive(self) -> None:
-        loops = self.cwd / ".loops"
-        loops.mkdir()
-        (loops / "active").write_text("ghost\n", encoding="utf-8")
-        self.assertIsNone(lh.active_loop(self.cwd))
+        goals = self.cwd / ".goals"
+        goals.mkdir()
+        (goals / "active").write_text("ghost\n", encoding="utf-8")
+        self.assertIsNone(lh.active_goal(self.cwd))
 
     def test_empty_active_marker_is_inactive(self) -> None:
-        loops = self.cwd / ".loops"
-        loops.mkdir()
-        (loops / "active").write_text("   \n", encoding="utf-8")
-        self.assertIsNone(lh.active_loop(self.cwd))
+        goals = self.cwd / ".goals"
+        goals.mkdir()
+        (goals / "active").write_text("   \n", encoding="utf-8")
+        self.assertIsNone(lh.active_goal(self.cwd))
 
     def test_active_marker_that_is_a_directory_is_inactive(self) -> None:
-        (self.cwd / ".loops" / "active").mkdir(parents=True)
-        self.assertIsNone(lh.active_loop(self.cwd))
+        (self.cwd / ".goals" / "active").mkdir(parents=True)
+        self.assertIsNone(lh.active_goal(self.cwd))
 
     def test_a_slug_with_a_path_separator_is_refused(self) -> None:
         """The marker names a slug, not a path. Traversal is not a loop."""
-        loops = self.cwd / ".loops"
-        loops.mkdir()
-        (loops / "active").write_text("../../etc/passwd\n", encoding="utf-8")
-        self.assertIsNone(lh.active_loop(self.cwd))
+        goals = self.cwd / ".goals"
+        goals.mkdir()
+        (goals / "active").write_text("../../etc/passwd\n", encoding="utf-8")
+        self.assertIsNone(lh.active_goal(self.cwd))
 
     def test_a_real_loop_resolves(self) -> None:
         self.make_loop()
-        found = lh.active_loop(self.cwd)
+        found = lh.active_goal(self.cwd)
         self.assertIsNotNone(found)
         self.assertEqual("demo", found.slug)
         self.assertTrue(found.goal_path.is_file())
         self.assertEqual(
-            ".loops/demo.events.jsonl",
+            ".goals/demo.events.jsonl",
             found.events_path.relative_to(self.cwd).as_posix(),
         )
 
     def test_activation_check_has_no_side_effects(self) -> None:
         self.make_loop()
         before = self.snapshot()
-        lh.active_loop(self.cwd)
-        lh.active_loop(self.cwd)
+        lh.active_goal(self.cwd)
+        lh.active_goal(self.cwd)
         self.assertEqual(before, self.snapshot())
 
     def test_inactive_check_writes_nothing(self) -> None:
         before = self.snapshot()
-        lh.active_loop(self.cwd)
+        lh.active_goal(self.cwd)
         self.assertEqual(before, self.snapshot())
 
     def test_unreadable_cwd_is_inactive_not_an_error(self) -> None:
-        self.assertIsNone(lh.active_loop(self.cwd / "does-not-exist"))
-        self.assertIsNone(lh.active_loop(None))
+        self.assertIsNone(lh.active_goal(self.cwd / "does-not-exist"))
+        self.assertIsNone(lh.active_goal(None))
 
 
 class FailOpenTests(Harness):
@@ -218,12 +218,12 @@ class FailOpenTests(Harness):
                 "Stop",
                 lambda e, l: calls.append(e),
                 stdin_text=payload,
-                env={"LOOP_GRAPH_HOOKS_DISABLED": "1"},
+                env={"GOAL_ENGINEERING_HOOKS_DISABLED": "1"},
             ),
         )
         self.assertEqual([], calls)
 
-    def test_an_active_loop_reaches_the_handler(self) -> None:
+    def test_an_active_goal_reaches_the_handler(self) -> None:
         self.make_loop()
         seen = {}
         payload = json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)})
@@ -240,9 +240,9 @@ class ScriptSmokeTests(Harness):
     """Each hook script must be invocable and silent in an unrelated project."""
 
     SCRIPT_EVENTS = {
-        "loop_stop.py": "Stop",
-        "loop_session_start.py": "SessionStart",
-        "loop_pre_compact.py": "PreCompact",
+        "goal_stop.py": "Stop",
+        "goal_session_start.py": "SessionStart",
+        "goal_pre_compact.py": "PreCompact",
     }
 
     def run_script(self, name: str, payload: dict) -> subprocess.CompletedProcess:
@@ -292,7 +292,7 @@ class AnchorGateTests(Harness):
         )
         self.make_loop(goal=goal)
         result = subprocess.run(
-            [sys.executable, str(SCRIPTS / "loop_stop.py")],
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
             input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True,
             text=True,
@@ -305,7 +305,7 @@ class AnchorGateTests(Harness):
         return payload.get("hookSpecificOutput", {}).get("permissionDecision")
 
     def events(self) -> list[dict]:
-        path = self.cwd / ".loops" / "demo.events.jsonl"
+        path = self.cwd / ".goals" / "demo.events.jsonl"
         if not path.is_file():
             return []
         return [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
@@ -340,7 +340,7 @@ class AnchorGateTests(Harness):
 
     def test_resolvability_is_decided_by_looking(self) -> None:
         import importlib
-        gate = importlib.import_module("loop_stop")
+        gate = importlib.import_module("goal_stop")
         self.assertTrue(gate._resolvable(f'"{sys.executable}" -c "pass"'))
         self.assertTrue(gate._resolvable(sys.executable))
         self.assertFalse(gate._resolvable("this-command-does-not-exist-42"))
@@ -358,7 +358,7 @@ class AnchorGateTests(Harness):
         goal = GOAL.replace(f"```\n{GREEN}\n```", "it should feel right")
         self.make_loop(goal=goal)
         result = subprocess.run(
-            [sys.executable, str(SCRIPTS / "loop_stop.py")],
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
             input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=30,
         )
@@ -368,14 +368,14 @@ class AnchorGateTests(Harness):
 
     def test_the_ceiling_wins_even_when_unmet(self) -> None:
         self.make_loop()
-        log = self.cwd / ".loops" / "demo.events.jsonl"
+        log = self.cwd / ".goals" / "demo.events.jsonl"
         log.write_text("".join(
             json.dumps({"event": "anchor_checked", "turn": n, "outcome": "red",
                         "signature": f"red:1:sig{n}"}) + "\n"
             for n in range(1, 5)
         ), encoding="utf-8")
         result = subprocess.run(
-            [sys.executable, str(SCRIPTS / "loop_stop.py")],
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
             input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=30,
         )
@@ -389,7 +389,7 @@ class AnchorGateTests(Harness):
         first = self.stop(RED)
         self.assertEqual("deny", self.decision(first))
         second = subprocess.run(
-            [sys.executable, str(SCRIPTS / "loop_stop.py")],
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
             input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=30,
         )
@@ -399,9 +399,9 @@ class AnchorGateTests(Harness):
 
     def test_the_gate_runs_nothing_when_no_loop_is_active(self) -> None:
         witness = self.cwd / "anchor-ran"
-        loops = self.cwd / ".loops"
-        loops.mkdir()
-        (loops / "demo.goal.md").write_text(
+        goals = self.cwd / ".goals"
+        goals.mkdir()
+        (goals / "demo.goal.md").write_text(
             GOAL.replace(
                 f"```\n{GREEN}\n```",
                 f'```\n"{sys.executable}" -c "open(r\'{witness}\', \'w\').close()"\n```',
@@ -410,7 +410,7 @@ class AnchorGateTests(Harness):
         )
         # no `active` marker
         result = subprocess.run(
-            [sys.executable, str(SCRIPTS / "loop_stop.py")],
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
             input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=30,
         )
@@ -420,34 +420,34 @@ class AnchorGateTests(Harness):
 
     def test_escape_hatch_removing_the_marker_disarms_the_gate(self) -> None:
         self.make_loop(goal=GOAL.replace(f"```\n{GREEN}\n```", f"```\n{RED}\n```"))
-        (self.cwd / ".loops" / "active").unlink()
+        (self.cwd / ".goals" / "active").unlink()
         result = subprocess.run(
-            [sys.executable, str(SCRIPTS / "loop_stop.py")],
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
             input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=30,
         )
-        self.assertEqual("", result.stdout.strip(), "rm .loops/active must disarm it")
+        self.assertEqual("", result.stdout.strip(), "rm .goals/active must disarm it")
 
 
 class RecoveryHookTests(Harness):
     def test_session_start_injects_spec_and_carried_state(self) -> None:
         self.make_loop()
         result = subprocess.run(
-            [sys.executable, str(SCRIPTS / "loop_session_start.py")],
+            [sys.executable, str(SCRIPTS / "goal_session_start.py")],
             input=json.dumps({"hook_event_name": "SessionStart", "cwd": str(self.cwd),
                               "source": "resume"}),
             capture_output=True, text=True, timeout=30,
         )
         payload = json.loads(result.stdout)
         context = payload["hookSpecificOutput"]["additionalContext"]
-        self.assertIn("An active loop is running", context)
+        self.assertIn("An active goal is running", context)
         self.assertIn("frozen for the duration of the run", context)
         self.assertIn("## Carry-over", context)
 
     def test_session_start_ignores_unrelated_sources(self) -> None:
         self.make_loop()
         result = subprocess.run(
-            [sys.executable, str(SCRIPTS / "loop_session_start.py")],
+            [sys.executable, str(SCRIPTS / "goal_session_start.py")],
             input=json.dumps({"hook_event_name": "SessionStart", "cwd": str(self.cwd),
                               "source": "something-else"}),
             capture_output=True, text=True, timeout=30,
@@ -457,13 +457,13 @@ class RecoveryHookTests(Harness):
     def test_pre_compact_records_the_carried_state(self) -> None:
         self.make_loop()
         result = subprocess.run(
-            [sys.executable, str(SCRIPTS / "loop_pre_compact.py")],
+            [sys.executable, str(SCRIPTS / "goal_pre_compact.py")],
             input=json.dumps({"hook_event_name": "PreCompact", "cwd": str(self.cwd),
                               "trigger": "auto"}),
             capture_output=True, text=True, timeout=30,
         )
         self.assertEqual(0, result.returncode, result.stderr)
-        log = self.cwd / ".loops" / "demo.events.jsonl"
+        log = self.cwd / ".goals" / "demo.events.jsonl"
         entry = json.loads(log.read_text().splitlines()[-1])
         self.assertEqual("pre_compact", entry["event"])
         self.assertEqual("auto", entry["trigger"])

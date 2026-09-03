@@ -1,7 +1,10 @@
-# loop-graph-design
+# Goal Engineering
 
-An Agent Skill that interviews you into a **grounded** agent loop, then writes the prompt
-or script that starts it.
+An Agent Skill that interviews you into a **grounded** goal, then writes the prompt or
+script that pursues it until an anchor says it is met.
+
+The goal is the invariant. A loop and a graph are two shapes it compiles to, and neither is
+an upgrade of the other — the distinction is when routing gets decided.
 
 ## The problem
 
@@ -60,7 +63,7 @@ artifact exists — so a session that dies mid-interview resumes instead of rest
 4. **Tracks state without storing any.**
 
 ```bash
-python3 scripts/validate_artifact.py .loops --status
+python3 scripts/validate_artifact.py .goals --status
 ```
 
 Reports each artifact's shape, anchor, stop condition, phases or workers, and decision
@@ -143,14 +146,14 @@ learning. The same text pastes into all four hosts.
 **A workflow script needs a workflow runtime.** Only Claude Code has one, so elsewhere the
 Skill will not emit that shape — the file would be something nothing can run.
 
-Artifacts live in the project's `.loops/`, not inside any tool's private directory: they are
+Artifacts live in the project's `.goals/`, not inside any tool's private directory: they are
 project assets that belong in Git and may be read by whichever agent a teammate runs.
 
 ## Install
 
 ```bash
-git clone https://github.com/rocky2431/loop-graph-design-skill
-cd loop-graph-design-skill
+git clone https://github.com/rocky2431/goal-engineering-skill
+cd goal-engineering-skill
 python3 scripts/install_user.py install                 # all supported hosts
 python3 scripts/install_user.py install --hosts claude   # or pick them
 python3 scripts/install_user.py doctor --json            # verify
@@ -161,7 +164,7 @@ recovery copy and refuses to overwrite an unmanaged Skill of the same name.
 `uninstall` removes only copies this installer manages.
 
 The repo also ships a plugin manifest (`.agents/plugins/marketplace.json` and
-`plugins/loop-graph-design/.codex-plugin/plugin.json`) for hosts that install plugins
+`plugins/goal-engineering/.codex-plugin/plugin.json`) for hosts that install plugins
 directly from a Git marketplace.
 
 ## The gate
@@ -186,14 +189,14 @@ when it is certain.
 
 ### What it costs a project that never asked for one
 
-Every hook's first act is one check: is there a `.loops/active` marker naming an artifact that
+Every hook's first act is one check: is there a `.goals/active` marker naming an artifact that
 exists? Without one, nothing is read, nothing is written, no command runs — a process start
 and a `stat`. That early exit is the only thing between an installed hook and an unrelated
-project, so it is pinned from nine angles in `tests/test_loop_hooks.py`, including that an
+project, so it is pinned from nine angles in `tests/test_goal_hooks.py`, including that an
 inactive project executes no anchor and that a handler which raises still exits 0.
 
-Escape hatches, neither of which needs the agent's cooperation: `rm .loops/active`, or
-`LOOP_GRAPH_HOOKS_DISABLED=1`.
+Escape hatches, neither of which needs the agent's cooperation: `rm .goals/active`, or
+`GOAL_ENGINEERING_HOOKS_DISABLED=1`.
 
 Registration is idempotent, backs up `settings.json` first, preserves every hook it does not
 own, and `doctor` reports `missing` or `partial:<events>` if something later removes it.
@@ -205,7 +208,7 @@ path its own lessons already ruled out.
 ## The validator
 
 ```bash
-python3 scripts/validate_artifact.py .loops --json
+python3 scripts/validate_artifact.py .goals --json
 ```
 
 It observes facts and nothing else: file pairing, required sections, every shape carrying
@@ -269,13 +272,13 @@ where each would take over — as `optional_skills`, never as a dependency.
 ## Sources
 
 The guidance traces to primary sources, listed with URLs and a currency date in
-[references/research-basis.md](plugins/loop-graph-design/skills/loop-graph-design/references/research-basis.md).
+[references/research-basis.md](plugins/goal-engineering/skills/goal-engineering/references/research-basis.md).
 Anthropic's loop and multi-agent engineering posts are treated as doctrine; the July 2026
 "graph engineering" essays are treated as argument.
 
 The carry-over design rests on two papers, with what was taken and what was deliberately
 left behind spelled out in
-[references/evolution-and-scope.md](plugins/loop-graph-design/skills/loop-graph-design/references/evolution-and-scope.md):
+[references/evolution-and-scope.md](plugins/goal-engineering/skills/goal-engineering/references/evolution-and-scope.md):
 **SKILL.state** ([arXiv 2608.26263](https://arxiv.org/abs/2608.26263)) for explicit carried
 state over replayed history — including the finding that one five-field schema served 100
 task instances — and **WikiSkill** ([arXiv 2608.27454](https://arxiv.org/html/2608.27454))

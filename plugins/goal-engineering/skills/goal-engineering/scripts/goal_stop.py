@@ -5,7 +5,7 @@ Seven steps, six of which let the turn end. A mechanical gate's default has to
 be "allow" - it only refuses in the one case it is certain about.
 
 It refuses exactly once: the anchor ran, and it was red. Everything else -
-ceiling reached, loop not progressing, anchor unrunnable, anchor green - lets
+ceiling reached, run not progressing, anchor unrunnable, anchor green - lets
 the turn end and says why.
 
 The third outcome is the one that is easy to leave out and expensive to get
@@ -29,8 +29,8 @@ import sys
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from loop_hooks import (  # noqa: E402
-    ActiveLoop,
+from goal_hooks import (  # noqa: E402
+    ActiveGoal,
     append_event,
     read_events,
     run_hook,
@@ -109,7 +109,7 @@ def _resolvable(command: str) -> bool:
 
 
 def _allow(reason: str) -> dict[str, Any]:
-    return {"systemMessage": f"[loop-graph-design] {reason}"}
+    return {"systemMessage": f"[goal-engineering] {reason}"}
 
 
 def _deny(reason: str) -> dict[str, Any]:
@@ -126,28 +126,28 @@ def _signature(outcome: str, exit_code: int | None, digest: str) -> str:
     return f"{outcome}:{exit_code}:{digest}"
 
 
-def handle(event: dict[str, Any], loop: ActiveLoop) -> dict[str, Any] | None:
-    goal = loop.goal_path.read_text(encoding="utf-8")
-    anchor_section = _section(goal, "anchor")
+def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
+    spec = goal.goal_path.read_text(encoding="utf-8")
+    anchor_section = _section(spec, "anchor")
     anchor = _first_command(anchor_section or "")
     if not anchor:
         return _allow(
-            f"{loop.slug}: no runnable anchor in `## Anchor`, so nothing can be "
+            f"{goal.slug}: no runnable anchor in `## Anchor`, so nothing can be "
             "gated. Fix the artifact or the gate is decorative."
         )
 
-    events = read_events(loop)
+    events = read_events(goal)
     checks = [e for e in events if e.get("event") == "anchor_checked"]
     turn = len(checks) + 1
 
-    stop_section = _section(goal, "stop condition") or ""
+    stop_section = _section(spec, "stop condition") or ""
     ceiling_match = TURNS.search(stop_section)
     ceiling = int(ceiling_match.group(1)) if ceiling_match else DEFAULT_CEILING
 
     # Step 3: the ceiling is the owner's, and it wins even when the goal is unmet.
     if turn > ceiling:
         append_event(
-            loop,
+            goal,
             {
                 "ts": datetime.now(timezone.utc).isoformat(),
                 "event": "ceiling_reached",
@@ -156,14 +156,14 @@ def handle(event: dict[str, Any], loop: ActiveLoop) -> dict[str, Any] | None:
             },
         )
         return _allow(
-            f"{loop.slug}: ceiling of {ceiling} turns reached without meeting the "
+            f"{goal.slug}: ceiling of {ceiling} turns reached without meeting the "
             "goal. Stopping. Report what is left rather than claiming success."
         )
 
     # Step 5: is the anchor even runnable? Answered by looking, not by inference.
     if not _resolvable(anchor):
         append_event(
-            loop,
+            goal,
             {
                 "ts": datetime.now(timezone.utc).isoformat(),
                 "event": "anchor_checked",
@@ -177,7 +177,7 @@ def handle(event: dict[str, Any], loop: ActiveLoop) -> dict[str, Any] | None:
             },
         )
         return _allow(
-            f"{loop.slug}: the anchor's command was not found on PATH, so whether "
+            f"{goal.slug}: the anchor's command was not found on PATH, so whether "
             "the work landed is unknown - not failed. Stopping. Fix the anchor or "
             "say the result is unverified; do not guess either way."
         )
@@ -187,7 +187,7 @@ def handle(event: dict[str, Any], loop: ActiveLoop) -> dict[str, Any] | None:
         completed = subprocess.run(
             anchor,
             shell=True,
-            cwd=str(loop.loops_dir.parent),
+            cwd=str(goal.goals_dir.parent),
             capture_output=True,
             text=True,
             timeout=ANCHOR_TIMEOUT_SECONDS,
@@ -208,7 +208,7 @@ def handle(event: dict[str, Any], loop: ActiveLoop) -> dict[str, Any] | None:
     digest = hashlib.sha256(output.encode("utf-8", "replace")).hexdigest()[:12]
     signature = _signature(outcome, exit_code, digest)
     append_event(
-        loop,
+        goal,
         {
             "ts": datetime.now(timezone.utc).isoformat(),
             "event": "anchor_checked",
@@ -225,28 +225,28 @@ def handle(event: dict[str, Any], loop: ActiveLoop) -> dict[str, Any] | None:
     if outcome == "unknown":
         detail = "timed out" if exit_code is None else f"exit {exit_code}"
         return _allow(
-            f"{loop.slug}: the anchor could not run ({detail}), so whether the work "
+            f"{goal.slug}: the anchor could not run ({detail}), so whether the work "
             "landed is unknown - not failed. Stopping. Say it is unverified rather "
             "than guessing either way."
         )
 
     if outcome == "green":
         return _allow(
-            f"{loop.slug}: anchor `{anchor}` passed on turn {turn}. Goal met."
+            f"{goal.slug}: anchor `{anchor}` passed on turn {turn}. Goal met."
         )
 
     # Step 4: red, but is anything changing? Two identical results in a row mean
-    # the loop is spinning, and denying the stop again would only spin it more.
+    # the run is spinning, and denying the stop again would only spin it more.
     previous = checks[-1].get("signature") if checks else None
     if previous == signature:
         return _allow(
-            f"{loop.slug}: the anchor produced an identical result two turns in a "
-            f"row (turn {turn}), so the loop is not progressing. Stopping. Report "
+            f"{goal.slug}: the anchor produced an identical result two turns in a "
+            f"row (turn {turn}), so the run is not progressing. Stopping. Report "
             "what is blocking it instead of retrying."
         )
 
     return _deny(
-        f"{loop.slug}: anchor `{anchor}` is still failing (exit {exit_code}) on turn "
+        f"{goal.slug}: anchor `{anchor}` is still failing (exit {exit_code}) on turn "
         f"{turn} of {ceiling}, so the goal is not met. Keep working. Before the next "
         "attempt, write one lesson into `### Lessons` naming the cause and the next "
         "action - and run the independent verification named in `## Verification`."

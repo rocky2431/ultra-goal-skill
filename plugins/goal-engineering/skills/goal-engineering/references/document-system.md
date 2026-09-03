@@ -10,8 +10,8 @@ observations that arrive between them.
 | `<slug>.goal.md` — `## Carry-over` | the execution state | the running agent | before finishing **every** turn | rewritten, never appended | yes |
 | `<slug>.events.jsonl` | the observations | the hooks (and workers) | every turn | **append-only, never edited** | yes |
 | `<slug>.decisions.md` | the decision tree | owner + agent | Ask and Modify | rows edited, never appended | yes |
-| `.loops/.work/*` | worker intermediates | each delegated worker | while a round runs | disposable | **no** |
-| `.loops/active` | which loop is running | owner or agent | on start and stop | one line | no |
+| `.goals/.work/*` | worker intermediates | each delegated worker | while a round runs | disposable | **no** |
+| `.goals/active` | which goal is running | owner or agent | on start and stop | one line | no |
 | git history | the evolution | git | one commit per turn | immutable | — |
 
 ```
@@ -27,7 +27,7 @@ decisions.md ──defines──► goal.md spec sections   [FROZEN during a run
                               ▲          │
               worker results  │          │  summary + digest
                               │          ▼
-                     .loops/.work/  ─────►  git commit (one per turn)
+                     .goals/.work/  ─────►  git commit (one per turn)
                      [disposable, gitignored]
 ```
 
@@ -75,7 +75,7 @@ Delegating to several agents does not add a document type; it adds one directory
 never sees.
 
 ```
-.loops/
+.goals/
   active                        # the running slug
   audit.goal.md                 # spec + carry-over, owned by the orchestrator
   audit.decisions.md
@@ -103,13 +103,13 @@ context from typed artifacts from an immutable coordinator log:
 
 ## What is left behind when a loop is done
 
-Delete `.loops/active`. Keep `<slug>.goal.md`, `<slug>.decisions.md`, and
+Delete `.goals/active`. Keep `<slug>.goal.md`, `<slug>.decisions.md`, and
 `<slug>.events.jsonl` in Git — together they are a complete record: what was attempted, why
 it was designed that way, what was rejected along the road, and every anchor result. Delete
-`.loops/.work/` without ceremony.
+`.goals/.work/` without ceremony.
 
 If the loop is never coming back, the durable parts belong in the repository's real
-documentation, and the three files go. An empty `.loops/` means nothing is outstanding.
+documentation, and the three files go. An empty `.goals/` means nothing is outstanding.
 
 
 ## If you also run a spec-driven development harness
@@ -126,7 +126,7 @@ without deciding produces two half-authorities.
 | `decisions/` | `<slug>.decisions.md` | Same role |
 | `evidence/`, `verification.md` | `<slug>.events.jsonl` | Stronger here: execution receipts rather than a written account of them |
 | `contexts/TEMPLATE.md` | `### State` + `### Lessons` | Condensed to what the next turn must read |
-| `changes/{active,archive,abandoned}` | `.loops/active` + Git | Three states are a workflow; one marker plus history is enough for one loop |
+| `changes/{active,archive,abandoned}` | `.goals/active` + Git | Three states are a workflow; one marker plus history is enough for one loop |
 | **`tasks.json`** | **deliberately absent** | See below |
 | **`plan.md`** | **deliberately absent** | A loop's plan is its goal text; a written plan for it would be the routing decision made twice |
 

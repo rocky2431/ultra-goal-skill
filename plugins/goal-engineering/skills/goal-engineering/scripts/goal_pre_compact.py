@@ -3,8 +3,8 @@
 
 Compaction empties the working context mid-run just as surely as a week between
 runs does. The carry-over section is on disk and survives, but nothing records
-*that* a compaction happened - which is the difference between "the loop forgot"
-and "the loop was reset". One event line makes that visible afterwards.
+*that* a compaction happened - which is the difference between "the run forgot"
+and "the run was reset". One event line makes that visible afterwards.
 
 It records; it never blocks a compaction.
 """
@@ -19,17 +19,17 @@ import sys
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from loop_hooks import ActiveLoop, append_event, run_hook  # noqa: E402
+from goal_hooks import ActiveGoal, append_event, run_hook  # noqa: E402
 
 
 BULLET = re.compile(r"(?m)^\s*[-*]\s+\S")
 SUBSECTION = re.compile(r"(?m)^###\s+(\w+)\s*$")
 
 
-def _carry_over(goal: str) -> str:
+def _carry_over(spec: str) -> str:
     body: list[str] = []
     capturing = False
-    for line in goal.splitlines():
+    for line in spec.splitlines():
         if line.startswith("## "):
             capturing = line[3:].strip().lower() == "carry-over"
             continue
@@ -38,9 +38,9 @@ def _carry_over(goal: str) -> str:
     return "\n".join(body)
 
 
-def handle(event: dict[str, Any], loop: ActiveLoop) -> dict[str, Any] | None:
-    goal = loop.goal_path.read_text(encoding="utf-8")
-    carry_over = _carry_over(goal)
+def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
+    spec = goal.goal_path.read_text(encoding="utf-8")
+    carry_over = _carry_over(spec)
     parts: dict[str, int] = {}
     current: str | None = None
     chunk: list[str] = []
@@ -57,7 +57,7 @@ def handle(event: dict[str, Any], loop: ActiveLoop) -> dict[str, Any] | None:
         parts[current] = len(BULLET.findall("\n".join(chunk)))
 
     append_event(
-        loop,
+        goal,
         {
             "ts": datetime.now(timezone.utc).isoformat(),
             "event": "pre_compact",
@@ -71,9 +71,9 @@ def handle(event: dict[str, Any], loop: ActiveLoop) -> dict[str, Any] | None:
     )
     return {
         "systemMessage": (
-            f"[loop-graph-design] {loop.slug}: carry-over recorded before compaction "
+            f"[goal-engineering] {goal.slug}: carry-over recorded before compaction "
             f"({parts.get('state', 0)} state, {parts.get('lessons', 0)} lesson(s)). "
-            f"Re-read `{loop.goal_path.name}` after compaction."
+            f"Re-read `{goal.goal_path.name}` after compaction."
         )
     }
 

@@ -1,6 +1,0 @@
-interface:
-  display_name: "Loop Graph Design"
-  short_description: "Turn repeating work into a grounded running loop"
-  default_prompt: "Use $loop-graph-design to turn repeating work into a loop with an anchor and an owner-defined stop condition."
-policy:
-  allow_implicit_invocation: true

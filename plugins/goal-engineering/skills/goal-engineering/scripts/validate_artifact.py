@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the mechanical surface of a loop-graph-design artifact.
+"""Check the mechanical surface of a goal-engineering artifact.
 
 This validator observes facts only: file pairing, required sections, declared
 phases, known delegation targets, and JavaScript syntax. It never judges whether
@@ -29,13 +29,13 @@ KINDS = (
     (".delegation.md", "delegation"),
 )
 GOAL_SECTIONS = (
-    ("intent", "INTENT_MISSING", "the loop has no stated intent"),
-    ("boundary", "BOUNDARY_MISSING", "the loop has no stated boundary"),
-    ("stop condition", "STOP_CONDITION_MISSING", "the loop has no stop condition"),
-    ("anchor", "ANCHOR_MISSING", "the loop has no anchor"),
+    ("intent", "INTENT_MISSING", "the artifact has no stated intent"),
+    ("boundary", "BOUNDARY_MISSING", "the artifact has no stated boundary"),
+    ("stop condition", "STOP_CONDITION_MISSING", "the artifact has no stop condition"),
+    ("anchor", "ANCHOR_MISSING", "the artifact has no anchor"),
     ("verification", "VERIFIER_NOT_DECLARED", "no independent verifier is declared"),
 )
-# `## Cadence` and `## Carry-over` are conditional: an unattended loop needs both,
+# `## Cadence` and `## Carry-over` are conditional: an unattended run needs both,
 # a one-shot goal needs neither.
 ROLE_FIELDS = ("target", "mission", "anchor")
 # The critic's job is to discretize its disagreement, which is what turns it into
@@ -349,7 +349,7 @@ def check_goal(path: Path, text: str, out: list[Finding]) -> None:
             )
         )
 
-    # An unattended loop wakes with an empty context every iteration. Without a
+    # An unattended run wakes with an empty context every iteration. Without a
     # carry-over section it rebuilds history from scratch and retries paths it has
     # already proven dead.
     # A cadence means this goal gets started more than once, so something has to
@@ -363,7 +363,7 @@ def check_goal(path: Path, text: str, out: list[Finding]) -> None:
                 Finding(
                     str(path),
                     "CARRYOVER_MISSING",
-                    "an unattended loop needs a `## Carry-over` section: what the next "
+                    "an unattended run needs a `## Carry-over` section: what the next "
                     "iteration must read before acting",
                 )
             )
@@ -375,12 +375,12 @@ def check_goal(path: Path, text: str, out: list[Finding]) -> None:
                 Finding(
                     str(path),
                     "CARRYOVER_NOT_WIRED",
-                    "carry-over must tell the loop to read it before acting and rewrite "
+                    "carry-over must tell the run to read it before acting and rewrite "
                     "it before finishing, or it stays empty forever",
                 )
             )
     # The handoff is the line the owner pastes into their CLI. Without it the
-    # artifact describes a loop nobody can start.
+    # artifact describes a run nobody can start.
     handoff = found.get("handoff")
     if handoff is None:
         out.append(
@@ -624,7 +624,7 @@ SHAPES = {
 
 
 def last_anchor_check(artifact: Path) -> dict[str, object] | None:
-    """Read the newest anchor result from the loop's event log, if any.
+    """Read the newest anchor result from the goal's event log, if any.
 
     The log is written by the hooks, never by this validator. A malformed line
     is skipped rather than fatal - a broken log must not make status unusable.

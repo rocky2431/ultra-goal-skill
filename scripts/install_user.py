@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install the portable loop-graph-design Skill at user scope."""
+"""Install the portable goal-engineering Skill at user scope."""
 
 from __future__ import annotations
 
@@ -15,9 +15,9 @@ import tempfile
 from typing import Any
 
 
-VERSION = "0.9.0"
-PACKAGE = "loop-graph-design"
-MARKER_NAME = ".loop-graph-design-managed.json"
+VERSION = "1.0.0"
+PACKAGE = "goal-engineering"
+MARKER_NAME = ".goal-engineering-managed.json"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILL_SOURCE = (
     REPO_ROOT
@@ -34,9 +34,9 @@ SUPPORTED_HOSTS = ("hermes", "claude", "codex", "kimi", "zcode", "opencode")
 # text works everywhere; the gate does not, and `doctor` says so rather than
 # leaving a host quietly ungated.
 HOOK_EVENTS = {
-    "Stop": "loop_stop.py",
-    "SessionStart": "loop_session_start.py",
-    "PreCompact": "loop_pre_compact.py",
+    "Stop": "goal_stop.py",
+    "SessionStart": "goal_session_start.py",
+    "PreCompact": "goal_pre_compact.py",
 }
 HOOK_MATCHERS = {"SessionStart": "^(startup|resume|clear|compact)$"}
 HOOK_TIMEOUTS = {"Stop": 200}
@@ -44,7 +44,7 @@ HOOK_HOSTS = ("claude",)
 # Matched against a normalised command string: a registration written on
 # Windows carries backslashes, and comparing them raw made every identity check
 # fail there - idempotence, doctor and uninstall all silently.
-HOOK_TAG = "loop-graph-design/scripts/loop_"
+HOOK_TAG = "goal-engineering/scripts/goal_"
 
 
 def _tagged(command: object) -> bool:
@@ -216,7 +216,7 @@ def _write_settings(path: Path, settings: dict[str, Any], backup_dir: Path) -> N
     if path.exists():
         _backup_item(path, backup_dir / "settings.json")
     path.parent.mkdir(parents=True, exist_ok=True)
-    staging = path.with_name(f".{path.name}.loop-graph-design.tmp")
+    staging = path.with_name(f".{path.name}.goal-engineering.tmp")
     staging.write_text(
         json.dumps(settings, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )

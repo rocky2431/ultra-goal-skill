@@ -1,14 +1,14 @@
 {
-  "name": "rocky-loop-graph-design",
+  "name": "rocky-goal-engineering",
   "interface": {
-    "displayName": "Loop Graph Design"
+    "displayName": "Goal Engineering"
   },
   "plugins": [
     {
-      "name": "loop-graph-design",
+      "name": "goal-engineering",
       "source": {
         "source": "local",
-        "path": "./plugins/loop-graph-design"
+        "path": "./plugins/goal-engineering"
       },
       "policy": {
         "installation": "AVAILABLE",

@@ -83,7 +83,7 @@ Paste this into the host's goal mode - `/goal` on Claude Code, Codex, Kimi, or z
 host without goal mode, the same text as a plain prompt:
 
 ```
-/goal Read the Carry-over section of .loops/weekly-dep-upgrade.goal.md first. Then upgrade
+/goal Read the Carry-over section of .goals/weekly-dep-upgrade.goal.md first. Then upgrade
 dependencies until `pnpm audit --audit-level=high` reports 0 findings, touching only
 package.json and the lockfile - never application source or CI config.
 You have not met this goal until you have actually run `pnpm test -- --run && pnpm build`

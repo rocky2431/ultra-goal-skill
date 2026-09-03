@@ -1,20 +1,29 @@
 ---
-name: loop-graph-design
+name: goal-engineering
 description: "Turn \"make an agent keep doing this\" into a goal the host will actually hold to: interview for intent, anchor, quantified stop condition, boundary, and an independent verifier, refuse the shapes that fail, then emit the runnable artifact — a goal line to paste, a workflow script, or a cross-vendor delegation package. Use when the deliverable is runnable, not a design note."
 license: MIT
 metadata:
   author: rocky2431
-  version: "0.9.0"
+  version: "1.0.0"
 ---
 
-# Loop Graph Design
+# Goal Engineering
 
-The owner has work they want an agent to keep doing. Your job is to interview them until
-the loop has an intent, an anchor that cannot be argued with, a stop condition a machine
-can evaluate, a boundary, and a verifier that is not the generator — then write the prompt
-or script that starts it and hand it off.
+The owner has an objective they want an agent to pursue without them in the room. Your job
+is to interview them until that objective has an intent, an anchor that cannot be argued
+with, a stop condition a machine can evaluate, a boundary, means labelled by whether they
+may be dropped, and a verifier that is not the generator — then write the prompt or script
+that pursues it and hand it off.
 
-Most work is a loop. Reach for a graph only when a loop provably cannot hold it.
+**The goal is the invariant; loop and graph are two shapes it compiles to.** Neither is an
+upgrade of the other. The distinction is *when routing gets decided*, and a graph is what
+you can only write once you already know the route. Most work is a loop. Reach for a graph
+only when a loop provably cannot hold it.
+
+The agent gets wide latitude inside that frame: it picks the method, drops means that turn
+out not to serve the intent, and rewrites its own carried state. **That latitude is exactly
+why every claim it makes has to be checkable against something it did not author.** Wide
+authority and zero trust in self-report are the same design decision, not opposing ones.
 
 ## Keep activation scoped
 
@@ -22,12 +31,13 @@ Use this Skill when the deliverable is an **executable artifact**: a goal the ow
 into their CLI and walks away from, a workflow script, or a delegation package other agents
 consume.
 
-The loop's own boundary — what it may touch, and which of its effects need approval before
+The goal's own boundary — what it may touch, and which of its effects need approval before
 they run — is question 4 below and belongs here. A broader authority model for an agent
-that is not a loop does not: answer that directly instead of building a loop around it.
+that is not pursuing a goal does not: answer that directly instead of building a goal
+around it.
 
-Running the loop is not this Skill either. It stops when the artifact validates and the
-owner has the command.
+Running it is not this Skill either. It stops when the artifact validates and the owner
+has the command.
 
 ## Recognize the intent first
 
@@ -245,7 +255,7 @@ Checked against the four ways a single loop fails, plus the way a graph of loops
 ## Compile one artifact
 
 Name it after the work, and always write the paired decisions record. Default location is
-the project's `.loops/` — these are project assets that belong in Git and may be read by
+the project's `.goals/` — these are project assets that belong in Git and may be read by
 whichever agent a teammate runs, so they do not go inside any one tool's private directory.
 
 | Answer | Artifact | Template |
@@ -270,7 +280,7 @@ exist and how they connect is the design, and it is yours and the owner's to aut
 ## Inspect what is running
 
 ```bash
-python3 scripts/validate_artifact.py .loops --status
+python3 scripts/validate_artifact.py .goals --status
 ```
 
 Reports each artifact's shape, anchor, stop condition, declared phases or workers, how many
@@ -352,10 +362,10 @@ Commit once per iteration that changed anything, with a message shaped so the lo
 trajectory:
 
 ```
-loop(<slug>) turn <N>: <one line on what changed> [anchor: green|red|unknown]
+goal(<slug>) turn <N>: <one line on what changed> [anchor: green|red|unknown]
 ```
 
-`git log --oneline -- .loops/<slug>.goal.md` then reads as the run, one line per turn, with
+`git log --oneline -- .goals/<slug>.goal.md` then reads as the run, one line per turn, with
 each turn's verdict on it. That is what puts the evolution in Git, and why the document never
 has to hold history itself.
 
@@ -392,17 +402,17 @@ let the turn end and say why.
 
 ### What it costs a project that never asked for one
 
-Every hook's first act is the same check: is there a `.loops/active` marker naming an
+Every hook's first act is the same check: is there a `.goals/active` marker naming an
 artifact that exists? Without one, nothing is read, nothing is written, no command runs.
 
 | Situation | Cost |
 |---|---|
-| No `.loops/` at all | One process start and one `stat` per registered hook |
-| `.loops/` with no `active` marker | Same |
+| No `.goals/` at all | One process start and one `stat` per registered hook |
+| `.goals/` with no `active` marker | Same |
 | `active` naming a missing artifact | Same, plus one line saying so |
 | A re-entered Stop (`stop_hook_active`) | Hard early exit — this is the guard against a gate that denies forever |
 | Anything raising an exception | Exit 0. A hook that cannot decide must let the host continue |
-| **Escape** | `rm .loops/active`, or `LOOP_GRAPH_HOOKS_DISABLED=1`. Neither needs the agent's cooperation |
+| **Escape** | `rm .goals/active`, or `GOAL_ENGINEERING_HOOKS_DISABLED=1`. Neither needs the agent's cooperation |
 
 `PostToolUse` is deliberately **not** registered: it fires once per tool call, so its cost
 scales with tool use, and its value duplicates what `SessionStart` already injects and what
@@ -414,7 +424,7 @@ Read [references/document-system.md](references/document-system.md) for which fi
 ## Validate, then hand off
 
 ```bash
-python3 scripts/validate_artifact.py .loops --json
+python3 scripts/validate_artifact.py .goals --json
 ```
 
 It checks mechanical facts only — pairing, required sections, declared phases, known

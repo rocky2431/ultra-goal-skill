@@ -11,9 +11,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = (
     REPO_ROOT
     / "plugins"
-    / "loop-graph-design"
+    / "goal-engineering"
     / "skills"
-    / "loop-graph-design"
+    / "goal-engineering"
     / "scripts"
     / "validate_artifact.py"
 )
