@@ -98,6 +98,14 @@ a declared property of the file rather than something the caller has to remember
 which matters, because the caller here is the author whose argument must not reach the
 reviewer.
 
+The three role skills also carry `user-invocable: false`, which the skills reference
+defines as "Claude Code hides it from the `/` menu and doesn't run it when you type
+`/name`". That is not tidiness. A role invoked by hand forks with no frozen diff to audit
+and no round to attach its file to, so the one aperture a user should see is the goal
+skill itself - everything else is the graph calling its own nodes. Hiding them also drops
+the bare aliases the reference grants every plugin skill (`/review`, `/critic`), which a
+user-scope install would otherwise squat in every project on the machine.
+
 Read the reference before choosing a mechanism. This one was reconstructed from installed
 plugins for several versions while the field that does the job was documented all along.
 

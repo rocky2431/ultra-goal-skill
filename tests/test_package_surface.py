@@ -357,7 +357,7 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn(
             "### The gate is the loop, so a host's goal mode is no longer needed", skill
         )
-        self.assertIn("**`/ultra-goal <slug>`**", skill)
+        self.assertIn("**`/ultra-goal:goal-run <slug>`**", skill)
         self.assertIn("cannot do the one that\nmatters", skill)
         self.assertIn("the only accepted evidence", skill)
         # A negative result must read as absence of evidence, not proof.
@@ -393,7 +393,7 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("Lessons gets at most 3 causal findings", handoff)
         # No longer routed through any host's goal mode: the gate is the loop, so
         # the artifact names this plugin's command and the paste fallback.
-        self.assertIn("`/ultra-goal weekly-dep-upgrade`", handoff)
+        self.assertIn("`/ultra-goal:goal-run weekly-dep-upgrade`", handoff)
         self.assertIn("arm the gate", handoff)
         self.assertIn("Where the plugin is absent, paste the text below", handoff)
         self.assertIn("> .goals/active", handoff)
@@ -1241,7 +1241,7 @@ class RolesByStageTests(unittest.TestCase):
         self.assertIn("**Review runs at proposed completion**", goal)
 
     def test_the_plugin_ships_the_command_that_arms_the_gate(self) -> None:
-        command = (PLUGIN_ROOT / "commands" / "ultra-goal.md").read_text(
+        command = (PLUGIN_ROOT / "commands" / "goal-run.md").read_text(
             encoding="utf-8"
         )
         self.assertIn("> .goals/active", command)
@@ -1254,7 +1254,7 @@ class RolesByStageTests(unittest.TestCase):
                 declared = json.loads(
                     (PLUGIN_ROOT / manifest).read_text(encoding="utf-8")
                 )["commands"]
-                self.assertEqual(["./commands/ultra-goal.md"], declared)
+                self.assertEqual(["./commands/goal-run.md"], declared)
 
 
 class DecisionAuthorContractTests(unittest.TestCase):
@@ -1327,3 +1327,56 @@ class ReferenceFirstTests(unittest.TestCase):
         self.assertEqual(
             {"startup", "resume", "clear", "compact", "fork"}, set(ss.SOURCES)
         )
+
+
+class ApertureTests(unittest.TestCase):
+    """What a user sees in the `/` menu, and what only the run may call.
+
+    The three roles are internal to the graph: a user invoking `/critic` by hand
+    gets a fork with no frozen diff to audit. The reference documents
+    `user-invocable: false` for exactly this - "background knowledge users
+    shouldn't invoke directly" - and hiding them also drops the bare aliases
+    (`/review`, `/critic`), which a user-scope install would otherwise squat in
+    every project on the machine.
+    """
+
+    INTERNAL_ROLES = ("review", "critic", "design-critic")
+
+    def test_every_role_is_hidden_from_the_menu(self) -> None:
+        for role in self.INTERNAL_ROLES:
+            with self.subTest(role=role):
+                front = (PLUGIN_ROOT / "skills" / role / "SKILL.md").read_text(
+                    encoding="utf-8"
+                )
+                self.assertIn("user-invocable: false", front)
+
+    def test_the_owner_facing_skill_stays_invocable(self) -> None:
+        """Hiding this one would leave no way in at all."""
+        self.assertNotIn("user-invocable:", skill_text())
+
+    def test_no_two_components_claim_one_command_name(self) -> None:
+        """A command file and a skill wanting `/ultra-goal:ultra-goal` means one
+        of them silently shadows the other, and which one is not ours to decide.
+        """
+        claimed: dict[str, str] = {}
+        for skill in sorted((PLUGIN_ROOT / "skills").iterdir()):
+            if not (skill / "SKILL.md").is_file():
+                continue
+            text = (skill / "SKILL.md").read_text(encoding="utf-8")
+            match = re.search(r"(?m)^name:\s*(\S+)\s*$", text)
+            name = match.group(1) if match else skill.name
+            claimed.setdefault(name, f"skills/{skill.name}/SKILL.md")
+        for command in sorted((PLUGIN_ROOT / "commands").glob("*.md")):
+            # `name` is ignored in a command file: the basename is the command.
+            self.assertNotIn(
+                command.stem,
+                claimed,
+                f"commands/{command.name} collides with {claimed.get(command.stem)}",
+            )
+            claimed[command.stem] = f"commands/{command.name}"
+
+    def test_the_arming_command_is_brand_prefixed(self) -> None:
+        """The bare alias lands in the user's global menu, so it cannot be a
+        generic word like `run`."""
+        commands = sorted(p.stem for p in (PLUGIN_ROOT / "commands").glob("*.md"))
+        self.assertEqual(["goal-run"], commands)

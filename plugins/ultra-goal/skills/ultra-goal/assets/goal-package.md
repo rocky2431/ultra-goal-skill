@@ -171,7 +171,7 @@ a plan, and a goal with a plan should have been authored as a graph.
 
 ## Handoff
 
-Start it with **`/ultra-goal weekly-dep-upgrade`** where this plugin is installed: it
+Start it with **`/ultra-goal:goal-run weekly-dep-upgrade`** where this plugin is installed: it
 validates the artifact, writes `.goals/active` to arm the gate, and hands over the spec. The
 gate is what keeps the run going - it refuses to let a turn end while the anchor is red - so
 no host's goal mode is needed, and none of them can write the marker anyway.

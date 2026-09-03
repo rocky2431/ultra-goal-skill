@@ -142,7 +142,7 @@ four of this Skill's own mechanisms and cannot do the one that matters: write `.
 the marker without which every hook here is inert.
 
 ```
-/ultra-goal <slug>
+/ultra-goal:goal-run <slug>
 ```
 
 Ships with the plugin. It validates the artifact, arms the gate, and hands over the spec in

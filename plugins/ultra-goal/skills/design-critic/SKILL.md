@@ -3,6 +3,7 @@ name: design-critic
 description: "Attack a goal's specification before the first turn - intent, anchor, boundary, means, acceptance - in a context that never saw the interview. Returns objections for the owner to rule on."
 when_to_use: "Invoked once at the end of the interview, before the artifact is compiled and before any work starts. Takes the goal's slug."
 argument-hint: <slug>
+user-invocable: false
 context: fork
 background: false
 agent: general-purpose

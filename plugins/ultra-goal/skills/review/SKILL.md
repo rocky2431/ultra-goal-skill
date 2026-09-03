@@ -3,6 +3,7 @@ name: review
 description: "Review a goal's frozen change against its boundary and acceptance, in a context that has never seen the author's reasoning. Writes .goals/.work/<slug>-review.md."
 when_to_use: "Invoked by the run at proposed completion, or at an acceptance line a green anchor would not prove. Takes the goal's slug."
 argument-hint: <slug>
+user-invocable: false
 context: fork
 background: false
 agent: general-purpose

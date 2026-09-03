@@ -3,6 +3,7 @@ name: critic
 description: "Audit a reviewer's review of a goal - not the code - sorting every point into agreement, evidence-backed disagreement, or concern-based disagreement. Writes .goals/.work/<slug>-critique.md."
 when_to_use: "Invoked by the run after /ultra-goal:review, on the same frozen change. Takes the goal's slug. This is the third role: without it the review is nobody's job to audit."
 argument-hint: <slug>
+user-invocable: false
 context: fork
 background: false
 agent: general-purpose

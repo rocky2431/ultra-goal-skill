@@ -5,7 +5,7 @@ when_to_use: "When the owner wants work to keep running without them - \"make an
 license: MIT
 metadata:
   author: rocky2431
-  version: "2.3.0"
+  version: "2.4.0"
 ---
 
 # UltraGoal
@@ -381,7 +381,7 @@ a turn end while the anchor is red — and the anchor does the second. Compared 
 goal mode duplicates four of this Skill's own mechanisms, and **cannot do the one that
 matters**: write `.goals/active`, the marker without which every hook here is inert.
 
-So where the plugin is installed, start a run with **`/ultra-goal <slug>`**: it validates
+So where the plugin is installed, start a run with **`/ultra-goal:goal-run <slug>`**: it validates
 the artifact, arms the gate, and hands over the spec in one step. Where it is not, paste
 `## Handoff`'s text as a plain prompt — the objective is portable even when the command is
 not, and a host's own `/goal` still works as a wrapper around that text if the owner
