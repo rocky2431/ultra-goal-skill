@@ -39,9 +39,17 @@ SLUG_MAX = 100
 # fit under it, so the number lives here once and a test pins it against the
 # manifest - two copies with no stated relationship is how a gate acquires a
 # ceiling nobody chose.
-HOOK_TIMEOUT_SECONDS = 200
+#
+# 600 is the hooks reference's documented default for a `command` hook, and it
+# is used here for exactly that reason. The previous 200 was a number I picked,
+# which capped every anchor in this design at under three minutes - so an anchor
+# that legitimately takes five was permanently `unknown`, held there by a limit
+# its owner never chose. That is the failure `## Stop condition` forbids, and it
+# had migrated into the clock. A long anchor still costs only what the artifact
+# declares: `budget:` is the owner's number, and this is only its ceiling.
+HOOK_TIMEOUT_SECONDS = 600
 # Headroom for reading the artifact, the log, and writing the event.
-ANCHOR_BUDGET_CEILING = 170
+ANCHOR_BUDGET_CEILING = 570
 DEFAULT_ANCHOR_BUDGET = 180
 
 

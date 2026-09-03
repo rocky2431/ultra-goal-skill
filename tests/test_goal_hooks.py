@@ -329,7 +329,11 @@ class AnchorGateTests(Harness):
     def test_green_anchor_lets_the_turn_end(self) -> None:
         payload = self.stop(GREEN)
         self.assertIsNone(self.decision(payload))
-        self.assertIn("Goal met", payload["systemMessage"])
+        # Not "goal met": the gate measured one command exiting 0, and whether
+        # that is the goal belongs to `## Stop condition` and `## Acceptance`.
+        self.assertIn("passed on turn", payload["systemMessage"])
+        self.assertIn("`## Stop condition`'s question", payload["systemMessage"])
+        self.assertNotIn("Goal met", payload["systemMessage"])
         self.assertEqual("green", self.events()[-1]["outcome"])
 
     def test_red_anchor_denies_the_stop(self) -> None:
@@ -539,7 +543,11 @@ class FrozenSpecTests(Harness):
         self.stop()
         self.edit("- nothing yet", "- one shard left")
         payload = self.stop()
-        self.assertIn("Goal met", payload["systemMessage"])
+        # Not "goal met": the gate measured one command exiting 0, and whether
+        # that is the goal belongs to `## Stop condition` and `## Acceptance`.
+        self.assertIn("passed on turn", payload["systemMessage"])
+        self.assertIn("`## Stop condition`'s question", payload["systemMessage"])
+        self.assertNotIn("Goal met", payload["systemMessage"])
         self.assertEqual("anchor_checked", self.events()[-1]["event"])
 
     def test_editing_the_intent_ends_the_turn_with_an_alarm(self) -> None:

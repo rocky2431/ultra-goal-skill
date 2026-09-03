@@ -5,7 +5,7 @@ when_to_use: "When the owner wants work to keep running without them - \"make an
 license: MIT
 metadata:
   author: rocky2431
-  version: "2.6.0"
+  version: "2.7.0"
 ---
 
 # UltraGoal
@@ -630,7 +630,7 @@ those boundaries is drawn where it is.
 
 ## The gate: what the hooks do, and what they cost
 
-On a host that exposes the events, three hooks ship with this Skill and register on install.
+On a host that exposes the events, four hooks ship with this Skill and register on install.
 They turn the anchor from a sentence in a prompt into a gate that actually runs.
 
 | Hook | Does | Can it block? |
@@ -638,6 +638,7 @@ They turn the anchor from a sentence in a prompt into a gate that actually runs.
 | `Stop` | Digests the frozen spec, runs the anchor, and re-states the mutable surface. Eight steps, seven of which let the turn end | **Yes, in exactly one case**: the anchor ran and was red |
 | `SessionStart` | Re-injects the frozen spec and the carried state after a restart or resume | No |
 | `PreCompact` | Records the carried state and the fact of the compaction into the event log | No |
+| `PostToolUseFailure` | Records `role_unavailable` when a delegated role's call fails, so a degraded round cannot read as a clean one | No |
 
 **Three outcomes, not two.** An anchor that cannot run — command missing, not executable,
 timed out — is **unknown**, not failed. Folding unknown into either verdict is how a

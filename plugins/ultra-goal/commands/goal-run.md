@@ -34,7 +34,14 @@ Advisories are printed and do not stop it.
 
 ```bash
 printf '%s\n' "$1" > .goals/active
+[ -f .goals/.gitignore ] || printf '%s\n' '.work/' 'active' > .goals/.gitignore
 ```
+
+The second line is not housekeeping. `.goals/.work/` holds the reviewer's and critic's
+reports for one round and `.goals/active` is a switch, and the document system says neither
+belongs in Git - but saying so is not the same as arranging it, and a run that stages with
+`git add -A` commits both. A `.gitignore` **inside** `.goals/` makes the claim true without
+touching a file the owner owns.
 
 Until this file names the artifact, **every hook in this plugin does nothing at all** —
 which is why a project that never asked for a goal pays nothing, and why this step cannot

@@ -567,3 +567,55 @@ reset**,我们这两个 hook 不是 reset",然后隔两节就推荐了一个 con
   不是"宿主真发这个事件"。只有真 `/clear` 一次才能验,这是重启后第一件该做的事。
 - **菜单里真的少了三个角色** —— `user-invocable: false` 的效果目前只有 reference 背书,
   没有眼睛看过。
+
+## 十七、对着 reference 的全量审计(2026-09-04,v2.7.0)
+
+业主要一张全景图,顺带问"还有没有前后矛盾/不符合定义的地方"。逐条比 hooks / skills /
+plugins 三份 reference,加读自己代码,查出十条,九条当场修掉。
+
+**会静默失效的三条(全是"我以为装上了"):**
+
+1. **SessionStart matcher 漏 `fork`** —— 脚本 v2.3.0 按 reference 加了,manifest 没跟。
+   fork 会话永远拿不到注入。**修复只落地一半,而且没有测试横跨那两个必须一致的文件。**
+   现在有了(`test_session_start_registers_every_source_the_script_accepts`)。
+2. **`additionalContextLimit` 不是文档字段** —— 真正生效的是脚本里的 `CONTEXT_LIMIT`。
+   已删,并加了"hook 条目里不许出现文档外字段"的测试。
+3. **`commandWindows` 不在 hooks reference 里,而 Windows 上没有 `python3`** ——
+   若宿主不认那个字段,四个 hook 在 Windows 上全静默不跑。改成
+   `python3 ... || python ...`:后半只在前者"命令找不到"时触发,因为这些 hook 真跑起来
+   一律退出 0。**CI 三平台绿证明的是脚本能跑,不是 hook 注册能跑 —— 那条路径 CI 从没走过。**
+
+**门说了超出证据的话,两条:**
+
+4. **绿时说 "Goal met."** —— 绿只证明一条命令退出 0。改成报"anchor 第 N 轮通过"外加还开着
+   的 Acceptance 行数,并指明"是否算达成是 `## Stop condition` 的问题,不是这个门的"。
+   **门是唯一有硬权力的部件,它越界的代价最大。**顺带查出 `of {ceiling}` 在
+   `ceiling: none` 时打印 "of None" —— 把一个不存在的限额报给运行。
+5. **deny 文案要求每轮红都跑独立验证**,模板写的是只在提议完成时跑。运行听门的,于是每红
+   一轮多两个 fork。已对齐到模板。
+
+**文档承诺了没人实现的事,两条:**
+
+6. **`.goals/.work/` 三处标 gitignored,没有任何东西写那条规则**,测试只断言文档里出现过
+   这个词。改法:上膛时写 `.goals/.gitignore`(内容 `.work/` 和 `active`)——放在 `.goals/`
+   *里面*,不碰业主自己的文件。
+7. SKILL.md 门表还写 "three hooks ship"。改成四并补 `PostToolUseFailure` 行。
+
+**成本两条:**
+
+8. **两条早退路径不写事件** —— 多行 anchor / 无 anchor 时 turn 恒为 1、`--audit` 无行可对。
+   现在写 `anchor_unavailable`,**刻意不算 `anchor_checked`**:什么都没检查,就不该推进轮次
+   和 ceiling。
+9. **Stop timeout 200s 是我挑的数字**,不是宿主限制(reference:command 类默认 600)。于是
+   `ANCHOR_BUDGET_CEILING` 只能 170,一个真要跑五分钟的 anchor 永远是 unknown ——
+   **被一个业主没选过的限额钉在那儿,正是 `## Stop condition` 那条规则禁止的事,只不过它
+   迁移到了时钟上。**改成 600 / 570。
+
+### 刻意不做:每次 Stop 都跑 anchor
+
+即使什么都没改的一轮(业主中途问一句话)也会跑完整个 anchor。这是真成本,但**这台机器上
+一次真实运行都还没跑过** —— 没有复现过的失败就加机制,正是这个项目一路在抓的毛病。
+"工作树自上次 anchor_checked 以来有没有变"是外部可验证的事实,真要加也加得起,但**要等第
+一次真跑给出量级**:业主的 anchor 多长、他多久插一句话,决定这条值不值 15 行代码。
+
+判据同上一节:**问任何一个机制 —— 有没有一次真实失败要它来防?**

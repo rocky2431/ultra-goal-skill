@@ -14,6 +14,11 @@ observations that arrive between them.
 | `.goals/active` | which goal is running | owner or agent | on start and stop | one line | no |
 | git history | the evolution | git | one commit per turn | immutable | — |
 
+The two "no" rows are arranged, not just asserted: arming writes `.goals/.gitignore`
+holding `.work/` and `active`. For three versions this table called them gitignored while
+nothing wrote the rule, so a run that staged with `git add -A` committed the reviewer's
+intermediates — a documented property that only the document believed.
+
 ```
 decisions.md ──defines──► goal.md spec sections   [FROZEN during a run]
                                    │

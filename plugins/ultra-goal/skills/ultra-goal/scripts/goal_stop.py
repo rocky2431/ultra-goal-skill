@@ -306,13 +306,28 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
     anchor_section = found.get("anchor") or ""
     anchor, ambiguous = _first_command(anchor_section)
     budget, budget_declared = _budget(anchor_section)
-    if ambiguous is not None:
-        return _allow(f"{goal.slug}: {ambiguous}.")
-    if not anchor:
-        return _allow(
-            f"{goal.slug}: no runnable anchor in `## Anchor`, so nothing can be "
-            "gated. Fix the artifact or the gate is decorative."
+    if ambiguous is not None or not anchor:
+        # Recorded, not just announced. These two turns used to leave the log
+        # empty, so an artifact the gate could never enforce produced a run that
+        # looked, in `--audit` and in the event log, exactly like a run that had
+        # not started yet. Deliberately *not* an `anchor_checked` event: nothing
+        # was checked, so it must not advance the turn count or the ceiling.
+        reason = ambiguous or (
+            "no runnable anchor in `## Anchor`, so nothing can be gated. Fix the "
+            "artifact or the gate is decorative"
         )
+        append_event(
+            goal,
+            {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "event": "anchor_unavailable",
+                "turn": len([e for e in read_events(goal)
+                             if e.get("event") == "anchor_checked"]) + 1,
+                "reason": reason,
+                "spec_digest": frozen_digest(spec),
+            },
+        )
+        return _allow(f"{goal.slug}: {reason}.")
 
     events = read_events(goal)
     checks = [e for e in events if e.get("event") == "anchor_checked"]
@@ -455,8 +470,25 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
         )
 
     if outcome == "green":
+        # "Goal met" was this gate claiming something it cannot measure. A green
+        # anchor is one command exiting 0; whether the goal is met is
+        # `## Stop condition`'s question and `## Acceptance`'s evidence. Saying
+        # otherwise put the Skill's own doctrine - a green anchor is not a pass -
+        # in the mouth of the one component with hard power.
+        still_open = [
+            line for line in (found.get("acceptance") or "").splitlines()
+            if line.strip().startswith("- [ ]")
+        ]
+        left = (
+            f" {len(still_open)} `## Acceptance` line(s) are still open, so this is not "
+            "the goal yet: report the verdict and what is left."
+            if still_open else
+            " No `## Acceptance` line is still open. Whether that means the run is done "
+            "is `## Stop condition`'s question, not this gate's - check it before "
+            "claiming completion."
+        )
         return _allow(
-            f"{goal.slug}: anchor `{anchor}` passed on turn {turn}. Goal met.",
+            f"{goal.slug}: anchor `{anchor}` passed on turn {turn}.{left}",
             _mutable_surface(found),
         )
 
@@ -471,11 +503,16 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
             _mutable_surface(found),
         )
 
+    # `of {ceiling}` printed "of None" for a run the owner declared unbounded.
+    # It says nothing at all there instead: a run without a ceiling should never
+    # read the word, and inventing a number is what `_ceiling` exists to prevent.
+    of_ceiling = f" of {ceiling}" if ceiling is not None else ""
     return _deny(
         f"{goal.slug}: anchor `{anchor}` is still failing (exit {exit_code}) on turn "
-        f"{turn} of {ceiling}, so the goal is not met. Keep working. Before the next "
+        f"{turn}{of_ceiling}, so the goal is not met. Keep working. Before the next "
         "attempt, write one lesson into `### Lessons` naming the cause and the next "
-        "action - and run the independent verification named in `## Verification`.",
+        "action. The anchor is this turn's check; the reviewer and critic in "
+        "`## Verification` run when you propose completion, not on every red turn.",
         _mutable_surface(found),
     )
 

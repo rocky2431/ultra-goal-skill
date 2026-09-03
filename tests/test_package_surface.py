@@ -1458,3 +1458,106 @@ class ContextResetTests(unittest.TestCase):
             "**large**",
             doc,
         )
+
+class AuditFixTests(unittest.TestCase):
+    """The findings from the 2026-09-04 audit against the vendor references.
+
+    Each test names the way the thing failed, because a fixed defect with no
+    record of its shape is one that comes back under a different name.
+    """
+
+    def _hooks(self) -> dict:
+        return json.loads(
+            (PLUGIN_ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8")
+        )["hooks"]
+
+    def test_session_start_registers_every_source_the_script_accepts(self) -> None:
+        """The script gained `fork`; the manifest's matcher did not, so a forked
+        session got no injection at all - a half-landed fix with no test across
+        the two files that had to agree."""
+        sys.path.insert(0, str(SKILL_ROOT / "scripts"))
+        import goal_session_start as ss
+
+        matcher = self._hooks()["SessionStart"][0]["matcher"]
+        for source in ss.SOURCES:
+            with self.subTest(source=source):
+                self.assertIn(source, matcher)
+
+    def test_no_undocumented_hook_fields(self) -> None:
+        """`additionalContextLimit` is not in the hooks reference. The script's
+        CONTEXT_LIMIT is what actually bounds the injection, so the manifest
+        field was either ignored or grounds to reject the whole entry."""
+        documented = {
+            "type", "command", "commandWindows", "timeout", "statusMessage",
+            "shell", "url", "headers", "prompt", "agent", "once",
+        }
+        for event, entries in self._hooks().items():
+            for entry in entries:
+                for hook in entry["hooks"]:
+                    with self.subTest(event=event):
+                        self.assertEqual(set(), set(hook) - documented)
+                        self.assertNotIn("additionalContextLimit", hook)
+
+    def test_every_hook_runs_without_python3_on_path(self) -> None:
+        """`commandWindows` is not in the hooks reference, so it cannot be the
+        only Windows path - and `python3` is usually absent there. `|| python`
+        fires only when the first name is not found, because these hooks exit 0
+        whenever they actually run."""
+        for event, entries in self._hooks().items():
+            for entry in entries:
+                for hook in entry["hooks"]:
+                    with self.subTest(event=event):
+                        self.assertIn("|| python ", hook["command"])
+
+    def test_the_stop_clock_is_the_documented_default(self) -> None:
+        """200 was a number I picked, and it capped every anchor in this design
+        under three minutes: a five-minute anchor was permanently unknown, held
+        there by a limit its owner never chose."""
+        sys.path.insert(0, str(SKILL_ROOT / "scripts"))
+        import goal_hooks as gh
+
+        self.assertEqual(600, gh.HOOK_TIMEOUT_SECONDS)
+        self.assertEqual(600, self._hooks()["Stop"][0]["hooks"][0]["timeout"])
+        self.assertLess(gh.ANCHOR_BUDGET_CEILING, gh.HOOK_TIMEOUT_SECONDS)
+
+    def test_the_gate_does_not_claim_the_goal_is_met(self) -> None:
+        """A green anchor is one command exiting 0. Whether that is the goal
+        belongs to `## Stop condition` - and the gate is the one component with
+        hard power, so it is the last place that should overreach."""
+        gate = (SKILL_ROOT / "scripts" / "goal_stop.py").read_text(encoding="utf-8")
+        # The emitted sentence, not the comment that records why it went: the
+        # comment has to keep the old wording to be readable.
+        self.assertNotIn("Goal met.", gate)
+        self.assertIn("`## Stop condition`'s question, not this gate's", gate)
+
+    def test_review_is_not_demanded_on_every_red_turn(self) -> None:
+        """The deny text and the template disagreed, and the run obeys the deny
+        text: two forks per red turn against a template that says the anchor is
+        the intermediate check."""
+        gate = (SKILL_ROOT / "scripts" / "goal_stop.py").read_text(encoding="utf-8")
+        self.assertIn("run when you propose completion, not on every red turn", gate)
+        self.assertIn(
+            "**Review runs at proposed completion**",
+            (SKILL_ROOT / "assets" / "goal-package.md").read_text(encoding="utf-8"),
+        )
+
+    def test_an_unenforceable_anchor_is_recorded_not_only_announced(self) -> None:
+        """These two turns left the log empty, so an artifact the gate could
+        never enforce looked in `--audit` exactly like a run not yet started."""
+        gate = (SKILL_ROOT / "scripts" / "goal_stop.py").read_text(encoding="utf-8")
+        self.assertIn('"event": "anchor_unavailable"', gate)
+        self.assertIn("must not advance the turn count or the ceiling", gate)
+
+    def test_arming_makes_the_gitignore_claim_true(self) -> None:
+        """Three documents called `.goals/.work/` gitignored and nothing wrote
+        the rule, so `git add -A` committed the reviewer's intermediates."""
+        command = (PLUGIN_ROOT / "commands" / "goal-run.md").read_text(encoding="utf-8")
+        self.assertIn(".goals/.gitignore", command)
+        self.assertIn("'.work/' 'active'", command)
+
+    def test_the_gate_table_counts_the_hooks_that_ship(self) -> None:
+        skill = skill_text()
+        shipped = len(self._hooks())
+        self.assertEqual(4, shipped)
+        self.assertIn("four hooks ship with this Skill", skill)
+        self.assertIn("| `PostToolUseFailure` |", skill)
