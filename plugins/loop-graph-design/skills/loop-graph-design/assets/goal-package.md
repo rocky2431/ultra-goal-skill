@@ -41,8 +41,26 @@ anchor means rejected, not "probably fine".
 `/loop 1w` — advisories are published continuously but this codebase absorbs them weekly.
 Running it daily costs six extra runs to find the same finding.
 
+## Carry-over
+
+Read this before acting; rewrite it before finishing. Delete anything no longer true - Git
+keeps the history, this section keeps only what is still the case.
+
+- `@types/node` 22 breaks tsconfig under `moduleResolution: bundler` - do not retry
+- `pnpm build` fails on CI without a committed lockfile
+- remaining after iteration 6: `packages/api`
+
 ## Handoff
 
-Run: `/goal Stop when pnpm audit --audit-level=high reports 0 findings, or after 6 turns.`
-First iteration should produce: the audit output, the version bumps it implies, and the
-anchor command's result.
+Run:
+
+```
+/loop 1w Read the Carry-over section of .claude/workflows/weekly-dep-upgrade.goal.md first.
+Then upgrade dependencies within the stated boundary until `pnpm audit --audit-level=high`
+reports 0 findings, or 6 turns pass. Run the anchor command before claiming anything.
+Rewrite the Carry-over section before you finish, deleting what is no longer true.
+Commit once with a one-line summary of this iteration.
+```
+
+First iteration should produce: the audit output, the version bumps it implies, the anchor
+command's result, and a rewritten Carry-over section.

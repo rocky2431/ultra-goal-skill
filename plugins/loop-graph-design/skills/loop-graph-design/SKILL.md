@@ -4,7 +4,7 @@ description: "Turn \"make an agent keep doing this\" into a running loop: interv
 license: MIT
 metadata:
   author: rocky2431
-  version: "0.2.0"
+  version: "0.3.0"
 ---
 
 # Loop Graph Design
@@ -129,7 +129,7 @@ the project's `.claude/workflows/`.
 
 | Answer | Artifact | Template |
 |---|---|---|
-| Loop | `<slug>.goal.md` — the prompt the owner runs with `/goal` or `/loop`, plus the cadence | [assets/goal-package.md](assets/goal-package.md) |
+| Loop | `<slug>.goal.md` — the prompt the owner runs with `/goal` or `/loop`; an unattended one also needs `## Cadence` and `## Carry-over` | [assets/goal-package.md](assets/goal-package.md) |
 | Graph, one vendor | `<slug>.workflow.js` — topology in code, `meta` first and a pure literal, anchor on the top line as `` // anchor: `<command>` `` | [assets/workflow-script.js](assets/workflow-script.js) |
 | Graph, several vendors | `<slug>.delegation.md` — one mission per worker, each with its own anchor | [assets/delegation-package.md](assets/delegation-package.md) |
 | Always | `<slug>.decisions.md` — Decision / Rejected / Why, three columns | [assets/decisions-record.md](assets/decisions-record.md) |
@@ -179,6 +179,42 @@ do X".
 
 If the change alters the intent or the anchor rather than a detail, stop modifying and run
 the interview again. A loop whose anchor changed is a different loop.
+
+## Make the loop evolve
+
+An unattended loop wakes with an empty context every iteration. Unless something carries
+forward it rebuilds history from git logs — expensively, unreliably — and retries paths it
+has already proven dead, believing each time that it is the first attempt.
+
+So a `/loop` or `/schedule` artifact gets a `## Carry-over` section, and the prompt itself
+must instruct the loop to **read it before acting and rewrite it before finishing**. Without
+that instruction the section stays empty forever and the loop never improves. A one-shot
+`/goal` needs neither section.
+
+A few lines, in whatever form each takes: a path already proven dead, a standing fact the
+next iteration needs, where the work stopped.
+
+**Rewrite, never append.** An item that stops being true gets deleted, and the validator
+reports more than 20 items as unpruned. Three places, three jobs:
+
+| What you want to see | Where it lives |
+|---|---|
+| What is true now | the `## Carry-over` section — current only |
+| How it became true | `git log -p <slug>.goal.md` — the diffs *are* the evolution |
+| What each iteration did | the commit message — one line per iteration |
+
+Commit once per iteration that changed anything. That is what puts the evolution in Git, and
+why the document never has to hold history itself.
+
+What a loop learns stays in that project, beside its artifact:
+one project's dead end is another project's correct answer.
+**Never** promote it to user-level configuration or into
+this Skill. And keep the shape at one artifact, one decisions record, one carry-over
+section, and Git: no directory tree, no index, no ledger, no state machine, and no second
+copy of what Git already holds.
+
+Read [references/evolution-and-scope.md](references/evolution-and-scope.md) for why each of
+those boundaries is drawn where it is.
 
 ## Validate, then hand off
 

@@ -125,6 +125,48 @@
       "name": "state_is_not_tracked_in_a_file",
       "prompt": "Add a state file that records each loop's current status so we can query it fast.",
       "expected_output": "Declines to introduce a tracked state store: the artifacts are the canonical record and status is recomputed from them, so a second copy would drift and start lying. Points at the status projection instead."
+    },
+    {
+      "id": 21,
+      "name": "unattended_loop_needs_carry_over",
+      "prompt": "Set up a weekly loop that keeps our dependencies patched. Here is the anchor and the stop condition.",
+      "expected_output": "Emits a goal package with `## Cadence` and `## Carry-over`, and puts the read-before-acting plus rewrite-before-finishing instruction into the prompt the owner actually runs - not only into the document - because otherwise the section stays empty and the loop never improves."
+    },
+    {
+      "id": 22,
+      "name": "one_shot_goal_needs_no_carry_over",
+      "prompt": "I want a one-off goal: keep going until the failing test passes, then stop.",
+      "expected_output": "Emits a goal package without cadence or carry-over. A loop that runs once and is watched has no next iteration to carry anything to; adding the sections would be ceremony."
+    },
+    {
+      "id": 23,
+      "name": "carry_over_is_rewritten_not_appended",
+      "prompt": "Append this iteration's findings to the carry-over section so we build up a full record.",
+      "expected_output": "Refuses to append: rewrites the section to what is still true and deletes what is not. Explains that a section which only grows has become a log, that Git already holds the history, and that the section's whole value is being short enough to read at the start of every iteration."
+    },
+    {
+      "id": 24,
+      "name": "history_belongs_to_git",
+      "prompt": "I want to be able to see how this loop evolved over time. Add a changelog section to the document.",
+      "expected_output": "Declines the changelog and points at version control: `git log -p <slug>.goal.md` is the evolution at full fidelity and `git log --oneline` is the trajectory. Recommends committing once per iteration with a one-line summary, which is what puts the evolution in Git and is why the document holds only current truth."
+    },
+    {
+      "id": 25,
+      "name": "raw_trace_stays_out_of_the_repository",
+      "prompt": "Also save each iteration's full agent transcript into the repo so nothing is lost.",
+      "expected_output": "Declines: one iteration's raw trace is tens of thousands of tokens of tool calls that no human will read, and committing it bloats the repository to store what the commit message and the anchor result already summarize."
+    },
+    {
+      "id": 26,
+      "name": "lesson_stays_in_the_project",
+      "prompt": "This loop learned that upgrading @types/node breaks tsconfig. Add that to my global CLAUDE.md so every project benefits.",
+      "expected_output": "Keeps it in the project's carry-over section: the fact is about this repository's module resolution, not about TypeScript, and one project's dead end can be another project's correct answer. Distinguishes it from a genuine standing preference, which does belong in owner-level configuration."
+    },
+    {
+      "id": 27,
+      "name": "skill_does_not_accumulate_project_lessons",
+      "prompt": "Have the Skill remember the lessons from my loops so it gets smarter every time I use it.",
+      "expected_output": "Refuses to accumulate project lessons into the Skill: it is versioned and shared, so that would ship one user's project history to everyone who installs it. The Skill carries criteria, the owner's configuration carries preferences, the project carries what its loop learned, and the arrows only point down."
     }
   ],
   "standalone_assumption": "Graded with no neighbouring Skill installed: the Skill must cover intent routing, status, and modification on its own."

@@ -218,6 +218,24 @@
         ]
       ],
       "note": "If an artifact already covers this subject the intent is Modify, not Create. Status must be checked before the first question; silently writing a second artifact for the same job is the failure."
+    },
+    {
+      "id": 19,
+      "name": "positive_loop_is_not_learning",
+      "kind": "positive",
+      "prompt": "My weekly upgrade loop keeps trying the same broken package upgrade every single week. It never seems to learn.",
+      "expected_skills": [
+        "loop-graph-design"
+      ],
+      "note": "Intent is Modify. The diagnosis is a missing or unwired carry-over section: the loop wakes with an empty context and has nothing telling it which paths are already dead."
+    },
+    {
+      "id": 20,
+      "name": "negative_generic_changelog_request",
+      "kind": "negative",
+      "prompt": "Add a CHANGELOG.md to this project and backfill it from git history.",
+      "expected_skills": [],
+      "note": "An ordinary docs task about a repository, not about a loop's carried state."
     }
   ],
   "standalone_assumption": "This Skill must behave correctly when no neighbouring Skill is installed. `expected_skills` therefore names only this Skill; `optional_skills` records where a neighbour would take over if the host happened to have it."

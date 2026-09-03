@@ -70,7 +70,31 @@ anchor and reports its exit code — the one question that matters about a runni
 it runs commands the artifact names, in a shell, so it asks first and refuses to run
 without `--status`.
 
-5. **Modifies by editing the decision, not appending to a log.** A changed decision replaces
+5. **Makes the loop evolve.** An unattended loop wakes with an empty context every
+   iteration. Unless something carries forward it rebuilds history from git logs and retries
+   paths it has already proven dead, believing each time it is the first attempt. So a
+   `/loop` or `/schedule` artifact gets a `## Carry-over` section, and **the prompt itself**
+   is wired to read it before acting and rewrite it before finishing — a section nothing
+   writes to stays empty forever.
+
+   Three places, three jobs, no duplication:
+
+   | What you want to see | Where it lives |
+   |---|---|
+   | What is true now | the `## Carry-over` section — current only, pruned |
+   | How it became true | `git log -p <slug>.goal.md` — the diffs *are* the evolution |
+   | What each iteration did | the commit message — one line per iteration |
+
+   Because the history is in Git, the document never has to hold it. A carry-over section
+   that only grows has become a log; the validator reports more than 20 items as unpruned.
+
+6. **Keeps lessons in the project.** What a loop learns is true of one repository — one
+   project's dead end is another project's correct answer. It never gets promoted to
+   user-level configuration or into this Skill, which is versioned and shared. The Skill
+   carries the criteria, the owner's configuration carries their standing preferences, the
+   project carries what its loop learned, and the arrows only point down.
+
+7. **Modifies by editing the decision, not appending to a log.** A changed decision replaces
    the old one in the Decision column and the old one moves to Rejected with why it changed.
    A request that contradicts something already in the Rejected column gets surfaced rather
    than quietly reversed. A change to the anchor itself reopens the interview — a loop whose
@@ -110,6 +134,13 @@ Its silence is not evidence that the design is right.
 
 ## Scope
 
+**It stops at a document and Git.** One artifact, one decisions record, one carry-over
+section, and version control. No directory tree, no derived index, no progress ledger, no
+state machine, and no second copy of anything Git already holds. The shape resembles a
+spec-driven development harness and that resemblance is a constraint, not an invitation:
+harnesses that grew those parts have had to delete them again. Adding one requires naming a
+question that neither the artifact nor `git log` can answer.
+
 This Skill produces **executable artifacts** and is self-contained: it assumes no
 neighbouring Skill is installed, and its hand-off spells out the command in full rather than
 leaving another Skill to fill in the gap.
@@ -128,16 +159,27 @@ The guidance traces to primary sources, listed with URLs and a currency date in
 Anthropic's loop and multi-agent engineering posts are treated as doctrine; the July 2026
 "graph engineering" essays are treated as argument.
 
+The carry-over design rests on two papers, with what was taken and what was deliberately
+left behind spelled out in
+[references/evolution-and-scope.md](plugins/loop-graph-design/skills/loop-graph-design/references/evolution-and-scope.md):
+**SKILL.state** ([arXiv 2608.26263](https://arxiv.org/abs/2608.26263)) for explicit carried
+state over replayed history — including the finding that one five-field schema served 100
+task instances — and **WikiSkill** ([arXiv 2608.27454](https://arxiv.org/html/2608.27454))
+for persistent knowledge being the critical variable in skill evolution (48.7% → 63.7% in
+their ablation). WikiSkill's machinery — inference agent, wiki maintainer, skill proposer,
+gating against a validation set — is **not** adopted: it is a training framework, and a loop
+designed with its owner in the room has no validation set.
+
 ## Tests
 
 ```bash
 python3 -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-53 tests: the validator's rules, the status projection, the package surface, version
+61 tests: the validator's rules, the status projection, the package surface, version
 consistency across three files, every relative link in `SKILL.md` resolving, and the shipped
-templates passing the shipped validator. Two of them are safety tests — that an anchor is
-never executed unasked, and that the validator never edits an artifact.
+templates passing the shipped validator. Two are safety tests — that an anchor is never
+executed unasked, and that the validator never edits an artifact.
 
 ## License
 

@@ -17,6 +17,10 @@ sys.path.insert(0, str(SKILL_ROOT / "scripts"))
 import validate_artifact as va  # noqa: E402
 
 
+# Contract assertions below match literal sentences in SKILL.md and the templates.
+# They are deliberately newline-sensitive: a load-bearing sentence that wraps mid-phrase
+# is harder to read and harder to grep, so the fix for a failure here is to reflow the
+# document, not to loosen the assertion.
 def skill_text() -> str:
     return (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
 
@@ -97,9 +101,20 @@ class SkillContractTests(unittest.TestCase):
             "That record is also the interview's progress",
             "Edit the affected row",
             "A loop whose anchor changed is a different loop",
+            "## Make the loop evolve",
+            "read it before acting and rewrite it before finishing",
+            "**Rewrite, never append.**",
+            "the diffs *are* the evolution",
+            "one project's dead end is another project's correct answer",
+            "no second",
         ):
             self.assertIn(required, skill, required)
-        self.assertLess(len(skill.splitlines()), 220)
+        # SKILL.md is loaded on every activation, so its length is a real cost.
+        # The ceiling is 250 because this Skill covers four intents (create, modify,
+        # inspect, not-a-loop), three artifact shapes, and the evolve stage. If a
+        # change pushes past it, move rationale into references/ - do not raise it
+        # again.
+        self.assertLess(len(skill.splitlines()), 250)
 
     def test_skill_does_not_mechanize_topology(self) -> None:
         skill = skill_text()
@@ -115,6 +130,33 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("recomputed on every call", skill)
         self.assertIn("Ask the owner first", skill)
 
+    def test_skill_keeps_lessons_in_the_project_and_the_shape_small(self) -> None:
+        skill = skill_text()
+        self.assertIn("**Never** promote it to user-level configuration", skill)
+        self.assertIn("no directory tree, no index, no ledger, no state machine", skill)
+        reference = (SKILL_ROOT / "references" / "evolution-and-scope.md").read_text(
+            encoding="utf-8"
+        )
+        # The two papers this section rests on, cited so the claim is checkable.
+        self.assertIn("arXiv 2608.26263", reference)
+        self.assertIn("arXiv 2608.27454", reference)
+        self.assertIn("tested_hypotheses", reference)
+        self.assertIn("48.7% to 63.7%", reference)
+        # And what we deliberately did not take from them.
+        self.assertIn("deliberately do **not** take", reference)
+
+    def test_unattended_goal_template_wires_the_carry_over(self) -> None:
+        goal = (SKILL_ROOT / "assets" / "goal-package.md").read_text(encoding="utf-8")
+        self.assertIn("## Cadence", goal)
+        self.assertIn("## Carry-over", goal)
+        self.assertIn("Read this before acting; rewrite it before finishing", goal)
+        # The prompt the owner actually runs must carry the same instruction, or the
+        # section never gets written.
+        handoff = goal.split("## Handoff", 1)[1]
+        self.assertIn("Read the Carry-over section", handoff)
+        self.assertIn("Rewrite the Carry-over section", handoff)
+        self.assertIn("Commit once", handoff)
+
     def test_behaviour_evals_cover_the_whole_lifecycle(self) -> None:
         data = json.loads(
             (SKILL_ROOT / "evals" / "evals.json").read_text(encoding="utf-8")
@@ -128,6 +170,13 @@ class SkillContractTests(unittest.TestCase):
             "running_anchors_needs_consent",
             "changed_anchor_reopens_the_interview",
             "state_is_not_tracked_in_a_file",
+            "unattended_loop_needs_carry_over",
+            "one_shot_goal_needs_no_carry_over",
+            "carry_over_is_rewritten_not_appended",
+            "history_belongs_to_git",
+            "raw_trace_stays_out_of_the_repository",
+            "lesson_stays_in_the_project",
+            "skill_does_not_accumulate_project_lessons",
         ):
             self.assertIn(required, names)
 

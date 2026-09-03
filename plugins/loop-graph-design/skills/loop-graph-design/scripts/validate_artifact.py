@@ -35,6 +35,8 @@ GOAL_SECTIONS = (
     ("anchor", "ANCHOR_MISSING", "the loop has no anchor"),
     ("verification", "VERIFIER_NOT_DECLARED", "no independent verifier is declared"),
 )
+# `## Cadence` and `## Carry-over` are conditional: an unattended loop needs both,
+# a one-shot goal needs neither.
 WORKER_FIELDS = ("target", "mission", "anchor")
 COMMAND = re.compile(r"`[^`\n]+`|```")
 DIGIT = re.compile(r"\d")
@@ -42,6 +44,9 @@ FENCE = re.compile(r"```[a-z]*\n(.+?)\n```", re.S)
 INLINE = re.compile(r"`([^`\n]+)`")
 ANCHOR_COMMENT = re.compile(r"(?m)^\s*//\s*anchor:\s*(.+?)\s*$")
 ANCHOR_TIMEOUT_SECONDS = 300
+UNATTENDED = re.compile(r"/loop\b|/schedule\b")
+BULLET = re.compile(r"(?m)^\s*[-*]\s+\S")
+CARRYOVER_MAX_ITEMS = 20
 
 
 @dataclass(frozen=True)
@@ -291,6 +296,43 @@ def check_goal(path: Path, text: str, out: list[Finding]) -> None:
             )
         )
 
+    # An unattended loop wakes with an empty context every iteration. Without a
+    # carry-over section it rebuilds history from scratch and retries paths it has
+    # already proven dead.
+    cadence = found.get("cadence", "")
+    carry_over = found.get("carry-over")
+    if cadence and UNATTENDED.search(cadence):
+        if carry_over is None:
+            out.append(
+                Finding(
+                    str(path),
+                    "CARRYOVER_MISSING",
+                    "an unattended loop needs a `## Carry-over` section: what the next "
+                    "iteration must read before acting",
+                )
+            )
+        elif not (
+            "read" in carry_over.lower()
+            and ("rewrite" in carry_over.lower() or "update" in carry_over.lower())
+        ):
+            out.append(
+                Finding(
+                    str(path),
+                    "CARRYOVER_NOT_WIRED",
+                    "carry-over must tell the loop to read it before acting and rewrite "
+                    "it before finishing, or it stays empty forever",
+                )
+            )
+    if carry_over and len(BULLET.findall(carry_over)) > CARRYOVER_MAX_ITEMS:
+        out.append(
+            Finding(
+                str(path),
+                "CARRYOVER_UNPRUNED",
+                f"more than {CARRYOVER_MAX_ITEMS} carry-over items: prune what is no "
+                "longer true instead of appending - Git holds the history",
+            )
+        )
+
 
 def check_delegation(path: Path, text: str, out: list[Finding]) -> None:
     workers = [
@@ -446,10 +488,17 @@ def describe(path: Path, kind: str) -> dict[str, object]:
         "decisions": decision_count(path.with_name(f"{slug_of(path)}.decisions.md")),
         "anchor_result": None,
     }
+    item["cadence"] = None
+    item["carry_over"] = None
     if kind == "goal":
         found = sections(text)
         item["anchor"] = first_command(found.get("anchor", ""))
         item["stop_condition"] = first_sentence(found.get("stop condition", ""))
+        cadence = found.get("cadence", "")
+        item["cadence"] = first_command(cadence) or first_sentence(cadence)
+        carry_over = found.get("carry-over")
+        if carry_over is not None:
+            item["carry_over"] = len(BULLET.findall(carry_over))
     elif kind == "workflow":
         comment = ANCHOR_COMMENT.search(text)
         if comment is not None:
@@ -543,6 +592,10 @@ def print_status(state: dict[str, object]) -> None:
             print(f"  anchor: {item['anchor']}")
         if item["stop_condition"]:
             print(f"  stop:   {item['stop_condition']}")
+        if item["cadence"]:
+            print(f"  cadence: {item['cadence']}")
+        if item["carry_over"] is not None:
+            print(f"  carry-over: {item['carry_over']} item(s)")
         if item["phases"]:
             print(f"  phases: {', '.join(item['phases'])}")
         if item["workers"]:

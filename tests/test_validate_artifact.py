@@ -74,6 +74,17 @@ pnpm test -- --run
 ## Verification
 
 Delegate review to a fresh agent that never saw the upgrade reasoning.
+
+## Cadence
+
+`/loop 1w`
+
+## Carry-over
+
+Read this before acting; rewrite it before finishing. Drop anything no longer true.
+
+- `@types/node` 22 breaks tsconfig under `moduleResolution: bundler` - do not retry
+- remaining after iteration 6: `packages/api`
 """
 
 GOOD_DELEGATION = """# Delegation: cross-vendor-audit
@@ -433,3 +444,58 @@ class StatusTests(Harness):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("loop", result.stdout)
         self.assertIn("c", result.stdout)
+
+
+class CarryOverTests(Harness):
+    def test_unattended_loop_needs_a_carry_over_section(self) -> None:
+        self.write("co.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "co.goal.md", GOOD_GOAL.replace("## Carry-over", "## Random notes")
+        )
+        self.assertIn("CARRYOVER_MISSING", self.codes(path))
+
+    def test_one_shot_goal_needs_no_carry_over(self) -> None:
+        self.write("os.decisions.md", GOOD_DECISIONS)
+        without_cadence = GOOD_GOAL.split("## Cadence")[0]
+        path = self.write("os.goal.md", without_cadence)
+        report = va.validate_paths([str(path)])
+        self.assertTrue(report.ok, [f.as_dict() for f in report.findings])
+
+    def test_scheduled_loop_also_needs_carry_over(self) -> None:
+        self.write("sc.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "sc.goal.md",
+            GOOD_GOAL.replace("`/loop 1w`", "`/schedule` every Monday").replace(
+                "## Carry-over", "## Random notes"
+            ),
+        )
+        self.assertIn("CARRYOVER_MISSING", self.codes(path))
+
+    def test_carry_over_must_say_it_is_read_and_rewritten(self) -> None:
+        self.write("cr.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "cr.goal.md",
+            GOOD_GOAL.replace(
+                "Read this before acting; rewrite it before finishing. "
+                "Drop anything no longer true.\n",
+                "",
+            ),
+        )
+        self.assertIn("CARRYOVER_NOT_WIRED", self.codes(path))
+
+    def test_an_unpruned_carry_over_is_reported(self) -> None:
+        self.write("up.decisions.md", GOOD_DECISIONS)
+        bloat = "\n".join(f"- lesson number {n}" for n in range(25))
+        path = self.write(
+            "up.goal.md",
+            GOOD_GOAL.replace("- remaining after iteration 6: `packages/api`", bloat),
+        )
+        self.assertIn("CARRYOVER_UNPRUNED", self.codes(path))
+
+    def test_status_reports_the_carry_over_size(self) -> None:
+        self.write("weekly-dep-upgrade.decisions.md", GOOD_DECISIONS)
+        self.write("weekly-dep-upgrade.goal.md", GOOD_GOAL)
+        state = va.status_paths([str(self.dir)])
+        item = state["artifacts"][0]
+        self.assertEqual(2, item["carry_over"])
+        self.assertEqual("/loop 1w", item["cadence"])
