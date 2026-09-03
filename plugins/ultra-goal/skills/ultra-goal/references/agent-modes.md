@@ -131,15 +131,24 @@ process dies. The run should degrade, not break.
 So every role in `## Roles` names a `fallback:`, and the rule is one line: **try the role,
 then its fallback, then continue as the main session alone** - and record which happened.
 
-| What | Who decides |
-|---|---|
-| whether a target answered | **observed**, mechanically, at call time |
-| who to fall back to | the **owner**, at design time, written in `## Roles` |
-| that a fallback was used | the event log, as `role_unavailable` |
+| What | Who decides | Where it lives |
+|---|---|---|
+| who to fall back to | the **owner**, at design time | `## Roles` |
+| whether a target answered | **observed at call time** | — |
+| that a fallback was used | the run, in its report and in `### Lessons` | a **claim**, not evidence |
 
-That split is why this needs no orchestrator. Availability is a fact, the fallback order is
-a decision already made, and the record is a line of machine-written evidence. Nothing has
-to reason about it at runtime.
+The last row is the honest one, and an earlier draft of this page got it wrong. It promised
+that a degraded round would show up in the event log and be surfaced by `--audit`. It cannot:
+**the only thing that can observe a failed delegation is the run that attempted it**, and the
+run's statements are claims - `events.jsonl` is written by the hooks precisely so that it is
+not. Writing the event from the run would have put a claim inside the evidence file and
+broken the one distinction the whole design rests on.
+
+So degradation is **declared and reported**, not measured. The order is a decision the owner
+already made, and whether it was used is something the run has to say out loud. That is
+weaker than a mechanical check, and saying which of the two you have is the point:
+a `ROUND_DEGRADED` finding that no code could ever produce would have been worse than none,
+because it reads as coverage.
 
 Degrading to the main session alone is **always** the last resort and always allowed. A run
 that stops because a reviewer was out of quota has turned an optional check into a single

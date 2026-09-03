@@ -1354,29 +1354,6 @@ def audit_artifact(path: Path) -> tuple[dict[str, object], list[Finding]]:
                 )
             )
 
-    # A round that lost a role is not a clean round. Reported, never resolved:
-    # whether the fallback was adequate is a judgement, and this only knows
-    # that the first choice did not answer.
-    degraded = [e for e in events if e.get("event") == "role_unavailable"]
-    if degraded:
-        turns = ", ".join(
-            str(e.get("turn")) for e in degraded if e.get("turn") is not None
-        )
-        roles = ", ".join(
-            sorted({str(e.get("role")) for e in degraded if e.get("role")})
-        )
-        out.append(
-            Finding(
-                str(path),
-                "ROUND_DEGRADED",
-                f"role(s) {roles or 'unnamed'} could not be reached on turn(s) "
-                f"{turns or 'unrecorded'}, so those rounds ran with a fallback. A review "
-                "that could not happen is a missing review, not a pass - check the report "
-                "said so",
-                "advisory",
-            )
-        )
-
     # Did the goalposts move? Two ways to find out, both from machine-written
     # facts: the gate said so on some turn, or the file on disk no longer
     # matches the digest recorded on turn 1.

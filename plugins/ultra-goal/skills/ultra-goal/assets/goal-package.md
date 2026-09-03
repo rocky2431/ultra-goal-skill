@@ -196,8 +196,10 @@ never edit Intent, Boundary or Anchor. If one of those turns out to be wrong, st
 write a row under `## Challenges from the run` in that same file naming the term, what you
 hit, and what would settle it - then say you stopped for that reason.
 At the start of each turn, state which turn you are on,
-which `## Acceptance` lines this turn is for, and what output would prove them,
-before changing anything.
+which `## Acceptance` lines this turn is for, what you need to find out before touching
+anything, and what output would prove those lines - before changing anything.
+If a role in `## Roles` could not be reached, say so in the report and put it in
+`### Lessons`: a review that could not happen is a missing review, not a pass.
 Rewrite the Carry-over section before you finish - State gets where the work stands,
 Lessons gets at most 3 causal findings, Next gets the single objective for the following
 round, and delete what is no longer true.

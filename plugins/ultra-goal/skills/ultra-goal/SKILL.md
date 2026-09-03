@@ -4,7 +4,7 @@ description: "Turn \"make an agent keep doing this\" into a goal a host will hol
 license: MIT
 metadata:
   author: rocky2431
-  version: "2.1.0"
+  version: "2.1.1"
 ---
 
 # UltraGoal
@@ -237,10 +237,13 @@ lost, read it and resume from the first unanswered question instead of starting 
    of judging before listening.
 
    **Then a `fallback:` per role.** An agent runs out of quota, a target does not answer, a
-   process dies: try the role, then its fallback, then continue as this session alone — and
-   record which happened. Availability is observed, the fallback order is the owner's
-   decision, so this needs no orchestrator. A run that stops because a reviewer was out of
-   quota has turned an optional check into a single point of failure.
+   process dies: try the role, then its fallback, then continue as this session alone. A run
+   that stops because a reviewer was out of quota has turned an optional check into a single
+   point of failure.
+   **This one is declared and reported, not measured** — the only thing that can observe a
+   failed delegation is the run that attempted it, and a run's statements are claims, so the
+   event log is the wrong place for it. Ask for the fallback order here; ask the run to say
+   out loud when it used one.
 
    **Never settle any of this silently.** A review that turned out to be a second opinion
    from its own model, with no row saying so, cannot be told apart afterwards from one that

@@ -1138,15 +1138,39 @@ class RolesByStageTests(unittest.TestCase):
             "a claim until something outside the emitter agrees with it", doc
         )
 
-    def test_declared_degradation_splits_fact_from_decision(self) -> None:
+    def test_degradation_says_which_half_it_actually_has(self) -> None:
+        """An earlier draft promised a mechanical check that cannot exist.
+
+        It said a degraded round would appear in the event log and be surfaced
+        by `--audit`. Nothing could write that event: the only thing able to
+        observe a failed delegation is the run that attempted it, and a run's
+        statements are claims - `events.jsonl` is hook-written precisely so it
+        is not. The finding and the constant are gone; the honest weaker
+        version is documented in their place.
+        """
         doc = self.reference()
         self.assertIn("## Declared degradation", doc)
-        self.assertIn("| whether a target answered | **observed**", doc)
-        self.assertIn("| who to fall back to | the **owner**", doc)
-        self.assertIn("why this needs no orchestrator", doc)
+        self.assertIn("| who to fall back to | the **owner**, at design time", doc)
+        self.assertIn("a **claim**, not evidence", doc)
+        self.assertIn("declared and reported**, not measured", doc)
+        # The reason a fake check is worse than no check, stated.
+        self.assertIn("because it reads as coverage", doc)
         self.assertIn(
             "a review that cannot happen is a missing review, not a red anchor", doc
         )
+
+    def test_no_code_claims_to_detect_degradation(self) -> None:
+        """The promise and the mechanism have to match, both ways."""
+        scripts = (SKILL_ROOT / "scripts").glob("*.py")
+        blob = "\n".join(p.read_text(encoding="utf-8") for p in scripts)
+        self.assertNotIn("role_unavailable", blob)
+        self.assertNotIn("ROUND_DEGRADED", blob)
+
+    def test_the_run_is_asked_to_say_it_out_loud(self) -> None:
+        goal = (SKILL_ROOT / "assets" / "goal-package.md").read_text(encoding="utf-8")
+        self.assertIn("could not be reached, say so in the report", goal)
+        # And research finally has a per-turn slot rather than only a role row.
+        self.assertIn("what you need to find out before touching", goal)
 
     def test_the_shipped_goal_declares_roles_and_fallbacks(self) -> None:
         goal = (SKILL_ROOT / "assets" / "goal-package.md").read_text(encoding="utf-8")

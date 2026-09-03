@@ -30,10 +30,6 @@ GOALS_DIR = ".goals"
 # The sections a run may never edit. Their digest is recorded by the gate on the
 # first turn and compared on every later one.
 FROZEN_SECTIONS = ("intent", "boundary", "anchor")
-# Written by whichever hook or run observes it, and read back by `--audit`: a
-# round where a role could not be reached is a degraded round, not a clean one,
-# and the difference has to survive the session that noticed it.
-ROLE_UNAVAILABLE = "role_unavailable"
 ACTIVE_MARKER = "active"
 DISABLE_ENV = "ULTRA_GOAL_HOOKS_DISABLED"
 # A slug names one artifact in `.goals/`. It is never a path.

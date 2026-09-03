@@ -394,15 +394,22 @@ An agent runs out of quota, a target does not answer, a process dies. Every role
 `## Roles` names a `fallback:` — try the role, then its fallback, then continue as the main
 session alone, and record which happened.
 
-| What | Who decides |
-|---|---|
-| whether a target answered | **observed**, mechanically, at call time |
-| who to fall back to | **you**, at design time, in `## Roles` |
-| that a fallback was used | the event log, as `role_unavailable`, surfaced by `--audit` as `ROUND_DEGRADED` |
+| What | Who decides | Where it lives |
+|---|---|---|
+| who to fall back to | **you**, at design time | `## Roles` |
+| whether a target answered | observed at call time | — |
+| that a fallback was used | the run, in its report and `### Lessons` | a **claim**, not evidence |
 
-That split is why this needs no orchestrator. `fallback: none` is a legitimate answer and
-says the run stops rather than degrading; silence does not. And a review that could not
-happen is a **missing review, not a red anchor** — the report has to say so.
+**This one is declared and reported, not measured**, and an earlier version of this README
+claimed otherwise. It promised a `role_unavailable` event surfaced by `--audit`. Nothing
+could write it: the only thing able to observe a failed delegation is the run that attempted
+it, and a run's statements are claims — `events.jsonl` is hook-written precisely so that it
+is not. A finding no code can produce is worse than none, because it reads as coverage. The
+constant and the finding are deleted.
+
+`fallback: none` is a legitimate answer and says the run stops rather than degrading; silence
+does not. And a review that could not happen is a **missing review, not a red anchor** — the
+report has to say so, and the goal text now asks for it.
 
 ## The one thing the goal can learn from
 

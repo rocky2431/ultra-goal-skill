@@ -324,9 +324,13 @@ D 是"路由何时决定"。业主直接点出来了。修法不是换名字,是
 5. **loop vs graph 移出这一页**——它是"路由何时决定",属于第 7 问。把它放进角色选项列表
    是原来那个错误最明显的症状。
 6. **声明式降级**:每个角色写 `fallback:`,`fallback: none` 是正当答案(意思是停而不降级),
-   沉默不是。`ROLE_FALLBACK_MISSING` 查它。运行期写 `role_unavailable` 事件,`--audit`
-   报 `ROUND_DEGRADED`(advisory)。判据:**"谁不可用"是观测事实,"降给谁"是设计期决定**,
-   所以不需要编排器。
+   沉默不是。`ROLE_FALLBACK_MISSING` 查它。
+   ⚠️ **2026-09-04 自我更正**:我原本还承诺运行期写 `role_unavailable` 事件、`--audit` 报
+   `ROUND_DEGRADED`。**那是活路径上的假货——没有任何代码能写那条事件。**唯一能观测到派发
+   失败的是运行本身,而运行的陈述是 claim,写进 `events.jsonl` 会破坏"hooks 写证据、run 写
+   声称"这条全设计赖以成立的分界。常量和 finding 已删除,降级改为**声明 + 汇报**,并在
+   goal 文本里要求运行说出来。**一个没有任何代码能产生的 finding 比没有更糟,因为它读起来
+   像覆盖率。**
 7. **`/goal` 去掉了。**逐项对比:goal 模式重复了本 skill 四个机制,而**做不到最要紧的那件事
    ——写 `.goals/active`**(给门上膛)。改为插件自带 `/ultra-goal <slug>`:校验制品 → 上膛 →
    交出 spec,一步完成,四家宿主同一形态,没装插件的地方粘贴 `## Handoff` 文本 + 手写 marker。
