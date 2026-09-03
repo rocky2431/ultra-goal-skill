@@ -99,14 +99,39 @@ def _ceiling(stop_section: str) -> tuple[int, bool]:
 UNRUNNABLE_EXITS = {126, 127, 9009}
 
 
-def _first_command(text: str) -> str | None:
+def _first_command(text: str) -> tuple[str | None, str | None]:
+    """The anchor command, or None plus the reason there is not exactly one.
+
+    A fenced block holding several lines used to yield its first line, which
+    turned a two-command anchor into a one-command anchor without saying so.
+    A real run found it: an anchor written as `run` then `verify` ran only
+    `run`, so the half that checked the product never executed and the gate
+    reported green on a proposition nothing had tested.
+
+    The two tempting repairs are both worse. Running the whole block hands the
+    verdict to the *last* line, so a failing `run` followed by a passing
+    `verify` is green. Joining the lines with `&&` silently rewrites what the
+    author asked for. So this refuses to choose: several lines means there is
+    no single command whose exit code decides, and the gate says so instead of
+    running half of it.
+    """
     fence = FENCE.search(text)
     if fence is not None:
-        body = fence.group(1).strip()
-        if body:
-            return body.splitlines()[0].strip()
+        lines = [l.strip() for l in fence.group(1).strip().splitlines() if l.strip()]
+        if len(lines) > 1:
+            return None, (
+                f"the anchor's fenced block holds {len(lines)} commands, so no single "
+                "exit code decides it. Write it as one line - join them with `&&` if "
+                "all must pass - or put them in a script and name the script. This "
+                "gate will not pick one for you: running only the first is how an "
+                "anchor goes green on work it never checked"
+            )
+        if lines:
+            return lines[0], None
     inline = INLINE.search(text)
-    return inline.group(1).strip() if inline is not None else None
+    if inline is not None:
+        return inline.group(1).strip(), None
+    return None, None
 
 
 def _budget(anchor_section: str) -> tuple[int, bool]:
@@ -175,8 +200,10 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
     spec = goal.goal_path.read_text(encoding="utf-8")
     found = sections(spec)
     anchor_section = found.get("anchor") or ""
-    anchor = _first_command(anchor_section)
+    anchor, ambiguous = _first_command(anchor_section)
     budget, budget_declared = _budget(anchor_section)
+    if ambiguous is not None:
+        return _allow(f"{goal.slug}: {ambiguous}.")
     if not anchor:
         return _allow(
             f"{goal.slug}: no runnable anchor in `## Anchor`, so nothing can be "

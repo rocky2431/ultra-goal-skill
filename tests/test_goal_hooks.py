@@ -705,3 +705,67 @@ class InjectionBudgetTests(Harness):
         context = self.context(goal)
         self.assertIn("## Acceptance", context)
         self.assertIn("- [ ] two left", context)
+
+
+class AmbiguousAnchorTests(Harness):
+    """Found by a real run, not by reasoning about it.
+
+    An anchor written as `run` then `verify` on two lines ran only `run`, so
+    the assertion that checked the product never executed and the gate went
+    green on a proposition nothing had tested. Worse case reproduced while
+    fixing it: a ```bash block starting with `set -e` ran `set -e`, exit 0,
+    green, nothing tested at all.
+
+    Both automatic repairs are worse than refusing. Running the whole block
+    hands the verdict to the last line, so a failing `run` followed by a
+    passing `verify` is green. Joining with `&&` rewrites the author's
+    intent silently.
+    """
+
+    def gate(self):
+        import importlib
+        return importlib.import_module("goal_stop")
+
+    def test_one_command_per_fence_is_accepted(self) -> None:
+        first = self.gate()._first_command
+        for body, expected in (
+            ("```\npython -m x run\n```", "python -m x run"),
+            ("```\na && b\n```", "a && b"),
+            ("```bash\npytest -q\n```", "pytest -q"),
+            ("the anchor is `pytest -q`", "pytest -q"),
+        ):
+            with self.subTest(body=body):
+                command, ambiguous = first(body)
+                self.assertEqual(expected, command)
+                self.assertIsNone(ambiguous)
+
+    def test_several_commands_are_refused_not_guessed(self) -> None:
+        first = self.gate()._first_command
+        for body in (
+            "```\npython -m x run\npython -m x verify\n```",
+            "```bash\nset -e\npytest -q\npython -m x verify\n```",
+        ):
+            with self.subTest(body=body):
+                command, ambiguous = first(body)
+                self.assertIsNone(command, "picking one is the defect")
+                self.assertIn("no single exit code decides it", ambiguous)
+
+    def test_an_ambiguous_anchor_ends_the_turn_and_runs_nothing(self) -> None:
+        witness = self.cwd / "anchor-ran"
+        command = f'"{sys.executable}" -c "open(r\'{witness}\', \'a\').close()"'
+        goal = GOAL.replace(f"```\n{GREEN}\n```", f"```\n{command}\n{command}\n```")
+        self.make_loop(goal=goal)
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
+            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            capture_output=True, text=True, timeout=30,
+        )
+        payload = json.loads(result.stdout)
+        self.assertIsNone(
+            payload.get("hookSpecificOutput", {}).get("permissionDecision"),
+            "an unusable anchor is unknown, so the turn ends rather than being denied",
+        )
+        self.assertIn("holds 2 commands", payload["systemMessage"])
+        self.assertFalse(
+            witness.exists(), "running half of an ambiguous anchor proves the wrong thing"
+        )

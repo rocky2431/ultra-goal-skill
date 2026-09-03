@@ -891,6 +891,32 @@ class WorkerOutcomeTests(Harness):
         self.assertTrue(report.ok, report.findings)
 
 
+class MultilineAnchorTests(Harness):
+    """The validator refuses what the gate will not guess at."""
+
+    def test_two_commands_in_the_fence_is_an_error(self) -> None:
+        self.write("m.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "m.goal.md",
+            GOOD_GOAL.replace(
+                "```\npnpm test -- --run\n```",
+                "```\npnpm test -- --run\npnpm verify\n```",
+            ),
+        )
+        report = va.validate_paths([str(path)])
+        self.assertIn("ANCHOR_MULTILINE", {f.code for f in report.errors})
+
+    def test_joining_with_and_is_accepted(self) -> None:
+        self.write("m.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "m.goal.md",
+            GOOD_GOAL.replace(
+                "pnpm test -- --run\n```", "pnpm test -- --run && pnpm verify\n```"
+            ),
+        )
+        self.assertNotIn("ANCHOR_MULTILINE", self.codes(path))
+
+
 if __name__ == "__main__":
     unittest.main()
 

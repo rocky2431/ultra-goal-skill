@@ -487,6 +487,27 @@ def check_goal(path: Path, text: str, out: list[Finding]) -> None:
                 "anchor must name a runnable command, not an opinion",
             )
         )
+    # Caught by a real run: a fenced anchor holding two commands ran only the
+    # first, so the half that checked the product never executed and the gate
+    # went green on a proposition nothing had tested. Refused here rather than
+    # resolved, because both automatic repairs are wrong - the whole block
+    # takes its verdict from the last line, and joining with `&&` rewrites
+    # what the author asked for.
+    fence = FENCE.search(anchor)
+    if fence is not None:
+        lines = [l.strip() for l in fence.group(1).strip().splitlines() if l.strip()]
+        if len(lines) > 1:
+            out.append(
+                Finding(
+                    str(path),
+                    "ANCHOR_MULTILINE",
+                    f"the anchor's fenced block holds {len(lines)} commands, so no "
+                    "single exit code decides it: write one line (join with `&&` if "
+                    "all must pass) or name a script. The gate will not pick one, "
+                    "and running only the first is how an anchor reports green on "
+                    "work it never checked",
+                )
+            )
 
     # An unattended run wakes with an empty context every iteration. Without a
     # carry-over section it rebuilds history from scratch and retries paths it has

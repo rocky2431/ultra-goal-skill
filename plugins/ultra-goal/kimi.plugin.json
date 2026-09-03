@@ -1,6 +1,6 @@
 {
   "name": "ultra-goal",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Interview an objective into a grounded goal, emit the runnable artifact, and gate the run on its anchor.",
   "keywords": [
     "kimi-code",

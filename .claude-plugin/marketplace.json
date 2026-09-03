@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "UltraGoal - interview an objective into a goal an agent can hold to without its owner in the room, then gate it on an anchor",
-    "version": "1.4.0"
+    "version": "1.5.0"
   },
   "plugins": [
     {
@@ -14,7 +14,14 @@
       "source": "./plugins/ultra-goal",
       "description": "Turns an objective into a goal with an anchor, a boundary, droppable means and an adversarial verifier, then gates the run on the anchor and keeps its claims checkable against what the gate measured.",
       "category": "workflow",
-      "tags": ["goal", "loop", "harness", "anchor", "long-running", "verification"]
+      "tags": [
+        "goal",
+        "loop",
+        "harness",
+        "anchor",
+        "long-running",
+        "verification"
+      ]
     }
   ]
 }
