@@ -1,0 +1,37 @@
+{
+  "name": "ultra-goal",
+  "version": "1.4.0",
+  "description": "Interview an objective into a grounded goal, emit the runnable artifact, and gate the run on its anchor.",
+  "keywords": [
+    "kimi-code",
+    "goal",
+    "skills",
+    "hooks",
+    "ultra-goal"
+  ],
+  "author": {
+    "name": "rocky2431"
+  },
+  "homepage": "https://github.com/rocky2431/ultra-goal-skill",
+  "license": "MIT",
+  "skills": [
+    "./skills"
+  ],
+  "hooks": [
+    {
+      "event": "Stop",
+      "command": "python3 ./skills/ultra-goal/scripts/goal_stop.py",
+      "timeout": 200
+    },
+    {
+      "event": "SessionStart",
+      "command": "python3 ./skills/ultra-goal/scripts/goal_session_start.py",
+      "timeout": 10
+    },
+    {
+      "event": "PreCompact",
+      "command": "python3 ./skills/ultra-goal/scripts/goal_pre_compact.py",
+      "timeout": 10
+    }
+  ]
+}

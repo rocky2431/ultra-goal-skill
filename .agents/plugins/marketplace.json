@@ -16,5 +16,8 @@
       },
       "category": "Developer Tools"
     }
-  ]
+  ],
+  "metadata": {
+    "version": "1.4.0"
+  }
 }

@@ -1,0 +1,21 @@
+{
+  "name": "ultra-goal",
+  "version": "1.4.0",
+  "description": "Interview an objective into a grounded goal, emit the runnable artifact, and gate the run on its anchor.",
+  "author": {
+    "name": "rocky2431",
+    "url": "https://github.com/rocky2431"
+  },
+  "homepage": "https://github.com/rocky2431/ultra-goal-skill#readme",
+  "repository": "https://github.com/rocky2431/ultra-goal-skill",
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "goal",
+    "loop",
+    "harness",
+    "anchor",
+    "long-running",
+    "adversarial-review"
+  ]
+}

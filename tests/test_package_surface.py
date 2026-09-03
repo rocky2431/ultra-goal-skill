@@ -935,5 +935,88 @@ class SweepFindingsTests(unittest.TestCase):
         )
 
 
+class HostManifestTests(unittest.TestCase):
+    """One plugin, four hosts, and every format measured rather than guessed.
+
+    Ground truth on the machine this was written on: six installed Claude Code
+    marketplaces all use `.claude-plugin/marketplace.json`; zcode-cua ships
+    `.zcode-plugin/plugin.json` with a string `skills` field; Ultra Builder Pro's
+    Kimi manifest is `kimi.plugin.json` with a flat hook array; and the Codex
+    binary carries the literal fallback chain
+    `.codex-plugin/plugin.json` -> `.claude-plugin/plugin.json` ->
+    `.cursor-plugin/plugin.json`, which is why one Claude-format manifest covers
+    three of the four.
+    """
+
+    VERSIONED = (
+        (".claude-plugin/marketplace.json", ("metadata", "version")),
+        (".agents/plugins/marketplace.json", ("metadata", "version")),
+        ("plugins/ultra-goal/.claude-plugin/plugin.json", ("version",)),
+        ("plugins/ultra-goal/.codex-plugin/plugin.json", ("version",)),
+        ("plugins/ultra-goal/.zcode-plugin/plugin.json", ("version",)),
+        ("plugins/ultra-goal/kimi.plugin.json", ("version",)),
+    )
+
+    def load(self, relative: str) -> dict:
+        return json.loads((REPO_ROOT / relative).read_text(encoding="utf-8"))
+
+    def test_claude_code_marketplace_is_where_claude_code_looks(self) -> None:
+        market = self.load(".claude-plugin/marketplace.json")
+        self.assertEqual("ultra-goal", market["name"])
+        entry = market["plugins"][0]
+        self.assertEqual("ultra-goal", entry["name"])
+        self.assertEqual("./plugins/ultra-goal", entry["source"])
+        self.assertTrue((REPO_ROOT / entry["source"]).is_dir())
+
+    def test_every_host_manifest_exists_and_names_the_same_plugin(self) -> None:
+        """A marketplace carries its own name, so the plugin is under
+        `plugins[0]`; a plugin manifest names itself at the top level."""
+        for relative, _ in self.VERSIONED:
+            with self.subTest(manifest=relative):
+                node = self.load(relative)
+                name = node["plugins"][0]["name"] if "plugins" in node else node["name"]
+                self.assertEqual("ultra-goal", name)
+
+    def test_every_manifest_declares_the_same_version_as_the_skill(self) -> None:
+        version = re.search(
+            r'(?m)^\s*version: "([\d.]+)"$', skill_text()
+        ).group(1)
+        for relative, keys in self.VERSIONED:
+            with self.subTest(manifest=relative):
+                node = self.load(relative)
+                for key in keys:
+                    node = node[key]
+                self.assertEqual(version, node)
+        installer = (REPO_ROOT / "scripts" / "install_user.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(f'VERSION = "{version}"', installer)
+
+    def test_zcode_and_kimi_declare_skills_in_their_own_shapes(self) -> None:
+        """A string for zCode, an array for Kimi. Measured, not guessed."""
+        self.assertEqual("skills", self.load(
+            "plugins/ultra-goal/.zcode-plugin/plugin.json")["skills"])
+        self.assertEqual(["./skills"], self.load(
+            "plugins/ultra-goal/kimi.plugin.json")["skills"])
+
+    def test_kimi_hooks_are_a_flat_array_naming_the_same_three_events(self) -> None:
+        hooks = self.load("plugins/ultra-goal/kimi.plugin.json")["hooks"]
+        self.assertEqual(
+            ["Stop", "SessionStart", "PreCompact"], [h["event"] for h in hooks]
+        )
+        manifest = json.loads(
+            (PLUGIN_ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(list(manifest["hooks"]), [h["event"] for h in hooks])
+
+    def test_claude_code_hooks_use_the_variable_claude_code_substitutes(self) -> None:
+        """`$PLUGIN_ROOT` is not the name Claude Code expands, so a plugin
+        install would have pointed every hook at nothing."""
+        text = (PLUGIN_ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8")
+        self.assertIn("${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}", text)
+        self.assertNotIn('"$PLUGIN_ROOT/', text)
+        self.assertIn("%CLAUDE_PLUGIN_ROOT%", text)
+
+
 if __name__ == "__main__":
     unittest.main()
