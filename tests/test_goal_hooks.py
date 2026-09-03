@@ -697,6 +697,54 @@ class InjectionBudgetTests(Harness):
             "to a resuming session",
         )
 
+    def test_the_essential_sections_are_ordered_ahead_of_the_rest(self) -> None:
+        """Order is not cosmetic: a section that does not fit is dropped whole.
+
+        Adding `## Roles` (2.1k) pushed `## Carry-over` off the end of the old
+        order, so a resuming session was handed `## Verification` instead of
+        the state and lessons this hook exists to restore.
+        """
+        import goal_session_start as ss
+
+        for name in ss.ESSENTIAL:
+            self.assertIn(name, ss.INJECT_ORDER, name)
+        essential_positions = [ss.INJECT_ORDER.index(n) for n in ss.ESSENTIAL]
+        optional = [
+            ss.INJECT_ORDER.index(n)
+            for n in ("verification", "cadence")
+        ]
+        self.assertLess(
+            max(essential_positions), min(optional),
+            "an essential section must never queue behind an optional one",
+        )
+
+    def test_the_shipped_artifact_fits_the_budget_whole(self) -> None:
+        """The template is the standard, so it must not need truncating."""
+        import goal_session_start as ss
+
+        spec = (SCRIPTS.parent / "assets" / "goal-package.md").read_text(
+            encoding="utf-8"
+        )
+        context = self.context(spec)
+        self.assertNotIn("Not injected for space", context)
+        self.assertNotIn("Could not inject", context)
+        self.assertLessEqual(len(context), ss.CONTEXT_LIMIT)
+        # And the parts that make a resume worth anything actually arrive.
+        for probe in ("### Lessons", "### Next", "fallback:", "- [ ]"):
+            self.assertIn(probe, context, probe)
+
+    def test_losing_an_essential_section_is_said_out_loud(self) -> None:
+        import goal_session_start as ss
+
+        bloated = GOAL.replace(
+            "- nothing yet\n\n### Lessons",
+            "- nothing yet\n" + "\n".join(f"- filler {i}" for i in range(700))
+            + "\n\n### Lessons",
+        )
+        context = self.context(bloated)
+        self.assertIn("Could not inject carry-over", context)
+        self.assertIn("do not act on the sections above alone", context)
+
     def test_acceptance_reaches_a_resuming_session(self) -> None:
         goal = GOAL.replace(
             "## Carry-over",

@@ -71,6 +71,14 @@ Stop when `pnpm audit --audit-level=high` reports 0 findings, or after 6 turns.
 pnpm test -- --run
 ```
 
+## Roles
+
+- **lead**: this session with the owner. fallback: none; an interview cannot be delegated.
+- **carry out**: this session, code and tests together, test first. fallback: none.
+- **reviewer**: a subagent with a fresh context. fallback: this session re-reading cold,
+  and say the review was not independent.
+- **critic**: a second subagent. fallback: none; a round without a critic is unreviewed.
+
 ## Means
 
 - `[load-bearing]` move versions through `package.json` and the lockfile only
@@ -1286,3 +1294,94 @@ class RunnableHandoffTests(Harness):
         self.write("noh.decisions.md", GOOD_DECISIONS)
         path = self.write("noh.goal.md", GOOD_GOAL.replace("## Handoff", "## Notes"))
         self.assertIn("HANDOFF_MISSING", self.codes(path))
+
+
+class DegradedRoundTests(Harness):
+    """A round that lost a role is not a clean round.
+
+    Reported, never resolved: whether the fallback was adequate is a judgement,
+    and the log only knows the first choice did not answer.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.run_git("init", "-q", ".")
+        self.run_git("config", "user.email", "t@e.st")
+        self.run_git("config", "user.name", "t")
+        self.write("d.decisions.md", GOOD_DECISIONS)
+        self.artifact = self.write("d.goal.md", GOOD_GOAL)
+        self.run_git("add", "-A")
+        self.run_git("commit", "-qm", "chore: artifact")
+
+    def run_git(self, *args: str) -> None:
+        subprocess.run(
+            ["git", *args], cwd=str(self.dir), check=True, capture_output=True
+        )
+
+    def log(self, *entries: dict) -> None:
+        import json as _json
+        (self.dir / "d.events.jsonl").write_text(
+            "\n".join(_json.dumps(e) for e in entries) + "\n", encoding="utf-8"
+        )
+
+    def test_a_lost_role_is_reported_as_an_advisory(self) -> None:
+        digest = va.frozen_digest(self.artifact.read_text(encoding="utf-8"))
+        self.log(
+            {"event": "anchor_checked", "turn": 1, "outcome": "green",
+             "exit_code": 0, "spec_digest": digest},
+            {"event": "role_unavailable", "turn": 1, "role": "reviewer",
+             "fallback": "main session"},
+        )
+        self.run_git("commit", "--allow-empty", "-qm",
+                     "goal(d) turn 1: work [anchor: green]")
+        audit, findings = va.audit_artifact(self.artifact)
+        by_code = {f.code: f for f in findings}
+        self.assertIn("ROUND_DEGRADED", by_code)
+        self.assertEqual("advisory", by_code["ROUND_DEGRADED"].severity)
+        self.assertIn("reviewer", by_code["ROUND_DEGRADED"].message)
+        # Advisory: the run is not broken, but the report must not read as a pass.
+        self.assertIn("missing review, not a pass", by_code["ROUND_DEGRADED"].message)
+
+    def test_a_clean_run_reports_nothing(self) -> None:
+        digest = va.frozen_digest(self.artifact.read_text(encoding="utf-8"))
+        self.log({"event": "anchor_checked", "turn": 1, "outcome": "green",
+                  "exit_code": 0, "spec_digest": digest})
+        self.run_git("commit", "--allow-empty", "-qm",
+                     "goal(d) turn 1: work [anchor: green]")
+        _, findings = va.audit_artifact(self.artifact)
+        self.assertNotIn("ROUND_DEGRADED", {f.code for f in findings})
+
+
+class RolesSectionTests(Harness):
+    """Every role names what happens when it cannot run."""
+
+    def test_a_missing_roles_section_is_reported(self) -> None:
+        self.write("r.decisions.md", GOOD_DECISIONS)
+        path = self.write("r.goal.md", GOOD_GOAL.replace("## Roles", "## Team"))
+        self.assertIn("ROLES_MISSING", self.codes(path))
+
+    def test_a_role_without_a_fallback_is_reported(self) -> None:
+        self.write("r.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "r.goal.md",
+            GOOD_GOAL.replace(
+                "- **critic**: a second subagent. fallback: none; a round without a critic is unreviewed.",
+                "- **critic**: a second subagent.",
+            ),
+        )
+        self.assertIn("ROLE_FALLBACK_MISSING", self.codes(path))
+
+    def test_fallback_none_is_a_legitimate_answer(self) -> None:
+        self.write("r.decisions.md", GOOD_DECISIONS)
+        path = self.write("r.goal.md", GOOD_GOAL)
+        self.assertNotIn("ROLE_FALLBACK_MISSING", self.codes(path))
+
+    def test_a_wrapped_fallback_still_counts(self) -> None:
+        """The checker reads whole bullets: four correctly-written roles were
+        reported as missing their fallback because the word had wrapped."""
+        blocks = va.bullet_blocks(
+            "- **reviewer**: a subagent with a fresh context.\n"
+            "  fallback: this session re-reading cold, and say it was not independent.\n"
+        )
+        self.assertEqual(1, len(blocks))
+        self.assertIn("fallback:", blocks[0])

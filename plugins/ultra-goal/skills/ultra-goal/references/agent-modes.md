@@ -1,105 +1,118 @@
-# Agent modes
+# Roles and modes
 
-Which agents do the work, which review it, and where each one runs. This is a decision the
-owner makes; discovering what is available is not.
+Who does what, in which stage, and which of those is actually a choice. An earlier version
+of this file offered four "modes" side by side - same-model subagents, cross-vendor,
+parallel triads, and a graph. That was a menu, not a taxonomy: three orthogonal axes
+flattened into one column. The owner caught it. This is the repair.
 
-## Discover before asking
+## Every development round has four stages
 
-Run this yourself, before the question is put to anyone:
+Research → shape a plan → carry it out → review and feed back → round again. Loops nested
+inside loops. Most of what looks like a choice about "multi-agent or not" is really a
+question about **one stage**, and the stages differ in whether there is anything to choose
+at all.
 
-```bash
-agent-delegate list --json
-```
-
-It reports each target's name, its argv, and the version actually observed. That is a fact,
-and facts are yours - asking the owner which agents they have installed spends their turn on
-something a command answers. If the tool is absent, say so: the modes below that need it are
-unavailable, not merely unchosen.
-
-Vendor matters for exactly one reason. **Agents differ by their context, their scaffolding,
-and the model underneath.** Two agents on the same model make the same mistakes, so a critic
-sharing the reviewer's model mostly agrees. Note the vendor per target when you present the
-list, because that is the axis the choice turns on.
-
-## The four modes
-
-Four, not seven. The refusals in SKILL.md rule out most fan-out shapes, so padding this list
-would contradict *Nodes added for sophistication* - the entry that exists to stop exactly
-that.
-
-### A — Internal triad (default)
-
-```
-M = the agent running the goal
-R = a subagent, fresh context, same model
-C = a second subagent, fresh context, same model
-```
-
-- **Cost**: an order of magnitude less than crossing vendors.
-- **Buys**: the third role. In the source study that is the part that worked - a reviewer
-  nobody audits converges on agreement rather than correctness.
-- **Does not buy**: independence from the model's blind spots. R and C share M's model, so
-  what M cannot see, they mostly cannot see either.
-- **Enough when**: the anchor catches the failures that matter, and review is there to stop
-  premature victory rather than to catch a class of error the anchor is blind to.
-
-### B — Cross-vendor triad
-
-```
-M = the agent running the goal
-R = a different vendor, delegated
-C = a third vendor, delegated
-```
-
-- **Cost**: high. Two out-of-process calls per inner round, capped at five rounds.
-- **Buys**: real independence. Different models have different blind spots.
-- **Does not buy**: shared context. R and C cannot see what M tried and abandoned, so the
-  mission file has to carry whatever they need - and deliberately not M's argument for why
-  the work is right.
-- **Reach for it when**: the review's independence is itself the thing at stake. Concretely:
-  where a mistake is expensive and the kind that looks correct from inside - a silent
-  overwrite, a survivorship or look-ahead bias, an off-by-one in money.
-
-### C — Parallel triads
-
-One triad per artifact, several artifacts at once.
-
-- **Legal only when** the subjects are genuinely independent and **each has its own
-  anchor**. Twenty factors, each with its own acceptance line and its own command.
-- This is where parallelism went. It is not several reviewers on one artifact - that is the
-  shape measured as unreliable - it is several artifacts, each with its own third role.
-
-### D — Graph
-
-Routing decided at authoring time, edges written as code.
-
-- **Legal only when** the whole route can be drawn before running any of it.
-- Needs a workflow runtime. Of the hosts measured, only Claude Code has one, so elsewhere do
-  not emit a workflow script - it would be a file nothing can run.
-
-## The mode can differ by turn, and usually should
-
-Nothing requires one mode for the whole run. The useful shape is often A for the turns whose
-failures the anchor catches, and B for the two or three turns where it does not. Say which
-turns, in `## Verification`, in words.
-
-## When does the review run
-
-A separate question from who reviews, and it was missing from the interview until a real run
-invented an answer for it. Three shapes:
-
-| Cadence | Cost | Catches |
+| Stage | Who | Choice? |
 |---|---|---|
-| **Every turn** | highest | drift early, before it compounds |
-| **At proposed completion only** | lowest | premature victory, which is the failure review exists for |
-| **At named acceptance lines** | in between | the specific lines where the anchor is known to be blind |
+| **Lead** — turn the owner's intent into a spec | the main session, with the owner | **No.** An interview is a conversation with the owner; it cannot be delegated to something the owner is not talking to |
+| **Research** — find out what is true before acting | **fanned-out subagents** | Yes: how wide, and whether any of it needs a different vendor |
+| **Plan** — the spec, and one adversarial pass over it | main session + a design critic | Yes: whether the design critic runs |
+| **Carry out** — write the code *and its tests* | **the main session** | **No**, and see below |
+| **Verify at code level** — the anchor | a command, no model | **No.** Mechanical |
+| **Review at semantic level** — what the anchor cannot see | not whoever wrote it | Yes: two independent axes |
+| **Fan out** — anything with independent subjects | one worker per subject | Yes, with a hard precondition |
 
-The middle one is the usual answer, and the reasoning is worth keeping: on intermediate turns
-the anchor is already the check. Review earns its cost at the moment the run wants to declare
-done - and at the specific lines where a green anchor would not prove the claim.
+## Why the main session writes the code
 
-## What to record
+This is the stage most often argued about, and the evidence points the opposite way from
+intuition. Anthropic runs both patterns deliberately, split by task type:
 
-One row in `decisions.md`, naming the mode, the targets, the review cadence, and the round
-cap. The mode is a Firm-tier choice: changeable mid-run, but the row is what tells a later
-reader whether a review was independent or a second opinion from the same model.
+> Claude Code uses this orchestrator-subagent pattern. **The main agent writes code, edits
+> files, and runs commands itself**, dispatching subagents in the background when it needs
+> to search a large codebase or investigate independent questions. This contrasts with the
+> research system, where the lead agent delegates rather than directly handling code
+> execution.
+
+So research is delegated and code is not, on purpose. The reason matters more than the
+authority: **`### Lessons` and every dead end live in the main context.** A fresh coder
+subagent cannot see that turn 3 already tried this path and why it failed, which is the
+only thing that makes turn 7 better than turn 1. Delegating the writing restarts the run
+at turn 1, every turn.
+
+**The conflict-of-interest objection is real and is answered elsewhere.** A main session
+that both writes and judges would be referee and player. It does not judge: the **anchor's
+exit code decides**, and no model is in that path. The reviewer never receives the author's
+argument, and the critic audits the review rather than the code. The referee was moved out
+of the writer's hands, which is what the zero-trust layer is for - not the writing.
+
+What the main session must never author is its own acceptance. The anchor is the owner's,
+set at question 2, and frozen.
+
+**Test-first is not a choice either.** Whoever writes the code writes its tests, first.
+Splitting the test from the code is a phase split, and phase splits are already refused:
+each phase needs the previous phase's context.
+
+## The two axes of semantic review
+
+These are independent, and conflating them was the original error. They defend against
+different diseases.
+
+| Axis | The disease | The control | Cost |
+|---|---|---|---|
+| **Context isolation** | **Contagion of the author's argument.** Handed an explanation of why the work is right, a reviewer reviews the explanation | a fresh context - a subagent that never saw the reasoning cannot be persuaded by it | negligible |
+| **Model independence** | **Shared blind spots.** Two agents on one model make the same mistake and agree about it | a different vendor | roughly an order of magnitude |
+
+A fresh-context subagent on the same model is **not** a cheap substitute for a different
+vendor. It cures the first disease completely and the second not at all: it catches "you
+did not do what the spec says" and misses "the spec and the code are wrong in the same
+way". Reach for a different vendor where a mistake is expensive **and** looks correct from
+inside - a silent overwrite, a survivorship or look-ahead bias, an off-by-one in money.
+
+Context isolation is **not optional**. Model independence is the choice.
+
+## Parameters, not peer choices
+
+Two things depend on the review and are not alternatives to it:
+
+- **When it runs**: every turn · at proposed completion · at named acceptance lines.
+  Default the middle one: intermediate turns already have the anchor, and review earns its
+  cost at the moment the run wants to declare done.
+- **Round cap**: a number, default 5, accepting round 1 if it converges with no findings.
+
+## Fan-out, and its precondition
+
+Legal when the subjects are genuinely independent and **each has its own anchor**. Twenty
+factors, each with its own acceptance line and its own command. Research is the other case,
+and the usual one.
+
+This is where parallelism lives. It is not several reviewers on one artifact - that is the
+shape measured as unreliable - it is several subjects, each with its own verdict.
+
+## What is *not* on this page
+
+**Loop versus graph is not a role question.** It asks when routing gets decided - at
+authoring time or during inference - and it belongs to the shape question, not here. Putting
+it in a list of role options was the clearest symptom of the original mistake.
+
+## Declared degradation
+
+An agent can become unavailable mid-run: a quota runs out, a target does not answer, a
+process dies. The run should degrade, not break.
+
+So every role in `## Roles` names a `fallback:`, and the rule is one line: **try the role,
+then its fallback, then continue as the main session alone** - and record which happened.
+
+| What | Who decides |
+|---|---|
+| whether a target answered | **observed**, mechanically, at call time |
+| who to fall back to | the **owner**, at design time, written in `## Roles` |
+| that a fallback was used | the event log, as `role_unavailable` |
+
+That split is why this needs no orchestrator. Availability is a fact, the fallback order is
+a decision already made, and the record is a line of machine-written evidence. Nothing has
+to reason about it at runtime.
+
+Degrading to the main session alone is **always** the last resort and always allowed. A run
+that stops because a reviewer was out of quota has turned an optional check into a single
+point of failure - and a review that cannot happen is a missing review, not a red anchor.
+Say so in the report; do not let it read as a pass.

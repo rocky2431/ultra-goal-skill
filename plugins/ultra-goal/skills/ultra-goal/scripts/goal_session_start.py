@@ -19,28 +19,42 @@ from goal_hooks import ActiveGoal, read_events, run_hook, sections  # noqa: E402
 
 
 SOURCES = {"startup", "resume", "clear", "compact"}
-CONTEXT_LIMIT = 6000
+# Raised from 6000 once `## Roles` and `## Acceptance` existed: measured, the
+# load-bearing sections came to about 5.9k, so the old budget dropped
+# `## Carry-over` - the state and lessons this hook exists to restore. A resume
+# is rare (startup, resume, clear, compact), so a few hundred extra tokens
+# there is far cheaper than resuming without knowing what was already learned.
+CONTEXT_LIMIT = 8000
 # What a resuming session needs, most important first. `## Handoff` is absent on
 # purpose: it holds the command that starts the run, and the run is already
 # started - injecting it wastes the budget that `## Carry-over` needs.
 # Measured before choosing this: injecting the whole artifact truncated the
 # shipped template mid-clause at the default limit, on day one.
+# Recovery priority, most important first, because a section that does not fit
+# is dropped whole. Order is not cosmetic here: adding `## Roles` (2.1k) pushed
+# `## Carry-over` off the end, so a resuming session was handed `## Verification`
+# instead of the state and lessons it needed. Two sections have gone missing from
+# this list or its ordering already, which is what the two tests below are for.
 INJECT_ORDER = (
+    # The frozen terms: what is pursued, what may not be touched, what proves it.
     "intent",
     "boundary",
     "anchor",
-    "stop condition",
-    # What is left, before why it is left: `## Acceptance` is the only section
-    # that answers "which parts are done" without the run having to remember.
-    # It went missing from this list once, because the section was added to the
-    # template and the injector was not updated - which is what
-    # test_every_goal_section_is_either_injected_or_deliberately_skipped is for.
-    "acceptance",
-    "means",
+    # Then what the run already knows. `### Lessons` is the only thing that makes
+    # turn 7 better than turn 1; `### Next` is the objective it was aimed at.
     "carry-over",
+    # Then what is left, and why.
+    "acceptance",
+    "stop condition",
+    "means",
+    "roles",
+    # Then what can be re-read on demand without being stuck.
     "verification",
     "cadence",
 )
+# Never dropped quietly. If one of these will not fit, say so loudly instead of
+# resuming a run that cannot see its own terms.
+ESSENTIAL = ("intent", "boundary", "anchor", "carry-over")
 # `## Handoff` holds the command that starts the run, and the run has started.
 SKIP = ("handoff",)
 
@@ -91,6 +105,13 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
         budget -= len(block)
 
     context = head + "".join(body)
+    missing = [name for name in ESSENTIAL if name in dropped]
+    if missing:
+        context += (
+            f"\n**Could not inject {', '.join(missing)} - too large for the "
+            f"{CONTEXT_LIMIT}-character budget.** Read `{goal.goal_path.name}` in full "
+            "before doing anything; do not act on the sections above alone.\n"
+        )
     if dropped:
         context += (
             f"\nNot injected for space: {', '.join(dropped)}. Read "

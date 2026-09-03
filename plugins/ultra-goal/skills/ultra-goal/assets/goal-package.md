@@ -59,14 +59,42 @@ not authorized at all - stop and report instead.
 - `[droppable]` keep the change to one commit - drop it when a bisectable series would
   tell the reviewer more
 
-## Verification
+## Roles
 
-**Mode A**, chosen from the four in `references/agent-modes.md`: reviewer and critic are
-fresh-context subagents on the same model, an order of magnitude cheaper than crossing
-vendors, and they still keep the third role - which is the part that works. Nothing in this
-goal is both expensive to get wrong and invisible from inside, so independence from the
-model's blind spots is not worth 10x here. **Review runs at proposed completion**, not every
-turn: on intermediate turns the anchor is already the check.
+Who does what, and who covers when one of them cannot. Most rows are not choices - they are
+here so a later reader can see the shape without reconstructing it.
+
+- **lead**: this session, with the owner. Interview and spec.
+  fallback: none; an interview cannot be delegated to something the owner is not talking to.
+- **research**: fanned-out subagents, fresh context each, one per independent question.
+  fallback: this session inline, narrower.
+- **design critic**: one subagent, fresh context, reads the spec and attacks it before the
+  first turn. fallback: skip it and say so in the report, because a skipped design review is
+  a missing one rather than a pass.
+- **carry out**: this session. Writes the code **and its tests, test first**.
+  fallback: none, because `### Lessons` and every dead end live in this context and a fresh
+  coder would restart the run at turn 1 every turn.
+- **anchor**: the command in `## Anchor`. No model in the path.
+  fallback: none; if it cannot run the outcome is unknown, which is the answer rather than a
+  failure.
+- **reviewer**: a subagent, fresh context, same model. Receives the frozen diff, this
+  boundary, and the anchor's raw output - never the author's account of why the change is
+  correct. fallback: this session with the diff re-read cold, and say the review was not
+  independent.
+- **critic**: a second subagent, fresh context. Audits the review, not the code.
+  fallback: none; without the third role the review is nobody's job to audit, so a round
+  without a critic is reported as unreviewed.
+
+**Model independence is deliberately not bought here.** A same-model subagent stops the
+author's argument from reaching the reviewer, which is the contagion that matters for a
+dependency upgrade. It does not stop shared blind spots - so if a future round touches
+something both expensive to get wrong and hard to see from inside, that round moves the
+reviewer to a different vendor and records the change in `weekly-dep-upgrade.decisions.md`.
+
+**Review runs at proposed completion**, not every turn: on intermediate turns the anchor is
+already the check.
+
+## Verification
 
 A **reviewer** with a fresh context reviews the diff against this boundary, citing file:line
 and the command whose output proves each finding. It receives the frozen diff, this
@@ -131,8 +159,13 @@ a plan, and a goal with a plan should have been authored as a graph.
 
 ## Handoff
 
-Paste this into the host's goal mode - `/goal` on Claude Code, Codex, Kimi, or zCode; on a
-host without goal mode, the same text as a plain prompt:
+Start it with **`/ultra-goal weekly-dep-upgrade`** where this plugin is installed: it
+validates the artifact, writes `.goals/active` to arm the gate, and hands over the spec. The
+gate is what keeps the run going - it refuses to let a turn end while the anchor is red - so
+no host's goal mode is needed, and none of them can write the marker anyway.
+
+Where the plugin is absent, paste the text below as a plain prompt and create the marker by
+hand with `printf '%s\n' weekly-dep-upgrade > .goals/active`:
 
 ```
 /goal Read the Carry-over section of .goals/weekly-dep-upgrade.goal.md first. Then upgrade
@@ -166,7 +199,7 @@ evidence, no confidence claim without it, the verdict reported as a turn and an 
 rather than a summary, no conclusion from documents alone, **the run is the run and not the
 designer**, droppable means droppable with a wrong term challenged rather than edited,
 state the turn out loud, rewrite carry-over including Next. Host: Claude Code (recorded in
-the decisions record) - the objective is portable, the `/goal` prefix is what changes.
+the decisions record) - the objective is portable, and `/ultra-goal` starts it wherever the plugin is installed.
 
 First iteration should produce: the audit output, the version bumps it implies, the anchor
 command's real output, and a rewritten Carry-over section.

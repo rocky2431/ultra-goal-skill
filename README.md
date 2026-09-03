@@ -133,6 +133,22 @@ without `--status`.
    than quietly reversed. A change to the anchor itself reopens the interview — a loop whose
    anchor changed is a different loop.
 
+## Starting a run: no host goal mode required
+
+Four of five measured hosts have a `/goal` command, and none of them is needed. What kept a
+model working there was re-prompting; here the Stop hook does it by refusing to let a turn
+end while the anchor is red — so the loop was always ours. Item by item, goal mode duplicates
+four of this Skill's own mechanisms and cannot do the one that matters: write `.goals/active`,
+the marker without which every hook here is inert.
+
+```
+/ultra-goal <slug>
+```
+
+Ships with the plugin. It validates the artifact, arms the gate, and hands over the spec in
+one step. Where the plugin is absent, paste `## Handoff`'s text as a plain prompt and create
+the marker by hand — the objective is portable even when the command is not.
+
 ## Hosts
 
 Goal mode is the mechanism: paste one objective into your CLI, walk away, and the host keeps
@@ -287,26 +303,63 @@ can write any file it can read, `events.jsonl` included. What defends the log is
 permission but publication — it is committed, so a rewritten history is a diff. Making a
 moved goalpost **visible** is the achievable property; making it impossible is not.
 
-## Which agents, where they run, and when they review
+## Roles, and which of them are actually choices
 
-Three sub-decisions, not one, and the Skill discovers before it asks. `agent-delegate list
---json` reports which targets exist and at what version — a fact, so spending your turn on it
-is the mistake. What is put to you is the choice:
+Every development round has four stages — research, shape a plan, carry it out, review and
+feed back — and most of what looks like a "multi-agent or not" question belongs to exactly
+one stage. So `## Roles` is settled per stage, and the Skill says which parts you get to
+decide:
 
-| Sub-decision | Options | Default recommendation |
+| Stage | Who | Your call? |
 |---|---|---|
-| **Where the reviewer and critic run** | subagents on the same model · two different vendors · parallel triads, one per independent artifact · a graph | subagents, except at the turns where a mistake is expensive *and* looks correct from inside |
-| **When review runs** | every turn · at proposed completion · at named acceptance lines | at proposed completion, plus the lines a green anchor would not prove |
-| **Round cap** | a number | 5, accepting round 1 if it converges clean |
+| Lead — intent into a spec | this session, with you | **No** — an interview cannot be delegated |
+| **Research** | fanned-out subagents | how wide, and whether any needs another vendor |
+| Plan — the spec, plus one adversarial pass over it | this session + a design critic | whether the design critic runs |
+| **Carry out** — the code **and its tests, test first** | **this session** | **No** — see below |
+| Verify at code level | the anchor | **No** — mechanical |
+| Review semantically | not whoever wrote it | the one real choice |
+| Fan out | one worker per subject | only where subjects are independent and **each has its own anchor** |
 
-Four modes rather than seven: the refusals already rule out most fan-out shapes, and padding
-the list would contradict *Nodes added for sophistication*. See
-[references/agent-modes.md](plugins/ultra-goal/skills/ultra-goal/references/agent-modes.md)
-for what each mode buys and — the half usually left out — what it does not.
+**The main session writes the code, and that is deliberate.** Anthropic runs both patterns
+split by task type: "Claude Code uses this orchestrator-subagent pattern. The main agent
+writes code, edits files, and runs commands itself... This contrasts with the research
+system, where the lead agent delegates." The reason matters more than the authority:
+`### Lessons` and every dead end live in the main context, so a fresh coder subagent would
+restart the run at turn 1 every turn.
 
-The mode may differ by turn and usually should. It is never decided silently: a review that
-turned out to be a second opinion from its own model, with no row saying so, cannot be told
-apart afterwards from one that was independent.
+The referee-and-player objection is answered somewhere else entirely — the **anchor's exit
+code decides**, with no model in that path, and the reviewer never receives the author's
+argument. Moving the referee out of the writer's hands is what the zero-trust layer is for.
+
+**The only genuine choice in review is model independence**, because the two axes cure
+different diseases:
+
+| Axis | The disease | Cost |
+|---|---|---|
+| **Context isolation** | the author's *argument* reaching the reviewer, who then reviews the argument | negligible — **and not optional** |
+| **Model independence** | *shared blind spots*: two agents on one model make the same mistake and agree about it | ~10x |
+
+So a same-model subagent is not a cheap substitute for a different vendor. It cures the
+first completely and the second not at all. When review runs and the round cap are
+parameters of that choice, not peers of it.
+
+## Declared degradation
+
+An agent runs out of quota, a target does not answer, a process dies. Every role in
+`## Roles` names a `fallback:` — try the role, then its fallback, then continue as the main
+session alone, and record which happened.
+
+| What | Who decides |
+|---|---|
+| whether a target answered | **observed**, mechanically, at call time |
+| who to fall back to | **you**, at design time, in `## Roles` |
+| that a fallback was used | the event log, as `role_unavailable`, surfaced by `--audit` as `ROUND_DEGRADED` |
+
+That split is why this needs no orchestrator. `fallback: none` is a legitimate answer and
+says the run stops rather than degrading; silence does not. And a review that could not
+happen is a **missing review, not a red anchor** — the report has to say so.
+
+## The one thing the goal can learn from
 
 ## Owner-decided versus agent-assumed
 
@@ -419,7 +472,7 @@ designed with its owner in the room has no validation set.
 python3 -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-241 tests: the validator's rules at two severities, the status projection, the
+251 tests: the validator's rules at two severities, the status projection, the
 claim-versus-measurement audit
 against a real Git repository, the gate's eight outcomes, the package surface, version
 consistency across three files, every relative link in `SKILL.md` resolving, and the shipped

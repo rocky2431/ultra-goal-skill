@@ -4,7 +4,7 @@ description: "Turn \"make an agent keep doing this\" into a goal a host will hol
 license: MIT
 metadata:
   author: rocky2431
-  version: "1.6.0"
+  version: "2.0.0"
 ---
 
 # UltraGoal
@@ -195,20 +195,43 @@ lost, read it and resume from the first unanswered question instead of starting 
    [references/adversarial-review.md](references/adversarial-review.md); the short version is
    that three roles beat a five-agent panel, and the third role is why.
 
-   **Then put three sub-decisions to the owner, not one.** Discover first: run
-   `agent-delegate list --json` yourself and note each target's vendor — which agents exist
-   is a fact, and spending the owner's turn on it is the mistake this question used to make.
-   Read [references/agent-modes.md](references/agent-modes.md) for the four modes, then ask:
+   **Most of `## Roles` is not a choice, and saying which part is keeps the question
+   honest.** Discover first: run `agent-delegate list --json` yourself and note each
+   target's vendor — which agents exist is a fact, and spending the owner's turn on it is
+   the mistake this question used to make. Then read
+   [references/agent-modes.md](references/agent-modes.md) and settle the roles by stage:
 
-   | Sub-decision | Options | Recommend |
+   | Stage | Who | Ask the owner? |
    |---|---|---|
-   | **Where R and C run** | **A** subagents, same model, an order of magnitude cheaper · **B** two different vendors, real independence · **C** parallel triads, one per independent artifact · **D** graph | **A**, except at the turns where a mistake is expensive *and* looks correct from inside — those get **B** |
-   | **When review runs** | every turn · at proposed completion only · at named acceptance lines | at proposed completion, plus the lines where a green anchor would not prove the claim |
-   | **Round cap** | a number | 5, accepting round 1 if it converges with no findings |
+   | Lead — intent into a spec | this session, with them | **No** — an interview cannot be delegated |
+   | **Research** — find out what is true first | **fanned-out subagents** | how wide, and whether any needs another vendor |
+   | Plan — the spec, plus one adversarial pass over it | this session + a design critic | whether the design critic runs |
+   | **Carry out** — the code **and its tests, test first** | **this session** | **No** — `### Lessons` and every dead end live in this context, and a fresh coder restarts the run at turn 1 every turn |
+   | Verify at code level | the anchor | **No** — mechanical |
+   | Review semantically | **not whoever wrote it** | the one real choice, below |
+   | Fan out | one worker per subject | only where subjects are independent and **each has its own anchor** |
 
-   The mode may differ by turn and usually should. **Never decide this silently** — a run
-   whose review turned out to be a second opinion from its own model, with no row saying so,
-   cannot be told afterwards from one that was independent.
+   **The only genuine choice in review is model independence**, because the two axes cure
+   different diseases: a **fresh context** stops the author's *argument* from reaching the
+   reviewer and is never optional; a **different vendor** stops *shared blind spots* and
+   costs about 10x. A same-model subagent cures the first completely and the second not at
+   all — it catches "you did not do what the spec says" and misses "the spec and the code
+   are wrong in the same way". Recommend a different vendor only where a mistake is
+   expensive **and** looks correct from inside.
+
+   **When review runs** and the **round cap** are parameters of that choice, not peers of
+   it: default to proposed completion plus the acceptance lines a green anchor would not
+   prove, and 5 rounds accepting a clean first pass.
+
+   **Then a `fallback:` per role.** An agent runs out of quota, a target does not answer, a
+   process dies: try the role, then its fallback, then continue as this session alone — and
+   record which happened. Availability is observed, the fallback order is the owner's
+   decision, so this needs no orchestrator. A run that stops because a reviewer was out of
+   quota has turned an optional check into a single point of failure.
+
+   **Never settle any of this silently.** A review that turned out to be a second opinion
+   from its own model, with no row saying so, cannot be told apart afterwards from one that
+   was independent.
 7. **Shape and split** — confirm loop or graph. If graph, the split must follow **context
    boundaries**, never workflow phases (see the refusals below), and each worker needs its
    own anchor.
@@ -283,12 +306,15 @@ Name the refusal, name the cheap alternative, and go back to the relevant questi
 Read [references/anti-patterns.md](references/anti-patterns.md) for the failure modes
 behind this table.
 
-## Goal mode, on whichever host you are
+## Starting a run, on whichever host you are
 
-You are the host. Goal mode is the mechanism: the owner pastes one objective into their CLI,
-walks away, and the host keeps the model working until the objective is met or a ceiling is
-hit. Four of the
-five hosts measured on this machine have it as an interactive command:
+You are the host. The owner starts one run and walks away, and something has to keep the
+model working until the anchor is green or a ceiling is hit. **That something is this
+Skill's own Stop hook**, which is why a host's goal mode is a convenience here rather than
+the mechanism.
+
+Four of the five hosts measured on this machine do have goal mode as an interactive
+command, and it is worth knowing which:
 
 | Host | Goal mode | Notes |
 |---|---|---|
@@ -300,14 +326,24 @@ five hosts measured on this machine have it as an interactive command:
 
 "Not found" means no evidence in that host's help output or shipped binary, not proof of
 absence — **check your own host rather than trusting this table**, and say so when it is
-wrong. Use the host's own goal mode; it is better integrated than anything this Skill could
-wrap around it.
+wrong.
 
-### The host decides when to stop asking. The anchor decides what counts as done.
+### The gate is the loop, so a host's goal mode is no longer needed
 
-A host's goal mode keeps the model working, but it asks **the model** whether the objective
-is met. That is the gap this Skill closes, and it closes it in the goal text itself rather
-than with any machinery:
+A host's goal mode kept the model working by re-prompting it, and asked **the model**
+whether the objective was met. The Stop hook does the first thing better — it refuses to let
+a turn end while the anchor is red — and the anchor does the second. Compared item by item,
+goal mode duplicates four of this Skill's own mechanisms, and **cannot do the one that
+matters**: write `.goals/active`, the marker without which every hook here is inert.
+
+So where the plugin is installed, start a run with **`/ultra-goal <slug>`**: it validates
+the artifact, arms the gate, and hands over the spec in one step. Where it is not, paste
+`## Handoff`'s text as a plain prompt — the objective is portable even when the command is
+not, and a host's own `/goal` still works as a wrapper around that text if the owner
+prefers it.
+
+The text itself still carries the clauses, because on a host with no hooks it is the only
+thing that does:
 
 ```
 /goal <what to achieve, inside <scope>>. You have not met this goal until you have actually
@@ -363,6 +399,7 @@ fail:
 | What may be given up, and what may not | `## Means` | labels frozen; dropping a droppable one costs a `decisions.md` row |
 | Mechanical gate | `## Anchor` | executed, exit code only, on the artifact's own budget |
 | The stop condition, enumerated | `## Acceptance` | required once there is a cadence; unordered, each line's state a claim the anchor settles |
+| Who does what, and who covers for whom | `## Roles` | frozen for the run's shape; each role names a `fallback:` |
 | Adversarial review — reviewer | `## Verification` | fresh context, verdict advisory |
 | Adversarial review — critic | `## Verification` | audits the review, not the artifact |
 | Reflection | `### Lessons` | writes the next turn's input |

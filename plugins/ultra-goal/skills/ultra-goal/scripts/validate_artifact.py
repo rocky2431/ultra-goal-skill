@@ -75,6 +75,8 @@ GOAL_SECTIONS = (
     ("anchor", "ANCHOR_MISSING", "the artifact has no anchor"),
     ("means", "MEANS_MISSING", "the artifact does not separate its means from its intent, "
      "so dropping one is indistinguishable from scope drift"),
+    ("roles", "ROLES_MISSING", "the artifact does not say who does what, so whether a "
+     "review was independent cannot be told afterwards"),
     ("verification", "VERIFIER_NOT_DECLARED", "no independent verifier is declared"),
 )
 # A means is something believed necessary to reach the intent. The label says
@@ -93,6 +95,32 @@ WORKER_OUTCOMES = ("input-required", "rejected")
 ANCHOR_BUDGET = re.compile(r"budget[^\n]*?(\d+)\s*(second|minute|hour)s?", re.I)
 BUDGET_UNITS = {"second": 1, "minute": 60, "hour": 3600}
 BULLET_LINE = re.compile(r"(?m)^\s*[-*]\s+(.*\S)\s*$")
+
+
+def bullet_blocks(text: str) -> list[str]:
+    """Each bullet with its continuation lines folded in.
+
+    A markdown bullet is not one line. Checking only the first line reported
+    four correctly-written roles as missing their `fallback:` because the word
+    had wrapped - the check was wrong, not the document. Means labels had the
+    same latent defect and use this too.
+    """
+    blocks: list[str] = []
+    current: list[str] = []
+    for line in text.splitlines():
+        if BULLET_LINE.match(line):
+            if current:
+                blocks.append(" ".join(current))
+            current = [line.strip().lstrip("-*").strip()]
+        elif current:
+            if line.strip():
+                current.append(line.strip())
+            else:
+                blocks.append(" ".join(current))
+                current = []
+    if current:
+        blocks.append(" ".join(current))
+    return blocks
 # `## Cadence` and `## Carry-over` are conditional: an unattended run needs both,
 # a one-shot goal needs neither.
 # `inputs` is what keeps the review independent. Different vendors buy different
@@ -511,12 +539,31 @@ def check_goal(path: Path, text: str, out: list[Finding]) -> None:
                 )
             )
 
+    # Every role names what happens when it cannot run. An agent that is out of
+    # quota should degrade the round, not end it - and which fallback to use is
+    # the owner's decision, made here, so nothing has to reason about it live.
+    roles = found.get("roles")
+    if roles is not None:
+        unlabelled = [
+            block for block in bullet_blocks(roles) if "fallback:" not in block.lower()
+        ]
+        if unlabelled:
+            out.append(
+                Finding(
+                    str(path),
+                    "ROLE_FALLBACK_MISSING",
+                    f"{len(unlabelled)} role(s) name no `fallback:`, starting with "
+                    f"{unlabelled[0][:60]!r}. `fallback: none` is a legitimate answer and "
+                    "says the run stops rather than degrading - silence does not",
+                )
+            )
+
     means = found.get("means")
     if means is not None:
         unlabelled = [
-            line
-            for line in BULLET_LINE.findall(means)
-            if not any(f"[{label}]" in line.lower() for label in MEANS_LABELS)
+            block
+            for block in bullet_blocks(means)
+            if not any(f"[{label}]" in block.lower() for label in MEANS_LABELS)
         ]
         if unlabelled:
             out.append(
@@ -1285,6 +1332,29 @@ def audit_artifact(path: Path) -> tuple[dict[str, object], list[Finding]]:
                     "commit message is the claim",
                 )
             )
+
+    # A round that lost a role is not a clean round. Reported, never resolved:
+    # whether the fallback was adequate is a judgement, and this only knows
+    # that the first choice did not answer.
+    degraded = [e for e in events if e.get("event") == "role_unavailable"]
+    if degraded:
+        turns = ", ".join(
+            str(e.get("turn")) for e in degraded if e.get("turn") is not None
+        )
+        roles = ", ".join(
+            sorted({str(e.get("role")) for e in degraded if e.get("role")})
+        )
+        out.append(
+            Finding(
+                str(path),
+                "ROUND_DEGRADED",
+                f"role(s) {roles or 'unnamed'} could not be reached on turn(s) "
+                f"{turns or 'unrecorded'}, so those rounds ran with a fallback. A review "
+                "that could not happen is a missing review, not a pass - check the report "
+                "said so",
+                "advisory",
+            )
+        )
 
     # Did the goalposts move? Two ways to find out, both from machine-written
     # facts: the gate said so on some turn, or the file on disk no longer

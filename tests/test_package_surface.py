@@ -309,7 +309,7 @@ class SkillContractTests(unittest.TestCase):
 
     def test_skill_is_host_neutral(self) -> None:
         skill = skill_text()
-        self.assertIn("## Goal mode, on whichever host you are", skill)
+        self.assertIn("## Starting a run, on whichever host you are", skill)
         self.assertIn("You are the host.", skill)
         self.assertIn("requires a workflow runtime", skill)
         self.assertIn("do **not** emit `<slug>.workflow.js`", skill)
@@ -319,10 +319,12 @@ class SkillContractTests(unittest.TestCase):
         # Activation scope must not name one host's commands either.
         # Host slash-commands belong in the goal-mode section and nowhere else.
         # Matched inside backticks so filenames like <slug>.goal.md do not count.
-        head, tail = skill.split("## Goal mode, on whichever host you are", 1)
+        head, tail = skill.split("## Starting a run, on whichever host you are", 1)
         tail = tail.split("## Compile one artifact", 1)[1]
         leaks = re.findall(r"`/(?:goal|loop|schedule)[` ]", head + tail)
         self.assertEqual([], leaks, f"host commands leaked: {leaks}")
+        # This plugin's own command is not a host command and may appear anywhere.
+        self.assertIn("/ultra-goal", skill)
         # Every measured host, Codex included - it was missed on the first pass.
         for host in ("Claude Code", "Codex", "Kimi", "zCode", "OpenCode"):
             self.assertIn(host, skill)
@@ -330,15 +332,18 @@ class SkillContractTests(unittest.TestCase):
     def test_goal_mode_is_the_mechanism_and_the_anchor_is_the_evidence(self) -> None:
         """An earlier version claimed most hosts lacked goal mode. They have it."""
         skill = skill_text()
-        self.assertIn("## Goal mode, on whichever host you are", skill)
+        self.assertIn("## Starting a run, on whichever host you are", skill)
         # Four hosts, each with its goal command named.
         for host in ("Claude Code", "Codex", "Kimi", "zCode", "OpenCode"):
             self.assertIn(host, skill)
         self.assertEqual(4, skill.count("`/goal <objective>`"))
-        self.assertIn("Use the host's own goal mode", skill)
-        # The gap goal mode leaves, and where it gets closed.
-        self.assertIn("it asks **the model** whether the objective\nis met", skill)
-        self.assertIn("closes it in the goal text itself", skill)
+        # Goal mode is a convenience now, not the mechanism: the gate is.
+        self.assertIn("**That something is this\nSkill's own Stop hook**", skill)
+        self.assertIn(
+            "### The gate is the loop, so a host's goal mode is no longer needed", skill
+        )
+        self.assertIn("**`/ultra-goal <slug>`**", skill)
+        self.assertIn("cannot do the one that\nmatters", skill)
         self.assertIn("the only accepted evidence", skill)
         # A negative result must read as absence of evidence, not proof.
         self.assertIn("not proof of\nabsence", skill)
@@ -371,9 +376,12 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("Do not conclude why something broke", handoff)
         # A4: carry-over is rewritten in two parts, lessons bounded.
         self.assertIn("Lessons gets at most 3 causal findings", handoff)
-        # And it names the hosts it can be pasted into.
-        for host in ("Claude Code", "Codex", "Kimi", "zCode"):
-            self.assertIn(host, handoff)
+        # No longer routed through any host's goal mode: the gate is the loop, so
+        # the artifact names this plugin's command and the paste fallback.
+        self.assertIn("`/ultra-goal weekly-dep-upgrade`", handoff)
+        self.assertIn("arm the gate", handoff)
+        self.assertIn("Where the plugin is absent, paste the text below", handoff)
+        self.assertIn("> .goals/active", handoff)
         for gone in ("crontab", "runner.sh"):
             self.assertNotIn(gone, handoff)
 
@@ -1018,48 +1026,95 @@ class HostManifestTests(unittest.TestCase):
         self.assertIn("%CLAUDE_PLUGIN_ROOT%", text)
 
 
-class AgentModeTests(unittest.TestCase):
-    """Which agents, where they run, and when they review.
+class RolesByStageTests(unittest.TestCase):
+    """Roles are settled per stage, and most stages are not a choice.
 
-    The first real run left all three implicit: its record says "reviewer +
-    critic" and never names a target, so whether the review was independent or
-    a second opinion from the same model cannot be told afterwards. The owner
-    identified the gap before that evidence arrived.
+    An earlier version offered four "modes" side by side - same-model
+    subagents, cross-vendor, parallel triads, a graph - which flattened three
+    orthogonal axes into one column. The owner caught it. These pin the repair
+    so the menu cannot come back.
     """
+
+    def reference(self) -> str:
+        return (SKILL_ROOT / "references" / "agent-modes.md").read_text(encoding="utf-8")
 
     def test_the_interview_discovers_before_it_asks(self) -> None:
         skill = skill_text()
-        self.assertIn("run\n   `agent-delegate list --json` yourself", skill)
-        self.assertIn("which agents exist\n   is a fact", skill)
+        self.assertIn("run `agent-delegate list --json` yourself", skill)
+        self.assertIn("which agents exist is a fact", skill)
 
-    def test_three_sub_decisions_are_put_to_the_owner(self) -> None:
+    def test_the_stages_that_are_not_choices_say_so(self) -> None:
         skill = skill_text()
-        self.assertIn("**Then put three sub-decisions to the owner, not one.**", skill)
-        for row in ("**Where R and C run**", "**When review runs**", "**Round cap**"):
-            self.assertIn(row, skill)
-        # The failure this prevents, stated rather than implied.
-        self.assertIn("**Never decide this silently**", skill)
+        self.assertIn("| Stage | Who | Ask the owner? |", skill)
+        self.assertIn("**No** — an interview cannot be delegated", skill)
+        self.assertIn("a fresh coder restarts the run at turn 1 every turn", skill)
+        self.assertIn("**No** — mechanical", skill)
 
-    def test_the_reference_holds_four_modes_and_says_why_four(self) -> None:
-        doc = (SKILL_ROOT / "references" / "agent-modes.md").read_text(encoding="utf-8")
-        for mode in ("### A — Internal triad", "### B — Cross-vendor triad",
-                     "### C — Parallel triads", "### D — Graph"):
-            self.assertIn(mode, doc)
-        # Padding the list would contradict an existing refusal, so the count
-        # is justified rather than arbitrary.
-        self.assertIn("Four, not seven.", doc)
-        self.assertIn("Nodes added for sophistication", doc)
+    def test_the_two_review_axes_are_separated(self) -> None:
+        skill, doc = skill_text(), self.reference()
+        self.assertIn(
+            "**The only genuine choice in review is model independence**", skill
+        )
+        self.assertIn("| Axis | The disease | The control | Cost |", doc)
+        self.assertIn("Contagion of the author's argument.", doc)
+        self.assertIn("Shared blind spots.", doc)
+        self.assertIn(
+            "Context isolation is **not optional**. Model independence is the choice.", doc
+        )
 
-    def test_the_reference_separates_cost_from_what_it_buys(self) -> None:
-        doc = (SKILL_ROOT / "references" / "agent-modes.md").read_text(encoding="utf-8")
-        self.assertEqual(2, doc.count("- **Does not buy**"))
-        self.assertIn("## When does the review run", doc)
-        self.assertIn("## The mode can differ by turn, and usually should", doc)
+    def test_parameters_are_not_presented_as_peer_choices(self) -> None:
+        self.assertIn("## Parameters, not peer choices", self.reference())
+        self.assertIn("are parameters of that choice, not peers of", skill_text())
 
-    def test_the_shipped_goal_names_its_mode_and_cadence(self) -> None:
+    def test_loop_versus_graph_is_kept_off_this_page(self) -> None:
+        """Putting it in a list of role options was the clearest symptom."""
+        doc = self.reference()
+        self.assertIn("## What is *not* on this page", doc)
+        self.assertIn("**Loop versus graph is not a role question.**", doc)
+
+    def test_the_main_session_writes_the_code_with_the_evidence_for_it(self) -> None:
+        doc = self.reference()
+        self.assertIn("## Why the main session writes the code", doc)
+        self.assertIn("**The main agent writes code, edits", doc)
+        # The conflict-of-interest objection is answered, not ignored.
+        self.assertIn("referee and player", doc)
+        self.assertIn("exit code decides**", doc)
+        self.assertIn("**Test-first is not a choice either.**", doc)
+
+    def test_declared_degradation_splits_fact_from_decision(self) -> None:
+        doc = self.reference()
+        self.assertIn("## Declared degradation", doc)
+        self.assertIn("| whether a target answered | **observed**", doc)
+        self.assertIn("| who to fall back to | the **owner**", doc)
+        self.assertIn("why this needs no orchestrator", doc)
+        self.assertIn(
+            "a review that cannot happen is a missing review, not a red anchor", doc
+        )
+
+    def test_the_shipped_goal_declares_roles_and_fallbacks(self) -> None:
         goal = (SKILL_ROOT / "assets" / "goal-package.md").read_text(encoding="utf-8")
-        self.assertIn("**Mode A**", goal)
+        self.assertIn("## Roles", goal)
+        for role in ("**lead**", "**research**", "**design critic**", "**carry out**",
+                     "**anchor**", "**reviewer**", "**critic**"):
+            self.assertIn(role, goal)
+        self.assertIn("**Model independence is deliberately not bought here.**", goal)
         self.assertIn("**Review runs at proposed completion**", goal)
+
+    def test_the_plugin_ships_the_command_that_arms_the_gate(self) -> None:
+        command = (PLUGIN_ROOT / "commands" / "ultra-goal.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("> .goals/active", command)
+        self.assertIn("validate_artifact.py", command)
+        self.assertIn("You are the run, not its designer.", command)
+        self.assertIn("rm .goals/active", command)
+        for manifest in (".claude-plugin/plugin.json", ".codex-plugin/plugin.json",
+                         "kimi.plugin.json"):
+            with self.subTest(manifest=manifest):
+                declared = json.loads(
+                    (PLUGIN_ROOT / manifest).read_text(encoding="utf-8")
+                )["commands"]
+                self.assertEqual(["./commands/ultra-goal.md"], declared)
 
 
 class DecisionAuthorContractTests(unittest.TestCase):
