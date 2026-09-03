@@ -4,7 +4,7 @@ description: "Turn \"make an agent keep doing this\" into a goal the host will a
 license: MIT
 metadata:
   author: rocky2431
-  version: "0.7.0"
+  version: "0.8.0"
 ---
 
 # Loop Graph Design
@@ -107,6 +107,15 @@ lost, read it and resume from the first unanswered question instead of starting 
 6. **Shape and split** — confirm loop or graph. If graph, the split must follow **context
    boundaries**, never workflow phases (see the refusals below), and each worker needs its
    own anchor.
+7. **Read and write surface** — what does each turn *read*, and what does it *write*? This
+   sharpens the boundary from "don't touch X" into "reads A, writes B", and it decides what
+   `## Carry-over` has to hold: whatever a turn can read for itself does not belong there,
+   and whatever it cannot must.
+8. **Divergence handling** — when reality and the plan disagree, does the loop adjust itself
+   or stop and report? Where is the line? **Recommended default: execution details adjust
+   themselves; the intent, the anchor, and the boundary always stop and report.** A loop that
+   can revise its own target drifts further from the owner the longer it runs, and that is
+   the one failure no amount of anchoring catches.
 
 Read [references/loop-primitives.md](references/loop-primitives.md) for which loop
 primitive fits, and [references/graph-topology.md](references/graph-topology.md) when the
@@ -184,6 +193,33 @@ Written this way the same text works on all four hosts, and on the fifth as a pl
 
 Record which host it was written for in the decisions record — the objective is portable, the
 command that starts it is not.
+
+## This is a graph, and here is where its nodes live
+
+The artifact is not a document that happens to describe a loop. It **is** the graph, with one
+node per section. Naming that explicitly is what makes it checkable against the ways loops
+fail:
+
+| Node | Lives in | Kind |
+|---|---|---|
+| North Star | `## Intent` | **frozen** — the run may never edit it |
+| Scope / confidence / inference limits | `## Boundary` | frozen |
+| Mechanical gate | `## Anchor` | executed, exit code only |
+| Adversarial review | `## Verification` | fresh context, its verdict is advisory |
+| Reflection | `### Lessons` | writes the next turn's input |
+| Carried state | `### State` | rewritten each turn |
+| Edges (what happens in what order) | the clause order of `## Handoff` | authored once |
+| Proof an edge was actually taken | `<slug>.events.jsonl` | append-only |
+
+Checked against the four ways a single loop fails, plus the way a graph of loops fails:
+
+| Failure | What closes it here |
+|---|---|
+| Goodhart — the metric gets gamed | `## Verification` is the paired counter-check; the anchor is the half that cannot be argued with |
+| Blindness upward — the loop cannot question its target | `## Intent` is frozen; question 8 sends target-level divergence back to the owner |
+| Conflict — independent loops undermine each other | one operating loop per artifact, so there is no collision surface |
+| Measurement decay — nobody watches the watcher | the anchor runs for real every turn, and reports *unknown* when it cannot |
+| Circularity — everything confirms everything, nothing touches reality | the anchor is the one node whose verdict passes through no model at all |
 
 ## Compile one artifact
 
@@ -303,6 +339,48 @@ copy of what Git already holds.
 
 Read [references/evolution-and-scope.md](references/evolution-and-scope.md) for why each of
 those boundaries is drawn where it is.
+
+## The gate: what the hooks do, and what they cost
+
+On a host that exposes the events, three hooks ship with this Skill and register on install.
+They turn the anchor from a sentence in a prompt into a gate that actually runs.
+
+| Hook | Does | Can it block? |
+|---|---|---|
+| `Stop` | Runs the anchor. Seven steps, six of which let the turn end | **Yes, in exactly one case**: the anchor ran and was red |
+| `SessionStart` | Re-injects the frozen spec and the carried state after a restart or resume | No |
+| `PreCompact` | Records the carried state and the fact of the compaction into the event log | No |
+
+**Three outcomes, not two.** An anchor that cannot run — command missing, not executable,
+timed out — is **unknown**, not failed. Folding unknown into either verdict is how a
+mechanical gate starts lying, and a timeout is the clearest case: it measures elapsed time
+and reports it as success or failure, two things it has no access to. Unknown lets the turn
+end and says the result is unverified.
+
+**Six of the seven steps allow.** The gate refuses only when it is certain. Ceiling reached,
+loop not progressing, anchor unrunnable, anchor green, no anchor at all, no active loop — all
+let the turn end and say why.
+
+### What it costs a project that never asked for one
+
+Every hook's first act is the same check: is there a `.loops/active` marker naming an
+artifact that exists? Without one, nothing is read, nothing is written, no command runs.
+
+| Situation | Cost |
+|---|---|
+| No `.loops/` at all | One process start and one `stat` per registered hook |
+| `.loops/` with no `active` marker | Same |
+| `active` naming a missing artifact | Same, plus one line saying so |
+| A re-entered Stop (`stop_hook_active`) | Hard early exit — this is the guard against a gate that denies forever |
+| Anything raising an exception | Exit 0. A hook that cannot decide must let the host continue |
+| **Escape** | `rm .loops/active`, or `LOOP_GRAPH_HOOKS_DISABLED=1`. Neither needs the agent's cooperation |
+
+`PostToolUse` is deliberately **not** registered: it fires once per tool call, so its cost
+scales with tool use, and its value duplicates what `SessionStart` already injects and what
+the goal text already demands each turn. It gets added when a real run shows the loop
+retrying a path its own `### Lessons` already ruled out — not before.
+
+Read [references/document-system.md](references/document-system.md) for which file owns what.
 
 ## Validate, then hand off
 

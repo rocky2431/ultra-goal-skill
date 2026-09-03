@@ -15,7 +15,7 @@ import tempfile
 from typing import Any
 
 
-VERSION = "0.7.0"
+VERSION = "0.8.0"
 PACKAGE = "loop-graph-design"
 MARKER_NAME = ".loop-graph-design-managed.json"
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -27,6 +27,21 @@ SKILL_SOURCE = (
     / PACKAGE
 )
 SUPPORTED_HOSTS = ("hermes", "claude", "codex", "kimi", "zcode", "opencode")
+
+# Hook registration is host-specific and only Claude Code carries the event this
+# Skill's gate needs. Measured, not assumed: Kimi exposes only SessionStart and
+# PostCompact (and in TOML), OpenCode has no declarative hooks at all. The goal
+# text works everywhere; the gate does not, and `doctor` says so rather than
+# leaving a host quietly ungated.
+HOOK_EVENTS = {
+    "Stop": "loop_stop.py",
+    "SessionStart": "loop_session_start.py",
+    "PreCompact": "loop_pre_compact.py",
+}
+HOOK_MATCHERS = {"SessionStart": "^(startup|resume|clear|compact)$"}
+HOOK_TIMEOUTS = {"Stop": 200}
+HOOK_HOSTS = ("claude",)
+HOOK_TAG = "loop-graph-design/scripts/loop_"
 
 
 class InstallError(RuntimeError):
@@ -156,6 +171,147 @@ def _replace_skill(destination: Path) -> None:
         shutil.rmtree(staging_root, ignore_errors=True)
 
 
+def _settings_path(home: Path, host: str) -> Path:
+    return home / ".claude" / "settings.json"
+
+
+def _hook_command(home: Path, host: str, script: str) -> str:
+    target = _skill_destination(home, host) / "scripts" / script
+    return f'python3 "{target}"'
+
+
+def _load_settings(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {}
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise InstallError(
+            f"{path} is not readable JSON ({exc}); fix or move it before installing hooks."
+        ) from exc
+    if not isinstance(value, dict):
+        raise InstallError(f"{path} does not hold a JSON object.")
+    return value
+
+
+def _write_settings(path: Path, settings: dict[str, Any], backup_dir: Path) -> None:
+    """Replace settings.json atomically, keeping a recovery copy of the original.
+
+    Everything not owned by this Skill is preserved: entries are matched by the
+    command path, so an unrelated hook on the same event survives untouched.
+    """
+    if path.exists():
+        _backup_item(path, backup_dir / "settings.json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    staging = path.with_name(f".{path.name}.loop-graph-design.tmp")
+    staging.write_text(
+        json.dumps(settings, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    staging.replace(path)
+
+
+def _strip_our_hooks(settings: dict[str, Any]) -> tuple[dict[str, Any], int]:
+    """Remove only the entries whose command points at this Skill."""
+    hooks = settings.get("hooks")
+    if not isinstance(hooks, dict):
+        return settings, 0
+    removed = 0
+    for event, groups in list(hooks.items()):
+        if not isinstance(groups, list):
+            continue
+        kept_groups = []
+        for group in groups:
+            if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+                kept_groups.append(group)
+                continue
+            kept = [
+                entry
+                for entry in group["hooks"]
+                if HOOK_TAG not in str(entry.get("command", ""))
+            ]
+            removed += len(group["hooks"]) - len(kept)
+            if kept:
+                kept_groups.append({**group, "hooks": kept})
+        if kept_groups:
+            hooks[event] = kept_groups
+        else:
+            hooks.pop(event)
+    if not hooks:
+        settings.pop("hooks", None)
+    return settings, removed
+
+
+def _register_hooks(home: Path, host: str, backup_dir: Path) -> list[str]:
+    path = _settings_path(home, host)
+    settings = _load_settings(path)
+    settings, _ = _strip_our_hooks(settings)  # idempotent: never register twice
+    hooks = settings.setdefault("hooks", {})
+    if not isinstance(hooks, dict):
+        raise InstallError(f"{path} has a non-object 'hooks' key; fix it first.")
+    added: list[str] = []
+    for event, script in HOOK_EVENTS.items():
+        entry: dict[str, Any] = {
+            "type": "command",
+            "command": _hook_command(home, host, script),
+        }
+        if event in HOOK_TIMEOUTS:
+            entry["timeout"] = HOOK_TIMEOUTS[event]
+        group = {"matcher": HOOK_MATCHERS.get(event, "*"), "hooks": [entry]}
+        groups = hooks.setdefault(event, [])
+        if not isinstance(groups, list):
+            raise InstallError(f"{path} has a non-list '{event}' hook list; fix it first.")
+        groups.append(group)
+        added.append(f"{event} -> {script}")
+    _write_settings(path, settings, backup_dir)
+    return added
+
+
+def _unregister_hooks(home: Path, host: str, backup_dir: Path) -> int:
+    path = _settings_path(home, host)
+    if not path.is_file():
+        return 0
+    settings, removed = _strip_our_hooks(_load_settings(path))
+    if removed:
+        _write_settings(path, settings, backup_dir)
+    return removed
+
+
+def _hook_status(home: Path, host: str) -> dict[str, str]:
+    """Report registration per event, so a wiped settings.json is visible.
+
+    This exists because a settings.json rewritten by another tool can silently
+    drop a registration and nobody notices for weeks.
+    """
+    if host not in HOOK_HOSTS:
+        return {"hooks": "unsupported-host"}
+    path = _settings_path(home, host)
+    if not path.is_file():
+        return {"hooks": "no-settings-file"}
+    try:
+        settings = _load_settings(path)
+    except InstallError:
+        return {"hooks": "settings-unreadable"}
+    hooks = settings.get("hooks")
+    if not isinstance(hooks, dict):
+        return {"hooks": "missing"}
+    found = set()
+    for event, groups in hooks.items():
+        if not isinstance(groups, list):
+            continue
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            for entry in group.get("hooks", []) or []:
+                if HOOK_TAG in str(entry.get("command", "")):
+                    found.add(event)
+    missing = sorted(set(HOOK_EVENTS) - found)
+    if not missing:
+        return {"hooks": "ok"}
+    if not found:
+        return {"hooks": "missing"}
+    return {"hooks": "partial:" + ",".join(missing)}
+
+
 def _preflight_install(home: Path, hosts: list[str], replace_existing: bool) -> None:
     if not (SKILL_SOURCE / "SKILL.md").is_file():
         raise InstallError(f"Bundled Skill is missing from {SKILL_SOURCE}.")
@@ -184,6 +340,15 @@ def _install(
         )
     for host in hosts:
         _replace_skill(_skill_destination(home, host))
+    for host in hosts:
+        if host in HOOK_HOSTS:
+            for line in _register_hooks(home, host, backup_dir / host):
+                print(f"  {host}: registered {line}")
+        else:
+            print(
+                f"  {host}: no hooks registered - this host does not expose the "
+                "events the anchor gate needs; the goal text still works"
+            )
 
 
 def _preflight_uninstall(home: Path, hosts: list[str]) -> None:
@@ -200,6 +365,11 @@ def _uninstall(home: Path, hosts: list[str], backup_dir: Path) -> None:
     for host in hosts:
         destination = _skill_destination(home, host)
         _backup_item(destination, backup_dir / host / "skill")
+    for host in hosts:
+        if host in HOOK_HOSTS:
+            removed = _unregister_hooks(home, host, backup_dir / host)
+            if removed:
+                print(f"  {host}: removed {removed} hook registration(s)")
     for host in hosts:
         destination = _skill_destination(home, host)
         if destination.is_symlink() or destination.is_file():
@@ -223,10 +393,14 @@ def _doctor(home: Path, hosts: list[str]) -> dict[str, object]:
             status = "ok"
         if status != "ok":
             healthy = False
-        statuses[host] = {
+        entry = {
             "skill": status,
             "version": str(marker.get("version", "unknown")),
         }
+        entry.update(_hook_status(home, host))
+        if entry["hooks"].startswith(("missing", "partial", "settings-unreadable")):
+            healthy = False
+        statuses[host] = entry
     return {"ok": healthy, "hosts": statuses}
 
 
@@ -285,7 +459,8 @@ def main() -> int:
             else:
                 for host, status in report["hosts"].items():
                     print(
-                        f"{host}: skill={status['skill']} version={status['version']}"
+                        f"{host}: skill={status['skill']} "
+                        f"hooks={status['hooks']} version={status['version']}"
                     )
             return 0 if report["ok"] else 1
 

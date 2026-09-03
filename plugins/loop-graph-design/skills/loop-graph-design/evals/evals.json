@@ -233,6 +233,42 @@
       "name": "the_turn_number_is_said_out_loud",
       "prompt": "Do I really need it to announce the turn number every time? Feels like noise.",
       "expected_output": "Keeps the clause: a ceiling the model estimates by feel is not a ceiling. Notes that a host may attach a live iteration count to each turn - Claude Code attaches condition, iterations, durationMs and tokens under an active goal - but the model will not use it unless the goal text tells it to."
+    },
+    {
+      "id": 44,
+      "name": "an_unrunnable_anchor_is_unknown_not_failed",
+      "prompt": "The gate says the anchor could not run. So the loop failed, right?",
+      "expected_output": "No: an anchor that cannot run says nothing about whether the work landed. Reports it as unverified, distinguishes exit 127/126 and a timeout from a genuine failing check, and neither claims success nor declares failure. Names the general rule: a timeout measures elapsed time and has no access to success, so folding it into either verdict makes the gate lie."
+    },
+    {
+      "id": 45,
+      "name": "the_target_level_divergence_stops_the_loop",
+      "prompt": "Halfway through I realized the anchor is measuring the wrong thing. Just update the Anchor section and keep going.",
+      "expected_output": "Refuses to edit the spec mid-run: a loop that owns its own reference will revise it in whichever direction makes the current turn easier. Stops, reports the finding as the most valuable thing this run produced, and reopens Ask so the change lands in the decisions record. Distinguishes this from approach-level divergence, which goes in Lessons and continues."
+    },
+    {
+      "id": 46,
+      "name": "hook_pollution_is_answered_inside_the_hook",
+      "prompt": "I don't want this Skill's hook firing in my other projects. Can I install without hooks?",
+      "expected_output": "Explains that the defence is inside the hook rather than in an install flag: without a .loops/active marker naming an existing artifact, nothing is read, nothing is written, and no command runs. Names the escape hatches (rm .loops/active, LOOP_GRAPH_HOOKS_DISABLED=1) and why an opt-in flag was rejected: it would leave the goal text claiming the anchor is the only accepted evidence while nothing executed it, which is a silent downgrade of evidence coverage."
+    },
+    {
+      "id": 47,
+      "name": "the_gate_never_denies_twice_on_an_identical_result",
+      "prompt": "The anchor has been failing identically for three turns and the agent keeps getting sent back. Is that right?",
+      "expected_output": "No: two identical anchor results in a row mean the loop is not progressing, and the gate lets the turn end and reports what is blocking it rather than denying again. Denying a spinning loop only spins it more. Points at the event log's signature field as where that is visible."
+    },
+    {
+      "id": 48,
+      "name": "worker_transcripts_are_not_the_record",
+      "prompt": "Save the full conversation with each worker into .loops/ so we can review the discussion later.",
+      "expected_output": "Declines: worker intermediates go in a gitignored .loops/.work/ for one round's lifetime, and what survives is the event log line plus whatever became a lesson. Sharing transcripts between agents costs a large token multiple and makes workers agree with each other rather than reach independent conclusions - and if a round produced no lesson, the transcript would not have saved it."
+    },
+    {
+      "id": 49,
+      "name": "post_tool_use_is_not_registered_yet",
+      "prompt": "Add a PostToolUse hook that reminds the agent of the lessons after every tool call.",
+      "expected_output": "Declines for now with the cost stated: PostToolUse fires once per tool call, so it pays a process start per call, and its value duplicates the SessionStart injection plus the goal text's own instruction. Names the trigger that would change it: a real run where the loop retries a path its own Lessons already ruled out."
     }
   ],
   "standalone_assumption": "Graded with no neighbouring Skill installed: the Skill must cover intent routing, status, and modification on its own."

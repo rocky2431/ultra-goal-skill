@@ -164,6 +164,44 @@ The repo also ships a plugin manifest (`.agents/plugins/marketplace.json` and
 `plugins/loop-graph-design/.codex-plugin/plugin.json`) for hosts that install plugins
 directly from a Git marketplace.
 
+## The gate
+
+On a host that exposes the events, three hooks install with the Skill and turn the anchor from
+a sentence in a prompt into something that actually runs.
+
+| Hook | Does | Can it block? |
+|---|---|---|
+| `Stop` | Runs the anchor every turn | **Yes, in exactly one case**: the anchor ran and was red |
+| `SessionStart` | Re-injects the frozen spec and carried state after a restart | No |
+| `PreCompact` | Records the carried state before the context is emptied | No |
+
+**Three outcomes, not two.** An anchor that cannot run — missing command, not executable,
+timed out — is **unknown**, not failed. A timeout measures elapsed time and has no access to
+success or failure, so reporting it as either is how a mechanical gate starts lying. Unknown
+lets the turn end and says the result is unverified.
+
+**Six of the seven steps allow.** Ceiling reached, loop not progressing, anchor unrunnable,
+anchor green, no anchor, no active loop — all let the turn end and say why. It refuses only
+when it is certain.
+
+### What it costs a project that never asked for one
+
+Every hook's first act is one check: is there a `.loops/active` marker naming an artifact that
+exists? Without one, nothing is read, nothing is written, no command runs — a process start
+and a `stat`. That early exit is the only thing between an installed hook and an unrelated
+project, so it is pinned from nine angles in `tests/test_loop_hooks.py`, including that an
+inactive project executes no anchor and that a handler which raises still exits 0.
+
+Escape hatches, neither of which needs the agent's cooperation: `rm .loops/active`, or
+`LOOP_GRAPH_HOOKS_DISABLED=1`.
+
+Registration is idempotent, backs up `settings.json` first, preserves every hook it does not
+own, and `doctor` reports `missing` or `partial:<events>` if something later removes it.
+
+`PostToolUse` is deliberately not registered — it fires once per tool call, and its value
+duplicates what `SessionStart` injects. It gets added when a real run shows a loop retrying a
+path its own lessons already ruled out.
+
 ## The validator
 
 ```bash
@@ -222,7 +260,7 @@ designed with its owner in the room has no validation set.
 python3 -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-78 tests: the validator's rules, the status projection, the package surface, version
+124 tests: the validator's rules, the status projection, the package surface, version
 consistency across three files, every relative link in `SKILL.md` resolving, and the shipped
 templates passing the shipped validator. Two are safety tests — that an anchor is never
 executed unasked, and that the validator never edits an artifact.

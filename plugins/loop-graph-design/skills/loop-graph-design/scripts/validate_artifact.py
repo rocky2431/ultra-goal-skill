@@ -543,6 +543,39 @@ SHAPES = {
 }
 
 
+def last_anchor_check(artifact: Path) -> dict[str, object] | None:
+    """Read the newest anchor result from the loop's event log, if any.
+
+    The log is written by the hooks, never by this validator. A malformed line
+    is skipped rather than fatal - a broken log must not make status unusable.
+    """
+    log = artifact.with_name(f"{slug_of(artifact)}.events.jsonl")
+    try:
+        if not log.is_file():
+            return None
+        newest = None
+        for line in log.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except (json.JSONDecodeError, UnicodeError):
+                continue
+            if isinstance(entry, dict) and entry.get("event") == "anchor_checked":
+                newest = entry
+        if newest is None:
+            return None
+        return {
+            "turn": newest.get("turn"),
+            "outcome": newest.get("outcome"),
+            "exit_code": newest.get("exit_code"),
+            "at": newest.get("ts"),
+        }
+    except (OSError, UnicodeError):
+        return None
+
+
 def describe(path: Path, kind: str) -> dict[str, object]:
     text = path.read_text(encoding="utf-8")
     item: dict[str, object] = {
@@ -560,6 +593,7 @@ def describe(path: Path, kind: str) -> dict[str, object]:
     item["cadence"] = None
     item["carry_over"] = None
     item["start_command"] = None
+    item["last_check"] = last_anchor_check(path)
     if kind == "goal":
         found = sections(text)
         item["anchor"] = first_command(found.get("anchor", ""))
@@ -680,6 +714,12 @@ def print_status(state: dict[str, object]) -> None:
             )
         if item["start_command"]:
             print(f"  starts by: {item['start_command']}")
+        check = item.get("last_check")
+        if check:
+            print(
+                f"  last check: turn {check['turn']}, {check['outcome']}"
+                f" (exit {check['exit_code']})"
+            )
         if item["phases"]:
             print(f"  phases: {', '.join(item['phases'])}")
         if item["workers"]:

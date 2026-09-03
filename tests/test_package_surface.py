@@ -228,6 +228,12 @@ class SkillContractTests(unittest.TestCase):
             "a_lesson_must_be_a_cause_and_a_next_action",
             "lessons_are_capped_at_three",
             "the_turn_number_is_said_out_loud",
+            "an_unrunnable_anchor_is_unknown_not_failed",
+            "the_target_level_divergence_stops_the_loop",
+            "hook_pollution_is_answered_inside_the_hook",
+            "the_gate_never_denies_twice_on_an_identical_result",
+            "worker_transcripts_are_not_the_record",
+            "post_tool_use_is_not_registered_yet",
         ):
             self.assertIn(required, names)
 
@@ -372,6 +378,66 @@ class TemplateTests(unittest.TestCase):
             self.assertIn(target, va.KNOWN_TARGETS)
 
 
+class GateAndDocumentSystemTests(unittest.TestCase):
+    def test_interview_asks_about_surface_and_divergence(self) -> None:
+        skill = skill_text()
+        self.assertIn("7. **Read and write surface**", skill)
+        self.assertIn("8. **Divergence handling**", skill)
+        # The recommended default for divergence is the one rule no mechanism
+        # can enforce, so it has to be stated plainly.
+        self.assertIn(
+            "the intent, the anchor, and the boundary always stop and report", skill
+        )
+
+    def test_the_graph_nodes_are_named_and_mapped(self) -> None:
+        skill = skill_text()
+        self.assertIn("## This is a graph, and here is where its nodes live", skill)
+        for node in ("North Star", "Mechanical gate", "Adversarial review",
+                     "Reflection", "Carried state"):
+            self.assertIn(node, skill)
+        for failure in ("Goodhart", "Blindness upward", "Conflict",
+                        "Measurement decay", "Circularity"):
+            self.assertIn(failure, skill)
+
+    def test_the_gate_section_states_three_outcomes_and_the_escape(self) -> None:
+        skill = skill_text()
+        self.assertIn("## The gate: what the hooks do, and what they cost", skill)
+        self.assertIn("**Three outcomes, not two.**", skill)
+        self.assertIn("**Six of the seven steps allow.**", skill)
+        self.assertIn("`rm .loops/active`", skill)
+        self.assertIn("LOOP_GRAPH_HOOKS_DISABLED=1", skill)
+        # PostToolUse's absence is a decision with a stated trigger to revisit.
+        self.assertIn("`PostToolUse` is deliberately **not** registered", skill)
+
+    def test_document_system_answers_owner_when_and_relationships(self) -> None:
+        doc = (SKILL_ROOT / "references" / "document-system.md").read_text(
+            encoding="utf-8"
+        )
+        # who writes it, when, and how mutable - the three questions it exists for
+        for column in ("Who writes it", "Mutability", "In Git"):
+            self.assertIn(column, doc)
+        self.assertIn("frozen for the duration of a run", doc)
+        self.assertIn("append-only, never edited", doc)
+        self.assertIn("a slower loop owns the faster loop's target", doc)
+        self.assertIn("a summary is a derived checkpoint, not a source of truth", doc)
+        # the three-layer split for divergence
+        self.assertIn("### Lessons", doc)
+        self.assertIn("stop and report", doc)
+        # multi-worker storage, and what is thrown away
+        self.assertIn(".loops/.work/", doc)
+        self.assertIn("gitignored", doc)
+        self.assertIn("Workers never share a transcript", doc)
+        self.assertIn("The orchestrator runs the anchor, not the workers", doc)
+
+    def test_every_relative_link_still_resolves(self) -> None:
+        missing = [
+            target
+            for target in re.findall(r"\]\((?!https?:)([^)#]+)\)", skill_text())
+            if not (SKILL_ROOT / target).exists()
+        ]
+        self.assertEqual([], missing)
+
+
 class EvalTests(unittest.TestCase):
     def test_behavior_evals_cover_the_refusals(self) -> None:
         data = json.loads((SKILL_ROOT / "evals" / "evals.json").read_text(encoding="utf-8"))
@@ -459,7 +525,19 @@ class ResearchTests(unittest.TestCase):
 
 
 class HygieneTests(unittest.TestCase):
-    def test_package_has_no_hooks_mcp_or_machine_specific_paths(self) -> None:
+    def test_package_ships_hooks_but_no_mcp_or_machine_specific_paths(self) -> None:
+        """Reversal recorded in 0.8.0: the package now ships hooks.
+
+        Through 0.7.0 this asserted the package had none, on the reasoning that
+        a hook is a global effect an installed Skill should not impose. What
+        changed the decision is that gating the anchor mechanically is the whole
+        point, and an opt-in flag would have meant a Skill that emits "the
+        anchor is the only accepted evidence" while nothing executes it - a
+        silent downgrade of evidence coverage, which is worse than the pollution
+        it avoids. The pollution is instead handled inside the hooks: no
+        `.loops/active`, no work. That early exit is pinned by
+        tests/test_loop_hooks.py, which is now the load-bearing test.
+        """
         files = [
             path
             for path in REPO_ROOT.rglob("*")
@@ -468,8 +546,37 @@ class HygieneTests(unittest.TestCase):
             and "__pycache__" not in path.relative_to(REPO_ROOT).parts
         ]
         relative = {path.relative_to(REPO_ROOT).as_posix() for path in files}
-        self.assertFalse(any("hooks/" in path for path in relative))
         self.assertFalse(any(path.endswith(".mcp.json") for path in relative))
+
+        # Every shipped hook must route through the shared early exit.
+        scripts = SKILL_ROOT / "scripts"
+        hook_scripts = sorted(p.name for p in scripts.glob("loop_*.py"))
+        self.assertEqual(
+            ["loop_hooks.py", "loop_pre_compact.py", "loop_session_start.py",
+             "loop_stop.py"],
+            hook_scripts,
+        )
+        for name in hook_scripts:
+            if name == "loop_hooks.py":
+                continue
+            source = (scripts / name).read_text(encoding="utf-8")
+            self.assertIn("run_hook(", source, name)
+
+        manifest = json.loads(
+            (PLUGIN_ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            ["Stop", "SessionStart", "PreCompact"], list(manifest["hooks"])
+        )
+        # PostToolUse is deliberately absent: it fires once per tool call, so its
+        # cost is a Python start per call, and its value duplicates SessionStart
+        # injection plus the goal text's own instruction to read carry-over.
+        self.assertNotIn("PostToolUse", manifest["hooks"])
+        self.assertNotIn("UserPromptSubmit", manifest["hooks"])
+        for groups in manifest["hooks"].values():
+            for group in groups:
+                for entry in group["hooks"]:
+                    self.assertIn("commandWindows", entry)
 
         machine_path = "/Users/" + "rocky243"
         unfinished = "TO" + "DO:"

@@ -1,0 +1,48 @@
+{
+  "description": "Gate an active loop on its anchor, and restore its frozen spec and carried state after a session or compaction boundary. Silent in any project without a .loops/active marker.",
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$PLUGIN_ROOT/skills/loop-graph-design/scripts/loop_stop.py\"",
+            "commandWindows": "py -3 \"%PLUGIN_ROOT%\\skills\\loop-graph-design\\scripts\\loop_stop.py\"",
+            "timeout": 200,
+            "statusMessage": "Checking the loop's anchor"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "^(startup|resume|clear|compact)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$PLUGIN_ROOT/skills/loop-graph-design/scripts/loop_session_start.py\"",
+            "commandWindows": "py -3 \"%PLUGIN_ROOT%\\skills\\loop-graph-design\\scripts\\loop_session_start.py\"",
+            "timeout": 10,
+            "additionalContextLimit": 8000,
+            "statusMessage": "Restoring the active loop"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$PLUGIN_ROOT/skills/loop-graph-design/scripts/loop_pre_compact.py\"",
+            "commandWindows": "py -3 \"%PLUGIN_ROOT%\\skills\\loop-graph-design\\scripts\\loop_pre_compact.py\"",
+            "timeout": 10,
+            "statusMessage": "Recording the loop's carried state"
+          }
+        ]
+      }
+    ]
+  }
+}
