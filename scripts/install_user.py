@@ -41,7 +41,14 @@ HOOK_EVENTS = {
 HOOK_MATCHERS = {"SessionStart": "^(startup|resume|clear|compact)$"}
 HOOK_TIMEOUTS = {"Stop": 200}
 HOOK_HOSTS = ("claude",)
+# Matched against a normalised command string: a registration written on
+# Windows carries backslashes, and comparing them raw made every identity check
+# fail there - idempotence, doctor and uninstall all silently.
 HOOK_TAG = "loop-graph-design/scripts/loop_"
+
+
+def _tagged(command: object) -> bool:
+    return HOOK_TAG in str(command).replace("\\", "/")
 
 
 class InstallError(RuntimeError):
@@ -176,8 +183,14 @@ def _settings_path(home: Path, host: str) -> Path:
 
 
 def _hook_command(home: Path, host: str, script: str) -> str:
+    """Build the registered command.
+
+    `sys.executable` rather than a bare `python3`: the latter is absent on most
+    Windows installs, and a hook whose interpreter does not exist is a gate that
+    fails silently - the exact outcome this Skill refuses elsewhere.
+    """
     target = _skill_destination(home, host) / "scripts" / script
-    return f'python3 "{target}"'
+    return f'"{sys.executable}" "{target}"'
 
 
 def _load_settings(path: Path) -> dict[str, Any]:
@@ -227,7 +240,7 @@ def _strip_our_hooks(settings: dict[str, Any]) -> tuple[dict[str, Any], int]:
             kept = [
                 entry
                 for entry in group["hooks"]
-                if HOOK_TAG not in str(entry.get("command", ""))
+                if not _tagged(entry.get("command"))
             ]
             removed += len(group["hooks"]) - len(kept)
             if kept:
@@ -302,10 +315,12 @@ def _hook_status(home: Path, host: str) -> dict[str, str]:
             if not isinstance(group, dict):
                 continue
             for entry in group.get("hooks", []) or []:
-                if HOOK_TAG in str(entry.get("command", "")):
+                if _tagged(entry.get("command")):
                     found.add(event)
     missing = sorted(set(HOOK_EVENTS) - found)
     if not missing:
+        if not Path(sys.executable).exists():
+            return {"hooks": "interpreter-missing"}
         return {"hooks": "ok"}
     if not found:
         return {"hooks": "missing"}
@@ -398,7 +413,9 @@ def _doctor(home: Path, hosts: list[str]) -> dict[str, object]:
             "version": str(marker.get("version", "unknown")),
         }
         entry.update(_hook_status(home, host))
-        if entry["hooks"].startswith(("missing", "partial", "settings-unreadable")):
+        if entry["hooks"].startswith(
+            ("missing", "partial", "settings-unreadable", "interpreter")
+        ):
             healthy = False
         statuses[host] = entry
     return {"ok": healthy, "hosts": statuses}

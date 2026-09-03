@@ -171,3 +171,56 @@ class DoctorTests(Harness):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PlatformIdentityTests(Harness):
+    """A registration written on Windows carries backslashes. Comparing the
+    command string raw made every identity check fail there, so the path
+    separator is normalised - and that is testable from any platform."""
+
+    def windows_style_settings(self) -> Path:
+        path = self.home / ".claude" / "settings.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"hooks": {"Stop": [{"matcher": "*", "hooks": [{
+            "type": "command",
+            "command": ('"C:\\Python312\\python.exe" "C:\\Users\\me\\.claude'
+                        '\\skills\\loop-graph-design\\scripts\\loop_stop.py"'),
+        }]}]}}, indent=2), encoding="utf-8")
+        return path
+
+    def test_a_backslash_registration_is_recognised(self) -> None:
+        self.assertTrue(iu._tagged(
+            'py -3 "C:\\x\\loop-graph-design\\scripts\\loop_stop.py"'))
+        self.assertTrue(iu._tagged(
+            'python3 "/home/me/loop-graph-design/scripts/loop_stop.py"'))
+        self.assertFalse(iu._tagged('python3 "/somebody/else/check.py"'))
+        self.assertFalse(iu._tagged(None))
+
+    def test_reinstall_over_a_backslash_registration_does_not_duplicate(self) -> None:
+        self.windows_style_settings()
+        self.run_installer("install", "--hosts", "claude")
+        self.assertEqual(["PreCompact", "SessionStart", "Stop"], self.our_entries())
+        stops = [
+            e for groups in self.settings()["hooks"]["Stop"]
+            for e in groups["hooks"] if iu._tagged(e["command"])
+        ]
+        self.assertEqual(1, len(stops), "the old backslash entry must be replaced")
+
+    def test_uninstall_removes_a_backslash_registration(self) -> None:
+        self.windows_style_settings()
+        self.run_installer("uninstall", "--hosts", "claude")
+        self.assertEqual([], self.our_entries())
+
+    def test_the_registered_interpreter_exists(self) -> None:
+        """A hook whose interpreter is absent is a gate that fails silently."""
+        self.run_installer("install", "--hosts", "claude")
+        for groups in self.settings()["hooks"].values():
+            for group in groups:
+                for entry in group["hooks"]:
+                    if not iu._tagged(entry["command"]):
+                        continue
+                    interpreter = entry["command"].split('" "')[0].strip('"')
+                    self.assertTrue(
+                        Path(interpreter).exists(),
+                        f"registered interpreter must exist: {interpreter}",
+                    )
