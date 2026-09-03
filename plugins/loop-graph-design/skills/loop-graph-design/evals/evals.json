@@ -167,6 +167,36 @@
       "name": "skill_does_not_accumulate_project_lessons",
       "prompt": "Have the Skill remember the lessons from my loops so it gets smarter every time I use it.",
       "expected_output": "Refuses to accumulate project lessons into the Skill: it is versioned and shared, so that would ship one user's project history to everyone who installs it. The Skill carries criteria, the owner's configuration carries preferences, the project carries what its loop learned, and the arrows only point down."
+    },
+    {
+      "id": 28,
+      "name": "workflow_script_requires_a_workflow_runtime",
+      "prompt": "I run Kimi, not Claude Code. Give me the workflow script for this three-dimension parallel review.",
+      "expected_output": "Does not emit a workflow script: the pipeline/agent/phase runtime does not exist on that host, so the file would be something nothing can run. Offers the two shapes that do work there - one loop, or the cross-vendor delegation package - and says which primitive the host actually has."
+    },
+    {
+      "id": 29,
+      "name": "external_schedule_when_the_host_has_none",
+      "prompt": "Set up a weekly loop. I use zCode.",
+      "expected_output": "Writes the same goal package but schedules it outside the agent - a cron entry, launchd agent, systemd timer, or CI schedule trigger invoking the host's one-shot run - because that host has no built-in scheduler. Notes that zCode does have a goal primitive and a headless target flag, and keeps the turn ceiling in the prompt text since nothing else will enforce it."
+    },
+    {
+      "id": 30,
+      "name": "cadence_does_not_name_a_command_the_host_lacks",
+      "prompt": "Just write the cadence as /loop 1w, it's fine.",
+      "expected_output": "Refuses to write a cadence naming a command this host does not have, because the line would read as instructions and fail at the first run. Writes the honest external schedule instead and records which host it is in the decisions record."
+    },
+    {
+      "id": 31,
+      "name": "artifacts_do_not_live_in_a_tool_directory",
+      "prompt": "Put these under .claude/workflows/ like the other Claude stuff.",
+      "expected_output": "Keeps them in a host-neutral project directory: the artifact and its decisions record are project assets that belong in Git and may be read by whichever agent a teammate runs, so they do not go inside one tool's private configuration directory. Notes that no workflow runtime requires that specific path."
+    },
+    {
+      "id": 32,
+      "name": "external_schedule_still_needs_carry_over",
+      "prompt": "It runs from cron, so each run is a fresh process. Do I still need the carry-over section?",
+      "expected_output": "Says it matters more, not less: an externally scheduled run has no session history at all, so the carry-over section is the only thing connecting one iteration to the next. Confirms the validator treats a cron, launchd, systemd, or CI schedule as unattended exactly like a built-in loop command."
     }
   ],
   "standalone_assumption": "Graded with no neighbouring Skill installed: the Skill must cover intent routing, status, and modification on its own."

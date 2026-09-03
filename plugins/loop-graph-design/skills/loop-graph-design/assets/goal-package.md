@@ -38,8 +38,11 @@ anchor means rejected, not "probably fine".
 
 ## Cadence
 
-`/loop 1w` — advisories are published continuously but this codebase absorbs them weekly.
-Running it daily costs six extra runs to find the same finding.
+Weekly. Advisories arrive continuously but this codebase absorbs them weekly, and running it
+daily costs six extra runs to find the same finding.
+
+Host: Claude Code, so `/loop 1w`. On a host with no built-in scheduler this becomes a `cron`
+entry invoking that host's one-shot command - see Handoff. Nothing else in this file changes.
 
 ## Carry-over
 
@@ -52,10 +55,29 @@ keeps the history, this section keeps only what is still the case.
 
 ## Handoff
 
-Run:
+The prompt is the same on every host; only the way it gets started differs.
+
+**With a built-in loop command** (Claude Code):
 
 ```
-/loop 1w Read the Carry-over section of .claude/workflows/weekly-dep-upgrade.goal.md first.
+/loop 1w <the prompt below>
+```
+
+**Without one** (Kimi, OpenCode, zCode - none of them has a scheduler), schedule it outside
+the agent and invoke the host's one-shot command:
+
+```
+# crontab -e
+0 9 * * 1 cd /absolute/repo && kimi -p "$(cat .loops/weekly-dep-upgrade.prompt.txt)"
+```
+
+`launchd`, a systemd timer, or a CI `schedule:` trigger all work the same way. zCode can
+also carry the goal itself with `--target`.
+
+**The prompt:**
+
+```
+Read the Carry-over section of .loops/weekly-dep-upgrade.goal.md first.
 Then upgrade dependencies within the stated boundary until `pnpm audit --audit-level=high`
 reports 0 findings, or 6 turns pass. Run the anchor command before claiming anything.
 Rewrite the Carry-over section before you finish, deleting what is no longer true.

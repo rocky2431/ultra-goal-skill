@@ -1,10 +1,10 @@
 ---
 name: loop-graph-design
-description: "Turn \"make an agent keep doing this\" into a running loop: interview for intent, anchor, quantified stop condition, boundary, and an independent verifier, refuse the shapes that fail, then emit the executable artifact — a /goal or /loop prompt, a Workflow script, or a cross-vendor delegation package. Use when the deliverable is a runnable prompt or script, not a design note."
+description: "Turn \"make an agent keep doing this\" into a running loop: interview for intent, anchor, quantified stop condition, boundary, and an independent verifier, refuse the shapes that fail, then emit the artifact the host can run — a goal prompt with its schedule, a workflow script, or a cross-vendor delegation package. Use when the deliverable is runnable, not a design note."
 license: MIT
 metadata:
   author: rocky2431
-  version: "0.3.0"
+  version: "0.4.0"
 ---
 
 # Loop Graph Design
@@ -122,15 +122,44 @@ Name the refusal, name the cheap alternative, and go back to the relevant questi
 Read [references/anti-patterns.md](references/anti-patterns.md) for the failure modes
 behind this table.
 
+## Know your host before compiling
+
+You are the host. Use the primitives you actually have, not the ones a different agent has.
+Measured on real installs they differ, and the differences change what you may emit:
+
+| Capability | Claude Code | zCode | Kimi | OpenCode |
+|---|---|---|---|---|
+| Goal with a stop condition | `/goal` | `/goal`, `--target` | put it in the prompt | put it in the prompt |
+| One-shot non-interactive run | — | `--prompt` / `-p` | `-p` / `--prompt` | `opencode run` |
+| Built-in scheduling | `/loop`, `/schedule` | none | none | none |
+| Single-vendor graph runtime | `pipeline`/`agent`/`phase` | none | none | none |
+| Cross-vendor delegation | `agent-delegate` | `agent-delegate` | `agent-delegate` | `agent-delegate` |
+
+Two consequences, and both change the artifact:
+
+- **On most hosts, scheduling is external.** A built-in loop command is sugar for "feed this
+  prompt again on a timer". Without one, the same loop is a `cron` entry, a `launchd` agent,
+  a systemd timer, or a CI `schedule:` trigger invoking the host's one-shot command. The
+  goal package is identical; only `## Cadence` and `## Handoff` change.
+- **A single-vendor workflow script needs that runtime.** If your host has no workflow
+  engine, do **not** emit `<slug>.workflow.js` — it would be a file nothing can run. Keep it
+  one loop, or use the cross-vendor delegation shape, which works everywhere.
+
+Write `## Cadence` and `## Handoff` for the host that will actually run this, and record
+which host that is in the decisions record. If you are unsure whether you have a primitive,
+check rather than assume — a cadence line naming a command the host does not have is worse
+than an honest external schedule.
+
 ## Compile one artifact
 
 Name it after the work, and always write the paired decisions record. Default location is
-the project's `.claude/workflows/`.
+the project's `.loops/` — these are project assets that belong in Git and may be read by
+whichever agent a teammate runs, so they do not go inside any one tool's private directory.
 
 | Answer | Artifact | Template |
 |---|---|---|
 | Loop | `<slug>.goal.md` — the prompt the owner runs with `/goal` or `/loop`; an unattended one also needs `## Cadence` and `## Carry-over` | [assets/goal-package.md](assets/goal-package.md) |
-| Graph, one vendor | `<slug>.workflow.js` — topology in code, `meta` first and a pure literal, anchor on the top line as `` // anchor: `<command>` `` | [assets/workflow-script.js](assets/workflow-script.js) |
+| Graph, one vendor **(requires a workflow runtime)** | `<slug>.workflow.js` — topology in code, `meta` first and a pure literal, anchor on the top line as `` // anchor: `<command>` `` | [assets/workflow-script.js](assets/workflow-script.js) |
 | Graph, several vendors | `<slug>.delegation.md` — one mission per worker, each with its own anchor | [assets/delegation-package.md](assets/delegation-package.md) |
 | Always | `<slug>.decisions.md` — Decision / Rejected / Why, three columns | [assets/decisions-record.md](assets/decisions-record.md) |
 
@@ -145,7 +174,7 @@ exist and how they connect is the design, and it is yours and the owner's to aut
 ## Inspect what is running
 
 ```bash
-python3 scripts/validate_artifact.py .claude/workflows --status
+python3 scripts/validate_artifact.py .loops --status
 ```
 
 Reports each artifact's shape, anchor, stop condition, declared phases or workers, how many
@@ -219,7 +248,7 @@ those boundaries is drawn where it is.
 ## Validate, then hand off
 
 ```bash
-python3 scripts/validate_artifact.py .claude/workflows --json
+python3 scripts/validate_artifact.py .loops --json
 ```
 
 It checks mechanical facts only — pairing, required sections, declared phases, known

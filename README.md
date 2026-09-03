@@ -47,8 +47,8 @@ Skill installed to do any of that.
 
 | Shape | Artifact | Consumer |
 |---|---|---|
-| Loop | `<slug>.goal.md` — the prompt plus cadence | `/goal`, `/loop`, `/schedule` |
-| Graph, one vendor | `<slug>.workflow.js` — topology in code | a workflow runtime |
+| Loop | `<slug>.goal.md` — the prompt plus cadence | a goal primitive, or an external scheduler |
+| Graph, one vendor | `<slug>.workflow.js` — topology in code | a workflow runtime, where one exists |
 | Graph, several vendors | `<slug>.delegation.md` — one mission per worker | cross-agent delegation |
 | Always | `<slug>.decisions.md` — Decision / Rejected / Why | you, next time |
 
@@ -60,7 +60,7 @@ artifact exists — so a session that dies mid-interview resumes instead of rest
 4. **Tracks state without storing any.**
 
 ```bash
-python3 scripts/validate_artifact.py .claude/workflows --status
+python3 scripts/validate_artifact.py .loops --status
 ```
 
 Reports each artifact's shape, anchor, stop condition, phases or workers, and decision
@@ -100,6 +100,30 @@ without `--status`.
    than quietly reversed. A change to the anchor itself reopens the interview — a loop whose
    anchor changed is a different loop.
 
+## Hosts
+
+The interview and the artifacts are portable. The primitives that *start* a loop are not, so
+the Skill picks the mechanism from what the running host actually has. Measured on real
+installs:
+
+| Capability | Claude Code | zCode | Kimi | OpenCode |
+|---|---|---|---|---|
+| Goal with a stop condition | `/goal` | `/goal`, `--target` | in the prompt | in the prompt |
+| One-shot non-interactive run | — | `--prompt` / `-p` | `-p` / `--prompt` | `opencode run` |
+| Built-in scheduling | `/loop`, `/schedule` | none | none | none |
+| Single-vendor graph runtime | `pipeline`/`agent`/`phase` | none | none | none |
+| Cross-vendor delegation | `agent-delegate` | `agent-delegate` | `agent-delegate` | `agent-delegate` |
+
+Two things follow. **Scheduling is external on most hosts** — a built-in loop command is
+sugar for "feed this prompt again on a timer", so without one the same loop is a `cron`
+entry, a `launchd` agent, a systemd timer, or a CI `schedule:` trigger invoking the host's
+one-shot run. The prompt is byte-identical; only the cadence and handoff lines differ. And
+**a single-vendor workflow script needs that runtime** — on a host without one the Skill
+will not emit it, because the file would be something nothing can run.
+
+Artifacts live in the project's `.loops/`, not inside any tool's private directory: they are
+project assets that belong in Git and may be read by whichever agent a teammate runs.
+
 ## Install
 
 ```bash
@@ -121,7 +145,7 @@ directly from a Git marketplace.
 ## The validator
 
 ```bash
-python3 scripts/validate_artifact.py .claude/workflows --json
+python3 scripts/validate_artifact.py .loops --json
 ```
 
 It observes facts and nothing else: file pairing, required sections, every shape carrying
@@ -176,7 +200,7 @@ designed with its owner in the room has no validation set.
 python3 -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-61 tests: the validator's rules, the status projection, the package surface, version
+70 tests: the validator's rules, the status projection, the package surface, version
 consistency across three files, every relative link in `SKILL.md` resolving, and the shipped
 templates passing the shipped validator. Two are safety tests — that an anchor is never
 executed unasked, and that the validator never edits an artifact.

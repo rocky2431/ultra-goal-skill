@@ -17,6 +17,11 @@ Goal-based is the default for this Skill. It is the only shape where the owner, 
 agent, owns the definition of "good enough" — which is the whole reason the interview
 asks for a quantified stop condition.
 
+**These four are shapes, not commands.** One host happens to expose all of them natively;
+most expose a goal at best and none of the others. The shape survives the move — a
+time-based loop on a host without a scheduler is an external timer invoking a one-shot run —
+so classify by shape first and pick the mechanism from what the host actually has.
+
 ## Host primitives
 
 - **`/goal <text>`** — registers the goal as a stop-time check. The agent cannot end its
@@ -26,11 +31,36 @@ asks for a quantified stop condition.
   interval to let the agent pace itself.
 - **`/schedule`** — a cron-shaped routine that runs without anyone attached.
 - **`Monitor`** — block until a condition holds, instead of polling in a loop.
-- **A stop hook** — the mechanical floor under `/goal`: it refuses the end of a turn while
-  a named condition is unmet. Reach for it directly when the check must survive a session.
+- **A stop hook** — the mechanical floor under a goal check: it refuses the end of a turn
+  while a named condition is unmet. Reach for it directly when the check must survive a
+  session.
 
-Prefer the host's own primitive over a hand-rolled scheduler. A loop you wrote yourself is
-a loop you now maintain, and it will not survive a session restart unless you made it.
+Prefer the host's own primitive when it has one. A loop you wrote yourself is a loop you now
+maintain, and it will not survive a session restart unless you made it.
+
+## When the host has no scheduler
+
+Measured: Claude Code has `/loop` and `/schedule`; zCode, Kimi, and OpenCode have none. All
+three do have a one-shot non-interactive run (`--prompt` / `-p`, `opencode run`), and zCode
+additionally has `/goal` and a headless `--target`.
+
+So on those hosts the timer lives outside the agent:
+
+```bash
+# crontab -e  — weekly, Monday 09:00
+0 9 * * 1 cd /absolute/repo && kimi -p "$(cat .loops/<slug>.prompt.txt)"
+```
+
+`launchd`, a systemd timer, and a CI `schedule:` trigger are equivalent. Three things to
+keep right when the loop runs this way:
+
+- **The prompt still carries the stop condition.** Without a goal primitive, nothing else
+  will refuse to stop early or refuse to run forever — so the turn ceiling has to be words
+  in the prompt.
+- **Carry-over matters more, not less.** An externally scheduled run has no session history
+  at all, so the carry-over section is the only thing connecting one iteration to the next.
+- **Record which host it is** in the decisions record. A cadence line naming a command the
+  host does not have is worse than an honest external schedule.
 
 ## Writing the stop condition
 

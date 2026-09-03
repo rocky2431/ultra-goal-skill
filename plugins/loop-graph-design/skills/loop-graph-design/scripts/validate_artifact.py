@@ -44,7 +44,14 @@ FENCE = re.compile(r"```[a-z]*\n(.+?)\n```", re.S)
 INLINE = re.compile(r"`([^`\n]+)`")
 ANCHOR_COMMENT = re.compile(r"(?m)^\s*//\s*anchor:\s*(.+?)\s*$")
 ANCHOR_TIMEOUT_SECONDS = 300
-UNATTENDED = re.compile(r"/loop\b|/schedule\b")
+# "Unattended" is about nobody watching, not about which host is running it.
+# Only one host has a built-in loop command; everywhere else the same loop is a
+# cron entry, a launchd agent, a systemd timer, or a CI schedule trigger.
+UNATTENDED = re.compile(
+    r"/loop\b|\bschedul\w*|\bcron(?:tab)?\b|\blaunchd\b|\bsystemd\b"
+    r"|\bnightly\b|\bunattended\b",
+    re.I,
+)
 BULLET = re.compile(r"(?m)^\s*[-*]\s+\S")
 CARRYOVER_MAX_ITEMS = 20
 

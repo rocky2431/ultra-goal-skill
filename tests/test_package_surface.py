@@ -75,8 +75,13 @@ class SkillContractTests(unittest.TestCase):
         text = description.group(1)
         self.assertLessEqual(len(text), 380)
         self.assertIn("not a design note", text)
-        for primitive in ("/goal", "/loop", "Workflow script", "delegation package"):
-            self.assertIn(primitive, text)
+        for shape in ("goal prompt", "workflow script", "delegation package"):
+            self.assertIn(shape, text)
+        # The artifact shapes are portable; the primitives that start them are not.
+        # Only one host has a built-in loop command, so naming one here would bind
+        # the Skill to that host in the very field used to route to it.
+        for host_specific in ("/goal", "/loop", "/schedule", ".claude/"):
+            self.assertNotIn(host_specific, text)
 
     def test_skill_encodes_the_interview_and_the_refusals(self) -> None:
         skill = skill_text()
@@ -179,8 +184,44 @@ class SkillContractTests(unittest.TestCase):
             "raw_trace_stays_out_of_the_repository",
             "lesson_stays_in_the_project",
             "skill_does_not_accumulate_project_lessons",
+            "workflow_script_requires_a_workflow_runtime",
+            "external_schedule_when_the_host_has_none",
+            "cadence_does_not_name_a_command_the_host_lacks",
+            "artifacts_do_not_live_in_a_tool_directory",
+            "external_schedule_still_needs_carry_over",
         ):
             self.assertIn(required, names)
+
+    def test_skill_is_host_neutral(self) -> None:
+        skill = skill_text()
+        self.assertIn("## Know your host before compiling", skill)
+        self.assertIn("You are the host.", skill)
+        self.assertIn("On most hosts, scheduling is external.", skill)
+        self.assertIn("requires a workflow runtime", skill)
+        self.assertIn("it would be a file nothing can run", skill)
+        # Artifacts are project assets, not one tool's private configuration.
+        self.assertNotIn(".claude/workflows", skill)
+        self.assertIn(".loops/", skill)
+        # The measured matrix, so a wrong claim about a host is checkable.
+        for host in ("Claude Code", "zCode", "Kimi", "OpenCode"):
+            self.assertIn(host, skill)
+
+    def test_templates_and_references_are_host_neutral(self) -> None:
+        goal = (SKILL_ROOT / "assets" / "goal-package.md").read_text(encoding="utf-8")
+        self.assertNotIn(".claude/workflows", goal)
+        handoff = goal.split("## Handoff", 1)[1]
+        # Both start paths, and one prompt shared by them.
+        self.assertIn("With a built-in loop command", handoff)
+        self.assertIn("Without one", handoff)
+        self.assertIn("crontab", handoff)
+        self.assertIn("The prompt is the same on every host", handoff)
+
+        primitives = (SKILL_ROOT / "references" / "loop-primitives.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("## When the host has no scheduler", primitives)
+        self.assertIn("These four are shapes, not commands.", primitives)
+        self.assertIn("Carry-over matters more, not less.", primitives)
 
     def test_every_relative_link_in_the_skill_resolves(self) -> None:
         missing = [

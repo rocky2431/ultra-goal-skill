@@ -499,3 +499,61 @@ class CarryOverTests(Harness):
         item = state["artifacts"][0]
         self.assertEqual(2, item["carry_over"])
         self.assertEqual("/loop 1w", item["cadence"])
+
+
+class HostPortabilityTests(Harness):
+    """Unattended means scheduled by anything, not just by a Claude Code command."""
+
+    def _goal_with_cadence(self, name: str, cadence: str, carry_over: bool) -> Path:
+        self.write(f"{name}.decisions.md", GOOD_DECISIONS)
+        text = GOOD_GOAL.replace("`/loop 1w`", cadence)
+        if not carry_over:
+            text = text.replace("## Carry-over", "## Notes")
+        return self.write(f"{name}.goal.md", text)
+
+    def test_cron_scheduled_loop_needs_carry_over(self) -> None:
+        path = self._goal_with_cadence(
+            "cron", '`cron: 0 9 * * 1 kimi -p "$(cat prompt.md)"`', carry_over=False
+        )
+        self.assertIn("CARRYOVER_MISSING", self.codes(path))
+
+    def test_launchd_scheduled_loop_needs_carry_over(self) -> None:
+        path = self._goal_with_cadence(
+            "launchd", "a `launchd` agent every Monday at 09:00", carry_over=False
+        )
+        self.assertIn("CARRYOVER_MISSING", self.codes(path))
+
+    def test_ci_scheduled_loop_needs_carry_over(self) -> None:
+        path = self._goal_with_cadence(
+            "ci", "a GitHub Actions `schedule:` trigger, weekly", carry_over=False
+        )
+        self.assertIn("CARRYOVER_MISSING", self.codes(path))
+
+    def test_systemd_timer_needs_carry_over(self) -> None:
+        path = self._goal_with_cadence(
+            "sd", "a `systemd` timer, daily", carry_over=False
+        )
+        self.assertIn("CARRYOVER_MISSING", self.codes(path))
+
+    def test_hand_run_cadence_does_not_require_carry_over(self) -> None:
+        path = self._goal_with_cadence(
+            "manual", "I run it by hand when I remember to", carry_over=False
+        )
+        report = va.validate_paths([str(path)])
+        self.assertNotIn(
+            "CARRYOVER_MISSING", {f.code for f in report.findings}
+        )
+
+    def test_cron_scheduled_loop_with_carry_over_passes(self) -> None:
+        path = self._goal_with_cadence(
+            "ok", '`cron: 0 9 * * 1 zcode -p "$(cat prompt.md)"`', carry_over=True
+        )
+        report = va.validate_paths([str(path)])
+        self.assertTrue(report.ok, [f.as_dict() for f in report.findings])
+
+    def test_status_reports_a_non_claude_cadence(self) -> None:
+        self._goal_with_cadence(
+            "k", '`cron: 0 9 * * 1 kimi -p "$(cat prompt.md)"`', carry_over=True
+        )
+        state = va.status_paths([str(self.dir)])
+        self.assertIn("kimi", state["artifacts"][0]["cadence"])
