@@ -22,7 +22,8 @@ sys.path.insert(0, str(VALIDATOR.parent))
 import validate_artifact as va  # noqa: E402
 
 
-GOOD_WORKFLOW = """export const meta = {
+GOOD_WORKFLOW = """// anchor: `pnpm test -- --run`
+export const meta = {
   name: 'fix-flaky-tests',
   description: 'Quarantine flaky tests, then verify each quarantine decision',
   phases: [{ title: 'Triage' }, { title: 'Verify' }],
@@ -326,3 +327,109 @@ class DirectoryAndCliTests(Harness):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WorkflowAnchorTests(Harness):
+    def test_workflow_without_an_anchor_comment_is_reported(self) -> None:
+        self.write("wa.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "wa.workflow.js", GOOD_WORKFLOW.replace("// anchor: `pnpm test -- --run`\n", "")
+        )
+        self.assertIn("ANCHOR_MISSING", self.codes(path))
+
+    def test_workflow_anchor_must_name_a_command(self) -> None:
+        self.write("wb.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "wb.workflow.js",
+            GOOD_WORKFLOW.replace("// anchor: `pnpm test -- --run`", "// anchor: it feels right"),
+        )
+        self.assertIn("ANCHOR_NOT_EXECUTABLE", self.codes(path))
+
+
+class StatusTests(Harness):
+    def test_status_reports_shape_anchor_and_stop_condition(self) -> None:
+        self.write("weekly-dep-upgrade.decisions.md", GOOD_DECISIONS)
+        self.write("weekly-dep-upgrade.goal.md", GOOD_GOAL)
+        self.write("fix-flaky-tests.decisions.md", GOOD_DECISIONS)
+        self.write("fix-flaky-tests.workflow.js", GOOD_WORKFLOW)
+        self.write("cross-vendor-audit.decisions.md", GOOD_DECISIONS)
+        self.write("cross-vendor-audit.delegation.md", GOOD_DELEGATION)
+
+        state = va.status_paths([str(self.dir)])
+        by_slug = {item["slug"]: item for item in state["artifacts"]}
+        self.assertEqual(
+            {"weekly-dep-upgrade", "fix-flaky-tests", "cross-vendor-audit"},
+            set(by_slug),
+        )
+
+        loop = by_slug["weekly-dep-upgrade"]
+        self.assertEqual("loop", loop["shape"])
+        self.assertIn("pnpm test", loop["anchor"])
+        self.assertIn("pnpm audit", loop["stop_condition"])
+        self.assertEqual(2, loop["decisions"])
+
+        graph = by_slug["fix-flaky-tests"]
+        self.assertEqual("graph-single-vendor", graph["shape"])
+        self.assertEqual(["Triage", "Verify"], graph["phases"])
+        self.assertIn("pnpm test", graph["anchor"])
+
+        star = by_slug["cross-vendor-audit"]
+        self.assertEqual("graph-star", star["shape"])
+        self.assertEqual(["codex", "kimi"], star["workers"])
+
+    def test_status_carries_validation_findings(self) -> None:
+        self.write("lonely.goal.md", GOOD_GOAL)
+        state = va.status_paths([str(self.dir)])
+        self.assertFalse(state["ok"])
+        self.assertIn(
+            "PAIRED_DECISIONS_MISSING",
+            {f["code"] for f in state["findings"]},
+        )
+
+    def test_status_does_not_run_anchors_by_default(self) -> None:
+        witness = self.dir / "anchor-ran"
+        self.write("side.decisions.md", GOOD_DECISIONS)
+        self.write(
+            "side.goal.md",
+            GOOD_GOAL.replace(
+                "```\npnpm test -- --run\n```", f"```\ntouch {witness}\n```"
+            ),
+        )
+        state = va.status_paths([str(self.dir)])
+        self.assertFalse(witness.exists(), "the validator must not execute an anchor unasked")
+        self.assertIsNone(state["artifacts"][0]["anchor_result"])
+
+    def test_status_runs_anchors_only_when_asked(self) -> None:
+        self.write("run.decisions.md", GOOD_DECISIONS)
+        self.write(
+            "run.goal.md",
+            GOOD_GOAL.replace("```\npnpm test -- --run\n```", "```\nexit 3\n```"),
+        )
+        state = va.status_paths([str(self.dir)], run_anchors=True)
+        result = state["artifacts"][0]["anchor_result"]
+        self.assertIsNotNone(result)
+        self.assertEqual(3, result["exit_code"])
+        self.assertEqual("exit 3", result["command"])
+
+    def test_cli_status_prints_json_and_exits_zero_when_clean(self) -> None:
+        self.write("c.decisions.md", GOOD_DECISIONS)
+        self.write("c.workflow.js", GOOD_WORKFLOW)
+        result = subprocess.run(
+            [sys.executable, str(VALIDATOR), str(self.dir), "--status", "--json"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn('"shape": "graph-single-vendor"', result.stdout)
+
+    def test_cli_status_is_readable_without_json(self) -> None:
+        self.write("c.decisions.md", GOOD_DECISIONS)
+        self.write("c.goal.md", GOOD_GOAL)
+        result = subprocess.run(
+            [sys.executable, str(VALIDATOR), str(self.dir), "--status"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("loop", result.stdout)
+        self.assertIn("c", result.stdout)

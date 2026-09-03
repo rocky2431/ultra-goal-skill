@@ -3,6 +3,7 @@
 // The runtime evaluates this inside an async function, so top-level await and return
 // are legal. Every phase used below must appear in meta.phases.
 
+// anchor: `pnpm test -- --run`
 export const meta = {
   name: 'review-changed-files',
   description: 'Review the diff across dimensions, then verify each finding adversarially',

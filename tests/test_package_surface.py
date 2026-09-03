@@ -89,7 +89,14 @@ class SkillContractTests(unittest.TestCase):
             "never workflow phases",
             "An agent grading its own output praises it",
             "## Compile one artifact",
+            "## Inspect what is running",
+            "## Modify an existing loop",
             "## Validate, then hand off",
+            "## Recognize the intent first",
+            "run the status command before the first question",
+            "That record is also the interview's progress",
+            "Edit the affected row",
+            "A loop whose anchor changed is a different loop",
         ):
             self.assertIn(required, skill, required)
         self.assertLess(len(skill.splitlines()), 220)
@@ -99,6 +106,30 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("Do not generate topology from a template engine", skill)
         self.assertIn("never edits the artifact", skill)
         self.assertIn("its silence is not evidence", skill)
+
+    def test_skill_stands_alone_and_stores_no_state(self) -> None:
+        skill = skill_text()
+        self.assertIn("Assume no other Skill is installed", skill)
+        self.assertNotIn("belongs to a harness-design Skill", skill)
+        self.assertIn("**Nothing is stored.**", skill)
+        self.assertIn("recomputed on every call", skill)
+        self.assertIn("Ask the owner first", skill)
+
+    def test_behaviour_evals_cover_the_whole_lifecycle(self) -> None:
+        data = json.loads(
+            (SKILL_ROOT / "evals" / "evals.json").read_text(encoding="utf-8")
+        )
+        self.assertIn("standalone_assumption", data)
+        names = {case["name"] for case in data["evals"]}
+        for required in (
+            "existing_artifact_makes_it_a_modify",
+            "modify_surfaces_a_rejected_decision",
+            "inspect_changes_nothing",
+            "running_anchors_needs_consent",
+            "changed_anchor_reopens_the_interview",
+            "state_is_not_tracked_in_a_file",
+        ):
+            self.assertIn(required, names)
 
     def test_every_relative_link_in_the_skill_resolves(self) -> None:
         missing = [
@@ -142,6 +173,18 @@ class TemplateTests(unittest.TestCase):
                 ("decisions-record.md", "settlement-audit.decisions.md"),
             ]
         )
+
+    def test_every_template_declares_an_anchor(self) -> None:
+        workflow = (SKILL_ROOT / "assets" / "workflow-script.js").read_text(
+            encoding="utf-8"
+        )
+        self.assertRegex(workflow, r"(?m)^// anchor: `[^`]+`$")
+        goal = (SKILL_ROOT / "assets" / "goal-package.md").read_text(encoding="utf-8")
+        self.assertIn("## Anchor", goal)
+        delegation = (SKILL_ROOT / "assets" / "delegation-package.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertEqual(2, delegation.count("- anchor:"))
 
     def test_delegation_template_only_names_known_targets(self) -> None:
         text = (SKILL_ROOT / "assets" / "delegation-package.md").read_text(
@@ -192,15 +235,31 @@ class EvalTests(unittest.TestCase):
 
         negatives = [case for case in cases if case["kind"] == "negative"]
         self.assertGreaterEqual(len(negatives), 5)
-        routed = {skill for case in negatives for skill in case["expected_skills"]}
-        self.assertIn(
-            "agent-harness-design",
-            routed,
-            "a negative must route authority-design work to the adjacent skill",
+        self.assertIn("standalone_assumption", data)
+        for case in negatives:
+            self.assertEqual(
+                [],
+                case["expected_skills"],
+                f"{case['name']}: a negative must not depend on a neighbouring Skill "
+                "being installed",
+            )
+        optional = {
+            skill for case in cases for skill in case.get("optional_skills", [])
+        }
+        self.assertTrue(
+            {"agent-harness-design", "agent-delegation"} <= optional,
+            "record where a neighbour would take over, without requiring it",
         )
         for case in cases:
-            if case["kind"] in ("ambiguous", "coexistence"):
-                self.assertGreaterEqual(len(case["accepted_skill_sets"]), 2)
+            # Coexistence must stay correct whether or not the neighbour is
+            # installed, so it needs both resolutions. An ambiguous case may have
+            # exactly one legitimate answer - its ambiguity can be about intent
+            # (create vs modify) rather than about which Skill applies.
+            if case["kind"] == "coexistence":
+                self.assertGreaterEqual(len(case["accepted_skill_sets"]), 2, case["name"])
+            elif case["kind"] == "ambiguous":
+                self.assertGreaterEqual(len(case["accepted_skill_sets"]), 1, case["name"])
+                self.assertIn("note", case, case["name"])
 
 
 class ResearchTests(unittest.TestCase):

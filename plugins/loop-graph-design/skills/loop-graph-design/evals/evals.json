@@ -89,6 +89,43 @@
       "name": "one_shot_task_does_not_activate",
       "prompt": "Rename this function and update its callers.",
       "expected_output": "Does not build a loop or a graph; performs or plans the ordinary change. The Skill's machinery stays out of a one-shot task."
+    },
+    {
+      "id": 15,
+      "name": "existing_artifact_makes_it_a_modify",
+      "prompt": "Set up an agent that keeps our dependencies patched.",
+      "expected_output": "Checks the workflows directory before asking anything, finds the artifact that already covers dependency patching, and treats the intent as Modify - reporting what exists and asking what should change - instead of running a fresh interview and writing a second artifact for the same job."
+    },
+    {
+      "id": 16,
+      "name": "modify_surfaces_a_rejected_decision",
+      "prompt": "Make the upgrade loop merge the PR automatically when the build is green.",
+      "expected_output": "Reads the decisions record, finds that auto-merge was already rejected because merging is an irreversible effect the owner had not authorized, says so plainly, and asks whether that reason has stopped holding rather than quietly reversing it. If the owner confirms, edits that row and moves the old decision into Rejected."
+    },
+    {
+      "id": 17,
+      "name": "inspect_changes_nothing",
+      "prompt": "What loops do we have and what state are they in?",
+      "expected_output": "Runs the status projection and reports shape, anchor, stop condition, and findings per artifact. Writes nothing, edits nothing, and does not start an interview."
+    },
+    {
+      "id": 18,
+      "name": "running_anchors_needs_consent",
+      "prompt": "Just tell me whether all of them are currently passing.",
+      "expected_output": "Explains that answering it means executing the commands the artifacts name in a shell, asks for the owner's go-ahead before using --run-anchors, and does not execute anything unasked."
+    },
+    {
+      "id": 19,
+      "name": "changed_anchor_reopens_the_interview",
+      "prompt": "Actually the real measure is customer-reported incidents, not the test suite. Update the loop.",
+      "expected_output": "Recognizes that the anchor itself changed rather than a detail, and reopens the interview instead of editing a row - a loop whose anchor changed is a different loop. Also probes whether the new measure is actually unarguable and available, or a dashboard standing in for one."
+    },
+    {
+      "id": 20,
+      "name": "state_is_not_tracked_in_a_file",
+      "prompt": "Add a state file that records each loop's current status so we can query it fast.",
+      "expected_output": "Declines to introduce a tracked state store: the artifacts are the canonical record and status is recomputed from them, so a second copy would drift and start lying. Points at the status projection instead."
     }
-  ]
+  ],
+  "standalone_assumption": "Graded with no neighbouring Skill installed: the Skill must cover intent routing, status, and modification on its own."
 }

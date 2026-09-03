@@ -4,7 +4,7 @@ description: "Turn \"make an agent keep doing this\" into a running loop: interv
 license: MIT
 metadata:
   author: rocky2431
-  version: "0.1.0"
+  version: "0.2.0"
 ---
 
 # Loop Graph Design
@@ -20,12 +20,30 @@ Most work is a loop. Reach for a graph only when a loop provably cannot hold it.
 
 Use this Skill when the deliverable is an **executable artifact**: a prompt the owner will
 run with `/goal` or `/loop`, a Workflow script, or a delegation package other agents
-consume. Designing an agent's authority model, tool schemas, or approval boundaries is a
-different job and belongs to a harness-design Skill. Running the loop afterwards is not
-this Skill either — this Skill stops when the artifact validates.
+consume.
 
-Do not activate for a one-shot task, an ordinary code change, or a question that wants an
-answer rather than a repeating process.
+The loop's own boundary — what it may touch, and which of its effects need approval before
+they run — is question 4 below and belongs here. A broader authority model for an agent
+that is not a loop does not: answer that directly instead of building a loop around it.
+
+Running the loop is not this Skill either. It stops when the artifact validates and the
+owner has the command.
+
+## Recognize the intent first
+
+Work out which of these the owner is asking for before classifying anything. Guessing
+wrong either wastes an interview or silently overwrites a loop that is already running.
+
+| Intent | What it sounds like | Do this |
+|---|---|---|
+| **Create** | "make an agent keep doing this", "turn this into something that runs itself" | Run the interview below |
+| **Modify** | "change the stop condition", "it keeps doing X", or the request names an existing slug | Jump to *Modify an existing loop* |
+| **Inspect** | "what loops do we have", "is it still running", "why did it stop" | Report status and change nothing |
+| **Not a loop** | a one-shot task, an ordinary code change, a question that wants an answer | Say so and do the work directly |
+
+Derive it from the request plus what is on disk rather than asking. Whenever the project's
+workflows directory is non-empty, **run the status command before the first question**: an
+existing artifact covering the same subject means the intent is Modify, not Create.
 
 ## Interview protocol
 
@@ -59,6 +77,10 @@ imagined graph into one loop with a good stop condition, and occasionally the re
 ## Interview in this order
 
 Each answer unblocks the next. Skip any question whose answer you already derived.
+
+Write `<slug>.decisions.md` as you go — one row per confirmed answer, before the artifact
+exists. That record is also the interview's progress: if the session ends or context is
+lost, read it and resume from the first unanswered question instead of starting over.
 
 1. **Intent** — what gets better when this runs? One sentence about the outcome, not a
    list of steps. If they can only describe steps, the loop has no reference and cannot
@@ -108,7 +130,7 @@ the project's `.claude/workflows/`.
 | Answer | Artifact | Template |
 |---|---|---|
 | Loop | `<slug>.goal.md` — the prompt the owner runs with `/goal` or `/loop`, plus the cadence | [assets/goal-package.md](assets/goal-package.md) |
-| Graph, one vendor | `<slug>.workflow.js` — topology written in code, `meta` first and a pure literal | [assets/workflow-script.js](assets/workflow-script.js) |
+| Graph, one vendor | `<slug>.workflow.js` — topology in code, `meta` first and a pure literal, anchor on the top line as `` // anchor: `<command>` `` | [assets/workflow-script.js](assets/workflow-script.js) |
 | Graph, several vendors | `<slug>.delegation.md` — one mission per worker, each with its own anchor | [assets/delegation-package.md](assets/delegation-package.md) |
 | Always | `<slug>.decisions.md` — Decision / Rejected / Why, three columns | [assets/decisions-record.md](assets/decisions-record.md) |
 
@@ -120,6 +142,44 @@ the Rejected column — never append a history log.
 Write the artifact yourself. Do not generate topology from a template engine: which nodes
 exist and how they connect is the design, and it is yours and the owner's to author.
 
+## Inspect what is running
+
+```bash
+python3 scripts/validate_artifact.py .claude/workflows --status
+```
+
+Reports each artifact's shape, anchor, stop condition, declared phases or workers, how many
+decisions its record holds, and any validation finding.
+
+**Nothing is stored.** The artifacts on disk are the only record and this is a projection of
+them, recomputed on every call — so the report cannot drift out of date the way a tracked
+state file would.
+
+Add `--run-anchors` to execute each anchor and report its exit code. That answers the only
+question that really matters about a running loop — *did the work actually land?* — but it
+runs commands the artifact names, in a shell. Ask the owner first, and never run it against
+an artifact you have not read.
+
+## Modify an existing loop
+
+Read both files before changing either. The artifact says what runs; the decisions record
+says what was already rejected and why, which is usually the answer to "why doesn't it just
+do X".
+
+1. Run the status command to confirm which artifact and which shape.
+2. Find the decision the owner wants to change. **If the request contradicts a row already
+   in the Rejected column, say so** and ask whether the reason has stopped holding. Do not
+   quietly reverse a decision the owner made for a reason they may still hold.
+3. Change the artifact.
+4. **Edit the affected row** of the decisions record: the new decision replaces the old one
+   in the Decision column, and the old one moves to Rejected with why it changed. Never
+   append a second table or a dated log.
+5. Re-validate. A modification that breaks the pairing or a required section is not a
+   modification, it is a broken artifact.
+
+If the change alters the intent or the anchor rather than a detail, stop modifying and run
+the interview again. A loop whose anchor changed is a different loop.
+
 ## Validate, then hand off
 
 ```bash
@@ -130,6 +190,15 @@ It checks mechanical facts only — pairing, required sections, declared phases,
 delegation targets, JavaScript syntax — and never edits the artifact. Fix what it reports;
 its silence is not evidence that the design is right.
 
-Then hand off in one line: the command the owner runs (`/goal <file contents>`,
-`/loop 30m <prompt>`, the Workflow invocation, or `agent-delegate run`), and what the first
-iteration should produce. Do not run it yourself unless the owner asks.
+Then hand off in one line: the exact command the owner runs, and what the first iteration
+should produce. Spell the command out — a goal or loop invocation, the workflow runtime's
+own entry point, or one delegation call per worker with its working directory and mission
+file. Assume no other Skill is installed to fill in the gaps, and state which effects the
+owner has already authorized and which still need approval.
+
+Do not run it yourself unless the owner asks.
+
+## Version this Skill
+
+Bump the version in three places together — the plugin manifest, this file's `metadata`,
+and the installer's `VERSION`. A test fails if they disagree.

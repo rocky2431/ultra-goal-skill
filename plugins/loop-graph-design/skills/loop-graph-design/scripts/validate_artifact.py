@@ -38,6 +38,10 @@ GOAL_SECTIONS = (
 WORKER_FIELDS = ("target", "mission", "anchor")
 COMMAND = re.compile(r"`[^`\n]+`|```")
 DIGIT = re.compile(r"\d")
+FENCE = re.compile(r"```[a-z]*\n(.+?)\n```", re.S)
+INLINE = re.compile(r"`([^`\n]+)`")
+ANCHOR_COMMENT = re.compile(r"(?m)^\s*//\s*anchor:\s*(.+?)\s*$")
+ANCHOR_TIMEOUT_SECONDS = 300
 
 
 @dataclass(frozen=True)
@@ -217,6 +221,24 @@ def check_workflow(path: Path, text: str, out: list[Finding]) -> None:
             )
         )
 
+    comment = ANCHOR_COMMENT.search(text)
+    if comment is None:
+        out.append(
+            Finding(
+                str(path),
+                "ANCHOR_MISSING",
+                "add a top-line `// anchor: `<command>`` comment naming the runnable check",
+            )
+        )
+    elif not INLINE.search(comment.group(1)):
+        out.append(
+            Finding(
+                str(path),
+                "ANCHOR_NOT_EXECUTABLE",
+                "the anchor comment must wrap a runnable command in backticks",
+            )
+        )
+
     node = shutil.which("node")
     if node is None:
         return
@@ -365,12 +387,200 @@ def validate_paths(paths: list[str]) -> Report:
     return Report(unique)
 
 
+def first_command(text: str) -> str | None:
+    """Pull the first runnable command out of a fence or inline backticks."""
+    fence = FENCE.search(text)
+    if fence is not None:
+        body = fence.group(1).strip()
+        if body:
+            return body.splitlines()[0].strip()
+    inline = INLINE.search(text)
+    return inline.group(1).strip() if inline is not None else None
+
+
+def first_sentence(text: str) -> str | None:
+    for line in text.splitlines():
+        if line.strip():
+            return line.strip()
+    return None
+
+
+def decision_count(record: Path) -> int:
+    if not record.is_file():
+        return 0
+    rows = [
+        line.strip()
+        for line in record.read_text(encoding="utf-8").splitlines()
+        if line.strip().startswith("|")
+    ]
+    header = next((row for row in rows if "decision" in row.lower()), None)
+    if header is None:
+        return 0
+    count = 0
+    for row in rows[rows.index(header) + 1 :]:
+        cells = [cell.strip() for cell in row.strip("|").split("|")]
+        if set("".join(cells)) <= set("- "):
+            continue
+        count += 1
+    return count
+
+
+SHAPES = {
+    "goal": "loop",
+    "workflow": "graph-single-vendor",
+    "delegation": "graph-star",
+}
+
+
+def describe(path: Path, kind: str) -> dict[str, object]:
+    text = path.read_text(encoding="utf-8")
+    item: dict[str, object] = {
+        "slug": slug_of(path),
+        "kind": kind,
+        "shape": SHAPES[kind],
+        "path": str(path),
+        "anchor": None,
+        "stop_condition": None,
+        "phases": [],
+        "workers": [],
+        "decisions": decision_count(path.with_name(f"{slug_of(path)}.decisions.md")),
+        "anchor_result": None,
+    }
+    if kind == "goal":
+        found = sections(text)
+        item["anchor"] = first_command(found.get("anchor", ""))
+        item["stop_condition"] = first_sentence(found.get("stop condition", ""))
+    elif kind == "workflow":
+        comment = ANCHOR_COMMENT.search(text)
+        if comment is not None:
+            item["anchor"] = first_command(comment.group(1)) or comment.group(1)
+        block = meta_block(text)
+        if block is not None:
+            item["phases"] = re.findall(
+                r"""title\s*:\s*['\"]([^'\"]+)['\"]""", block[0]
+            )
+    else:
+        item["workers"] = [
+            name.split(":", 1)[1].strip()
+            for name in sections(text)
+            if name.startswith("worker") and ":" in name
+        ]
+    return item
+
+
+def run_anchor(item: dict[str, object]) -> dict[str, object] | None:
+    """Execute an artifact's anchor. Only ever called with explicit consent."""
+    command = item.get("anchor")
+    if not command:
+        return None
+    try:
+        completed = subprocess.run(
+            str(command),
+            shell=True,
+            cwd=Path(str(item["path"])).parent,
+            capture_output=True,
+            text=True,
+            timeout=ANCHOR_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        return {
+            "command": command,
+            "exit_code": None,
+            "timed_out": True,
+            "tail": f"no result within {ANCHOR_TIMEOUT_SECONDS}s",
+        }
+    tail = (completed.stdout + completed.stderr).strip().splitlines()
+    return {
+        "command": command,
+        "exit_code": completed.returncode,
+        "timed_out": False,
+        "tail": tail[-1] if tail else "",
+    }
+
+
+def status_paths(paths: list[str], run_anchors: bool = False) -> dict[str, object]:
+    """Derive the current state of every artifact under `paths`.
+
+    Nothing is stored: the artifacts on disk are the only record, and this is a
+    projection of them. Anchors stay unexecuted unless `run_anchors` is set.
+    """
+    report = validate_paths(paths)
+    items: list[dict[str, object]] = []
+    seen: set[Path] = set()
+    for raw in paths:
+        path = Path(raw).expanduser()
+        candidates = (
+            sorted(child for child in path.rglob("*") if child.is_file())
+            if path.is_dir()
+            else [path]
+        )
+        for candidate in candidates:
+            kind = classify(candidate)
+            if kind is None or kind == "decisions":
+                continue
+            resolved = candidate.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            item = describe(candidate, kind)
+            if run_anchors:
+                item["anchor_result"] = run_anchor(item)
+            items.append(item)
+    return {
+        "ok": report.ok,
+        "artifacts": items,
+        "findings": [f.as_dict() for f in report.findings],
+    }
+
+
+def print_status(state: dict[str, object]) -> None:
+    artifacts = state["artifacts"]
+    if not artifacts:
+        print("no artifacts found")
+    for item in artifacts:
+        print(f"{item['slug']}  [{item['shape']}]  decisions={item['decisions']}")
+        if item["anchor"]:
+            print(f"  anchor: {item['anchor']}")
+        if item["stop_condition"]:
+            print(f"  stop:   {item['stop_condition']}")
+        if item["phases"]:
+            print(f"  phases: {', '.join(item['phases'])}")
+        if item["workers"]:
+            print(f"  workers: {', '.join(item['workers'])}")
+        result = item["anchor_result"]
+        if result:
+            verdict = "timed out" if result["timed_out"] else f"exit {result['exit_code']}"
+            print(f"  ran:    {verdict}  {result['tail']}")
+    for finding in state["findings"]:
+        print(f"{finding['path']}: {finding['code']}: {finding['message']}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("paths", nargs="+", help="Artifact files or a directory holding them")
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Report the current shape, anchor, and stop condition of each artifact",
+    )
+    parser.add_argument(
+        "--run-anchors",
+        action="store_true",
+        help="With --status, execute each anchor command and report its exit code",
+    )
     args = parser.parse_args()
+    if args.run_anchors and not args.status:
+        print("Error: --run-anchors requires --status", file=sys.stderr)
+        return 2
     try:
+        if args.status:
+            state = status_paths(args.paths, run_anchors=args.run_anchors)
+            if args.json:
+                print(json.dumps(state, ensure_ascii=False, indent=2))
+            else:
+                print_status(state)
+            return 0 if state["ok"] else 1
         report = validate_paths(args.paths)
     except (UsageError, OSError, UnicodeError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
