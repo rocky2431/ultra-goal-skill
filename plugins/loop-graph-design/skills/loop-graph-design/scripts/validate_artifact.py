@@ -37,7 +37,11 @@ GOAL_SECTIONS = (
 )
 # `## Cadence` and `## Carry-over` are conditional: an unattended loop needs both,
 # a one-shot goal needs neither.
-WORKER_FIELDS = ("target", "mission", "anchor")
+ROLE_FIELDS = ("target", "mission", "anchor")
+# The critic's job is to discretize its disagreement, which is what turns it into
+# an auditable object instead of a plausible rebuttal. Three classes, named.
+DISAGREEMENT_CLASSES = ("agreement", "evidence-backed", "concern-based")
+ROUND_CAP = re.compile(r"(\d+)\s+(?:inner\s+)?(?:round|turn)s?\b", re.I)
 COMMAND = re.compile(r"`[^`\n]+`|```")
 DIGIT = re.compile(r"\d")
 FENCE = re.compile(r"```[a-z]*\n(.+?)\n```", re.S)
@@ -309,6 +313,32 @@ def check_goal(path: Path, text: str, out: list[Finding]) -> None:
                 "stop condition names no command and no number",
             )
         )
+    # A reviewer nobody audits is the shape the source study found unreliable:
+    # agents optimize for agreement rather than correctness unless something
+    # audits the review itself.
+    verification = found.get("verification")
+    if verification is not None:
+        lowered = verification.lower()
+        if not ("reviewer" in lowered and "critic" in lowered):
+            out.append(
+                Finding(
+                    str(path),
+                    "REVIEW_NOT_ADVERSARIAL",
+                    "verification must name both a reviewer (reviews the artifact) and a "
+                    "critic (reviews the review); a reviewer nobody audits converges on "
+                    "agreement rather than correctness",
+                )
+            )
+        if not ROUND_CAP.search(verification):
+            out.append(
+                Finding(
+                    str(path),
+                    "CONVERGENCE_NOT_BOUNDED",
+                    "verification must cap the reviewer/critic exchange, e.g. "
+                    "`at most 5 inner rounds`",
+                )
+            )
+
     anchor = found.get("anchor", "")
     if anchor and not COMMAND.search(anchor):
         out.append(
@@ -404,41 +434,91 @@ def check_goal(path: Path, text: str, out: list[Finding]) -> None:
 
 
 def check_delegation(path: Path, text: str, out: list[Finding]) -> None:
-    workers = [
-        (name, body)
-        for name, body in sections(text).items()
-        if name.startswith("worker")
-    ]
-    if len(workers) < 2:
-        out.append(
-            Finding(
-                str(path),
-                "SINGLE_WORKER_DELEGATION",
-                "a delegation package needs at least two workers; one worker is a loop",
+    """One delegation artifact is one adversarial-review triad.
+
+    A main agent edits the artifact, a reviewer reviews the artifact, and a critic
+    reviews the review. The third role is the one that matters: in the source
+    study three roles beat a five-agent panel, and removing the critic reproduced
+    the false-consensus failure it exists to prevent. So the shape is checked, not
+    the head count.
+    """
+    found = sections(text)
+    targets: dict[str, str] = {}
+    for role, missing_code in (("reviewer", "REVIEWER_MISSING"), ("critic", "CRITIC_MISSING")):
+        body = found.get(role)
+        if body is None:
+            out.append(
+                Finding(
+                    str(path),
+                    missing_code,
+                    f"a delegation package needs a `## {role.title()}` section; without "
+                    "the critic, the review is nobody's job to audit",
+                )
             )
-        )
-    for name, body in workers:
-        fields = dict(
-            re.findall(r"(?m)^\s*[-*]\s*(\w+)\s*:\s*(.+?)\s*$", body)
-        )
-        for field in WORKER_FIELDS:
+            continue
+        fields = dict(re.findall(r"(?m)^\s*[-*]\s*(\w+)\s*:\s*(.+?)\s*$", body))
+        for field in ROLE_FIELDS:
             if not fields.get(field):
                 out.append(
                     Finding(
                         str(path),
-                        "WORKER_FIELD_MISSING",
-                        f"`## {name}` is missing {field}",
+                        "ROLE_FIELD_MISSING",
+                        f"`## {role.title()}` is missing {field}",
                     )
                 )
         target = fields.get("target", "").strip("`").lower()
-        if target and target not in KNOWN_TARGETS:
-            out.append(
-                Finding(
-                    str(path),
-                    "UNKNOWN_TARGET",
-                    f"{target!r} is not a registered target; run `agent-delegate list --json`",
+        if target:
+            targets[role] = target
+            if target not in KNOWN_TARGETS:
+                out.append(
+                    Finding(
+                        str(path),
+                        "UNKNOWN_TARGET",
+                        f"{target!r} is not a registered target; run "
+                        "`agent-delegate list --json`",
+                    )
                 )
+
+    if len(targets) == 2 and targets["reviewer"] == targets["critic"]:
+        out.append(
+            Finding(
+                str(path),
+                "SAME_VENDOR_REVIEW",
+                f"reviewer and critic are both {targets['reviewer']!r}: agents that share "
+                "a model share its blind spots, so the critic would mostly agree",
             )
+        )
+
+    critic = (found.get("critic") or "").lower()
+    if critic and not all(name in critic for name in DISAGREEMENT_CLASSES):
+        missing = [n for n in DISAGREEMENT_CLASSES if n not in critic]
+        out.append(
+            Finding(
+                str(path),
+                "DISAGREEMENT_NOT_CLASSIFIED",
+                "the critic must sort every point into agreement, evidence-backed "
+                f"disagreement, or concern-based disagreement; missing: {', '.join(missing)}",
+            )
+        )
+
+    convergence = found.get("convergence")
+    if convergence is None:
+        out.append(
+            Finding(
+                str(path),
+                "CONVERGENCE_MISSING",
+                "a delegation package needs a `## Convergence` section: what keeps the "
+                "artifact frozen, and how many inner rounds are allowed",
+            )
+        )
+    elif not ROUND_CAP.search(convergence):
+        out.append(
+            Finding(
+                str(path),
+                "CONVERGENCE_NOT_BOUNDED",
+                "convergence must cap the inner loop, e.g. `at most 5 inner rounds`",
+            )
+        )
 
 
 CHECKS = {
@@ -622,11 +702,14 @@ def describe(path: Path, kind: str) -> dict[str, object]:
                 r"""title\s*:\s*['\"]([^'\"]+)['\"]""", block[0]
             )
     else:
-        item["workers"] = [
-            name.split(":", 1)[1].strip()
-            for name in sections(text)
-            if name.startswith("worker") and ":" in name
-        ]
+        found = sections(text)
+        roles = []
+        for role in ("reviewer", "critic"):
+            body = found.get(role) or ""
+            match = re.search(r"(?m)^\s*[-*]\s*target\s*:\s*(.+?)\s*$", body)
+            if match:
+                roles.append(match.group(1).strip("`").lower())
+        item["workers"] = roles
     return item
 
 

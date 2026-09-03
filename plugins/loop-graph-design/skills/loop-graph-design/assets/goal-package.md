@@ -38,9 +38,15 @@ is a failed iteration, not a partial success.
 
 ## Verification
 
-Hand the diff to a fresh agent that never saw the upgrade reasoning. It must run the
-anchor command itself before it may pass anything, and it fails closed: no output from the
-anchor means rejected, not "probably fine".
+A **reviewer** with a fresh context reviews the diff against this boundary, citing file:line
+and the command whose output proves each finding. A **critic** then audits that review rather
+than the code, sorting every point into exactly one of agreement, evidence-backed
+disagreement, or concern-based disagreement. The reviewer answers a disagreement with
+evidence, never with a rebuttal. At most 5 inner rounds; if round 1 converges with no
+findings, accept.
+
+The diff stays frozen for that exchange. Only after the review is consistent does the main
+agent edit again.
 
 ## Cadence
 

@@ -49,7 +49,7 @@ Skill installed to do any of that.
 |---|---|---|
 | Loop | `<slug>.goal.md` — the objective plus the goal line to paste | the host's goal mode |
 | Graph, one vendor | `<slug>.workflow.js` — topology in code | a workflow runtime, where one exists |
-| Graph, several vendors | `<slug>.delegation.md` — one mission per worker | cross-agent delegation |
+| Graph, several vendors | `<slug>.delegation.md` — one adversarial-review triad | cross-agent delegation |
 | Always | `<slug>.decisions.md` — Decision / Rejected / Why | you, next time |
 
 The decisions record holds decisions, not architecture. The script or prompt is the only
@@ -216,6 +216,36 @@ and the model, not to a template engine.
 
 Its silence is not evidence that the design is right.
 
+## Adversarial review
+
+Verification is two roles, not one, because one is measurably not enough. A **reviewer**
+reviews the artifact; a **critic** reviews the review — not the code.
+
+```
+M (main)      the only role that edits the artifact
+R (reviewer)  reviews the artifact          [artifact FROZEN during the exchange]
+C (critic)    reviews R's review
+```
+
+The failure this prevents is **false consensus**: two agents that both say "looks fine" have
+produced one opinion reported twice, and a loop cannot tell that from verification. The fix is
+textual — the critic sorts every point into exactly one of **agreement**, **evidence-backed
+disagreement** (cite it), or **concern-based disagreement** (say what would settle it), and
+the reviewer answers with evidence rather than a rebuttal. That turns a disagreement into an
+auditable object.
+
+Three roles outperformed a five-agent panel in the source study
+([arXiv 2608.18167](https://arxiv.org/html/2608.18167)), and adding independent reviewers
+alone did *not* reliably help. The count is not the mechanism; the third role is. Where the
+roles are separate agents they get **different vendors** — agents sharing a model share its
+blind spots. Inner loop capped at 5 rounds, with first-pass termination so work that was
+already correct costs two calls.
+
+This replaced an earlier shape that split delegation by domain — one worker per concern, the
+orchestrator merging their reports. That is the two-reviewer step the study measured and found
+unreliable. Domains became the reviewer's checklist; parallelism moved from "several reviewers
+on one artifact" to "several artifacts, each with its own triad".
+
 ## Scope
 
 **It stops at a document and Git.** One artifact, one decisions record, one carry-over
@@ -260,7 +290,7 @@ designed with its owner in the room has no validation set.
 python3 -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-124 tests: the validator's rules, the status projection, the package surface, version
+142 tests: the validator's rules, the status projection, the package surface, version
 consistency across three files, every relative link in `SKILL.md` resolving, and the shipped
 templates passing the shipped validator. Two are safety tests — that an anchor is never
 executed unasked, and that the validator never edits an artifact.

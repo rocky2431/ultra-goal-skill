@@ -73,7 +73,9 @@ pnpm test -- --run
 
 ## Verification
 
-Delegate review to a fresh agent that never saw the upgrade reasoning.
+A reviewer with a fresh context reviews the diff; a critic then audits that review rather
+than the code, classifying each point as agreement, evidence-backed disagreement, or
+concern-based disagreement. At most 5 inner rounds.
 
 ## Cadence
 
@@ -94,24 +96,35 @@ Read this before acting; rewrite it before finishing. Drop anything no longer tr
 
 ## Handoff
 
-```bash
-bash .loops/weekly-dep-upgrade.runner.sh
+```
+/goal Upgrade dependencies until the audit is clean. You have not met this goal until
+`pnpm audit --audit-level=high` reports 0 findings in this session.
 ```
 """
 
-GOOD_DELEGATION = """# Delegation: cross-vendor-audit
+GOOD_DELEGATION = """# Delegation: settlement-audit
 
-## Worker: codex
+Adversarial review over a frozen artifact. Only the orchestrator edits it, and only after
+the review has converged. The reviewer and critic are different vendors on purpose: agents
+that share a model share its blind spots.
+
+## Reviewer
 
 - target: codex
-- mission: Audit the settlement module for integer overflow
+- mission: Review the diff for overflow on partial fills, reentrancy, and gas regressions. Cite file:line and the command whose output proves each finding.
 - anchor: `forge test --match-path test/Settlement.t.sol`
 
-## Worker: kimi
+## Critic
 
 - target: kimi
-- mission: Audit the same module for reentrancy
-- anchor: `forge test --match-path test/Reentrancy.t.sol`
+- mission: Audit the reviewer's review, not the code. Classify every point as exactly one of agreement, evidence-backed disagreement, or concern-based disagreement.
+- anchor: `forge test --match-path test/Settlement.t.sol`
+
+## Convergence
+
+The artifact stays frozen for the whole inner loop. The reviewer answers a disagreement with
+evidence, never with a rebuttal. At most 5 inner rounds. If round 1 converges with no
+findings, accept and stop.
 """
 
 
@@ -241,11 +254,66 @@ class GoalTests(Harness):
 
 
 class DelegationTests(Harness):
-    def test_valid_delegation_package_passes(self) -> None:
+    """One delegation artifact is one adversarial-review triad: a main agent that
+    edits, a reviewer that reviews the artifact, and a critic that reviews the
+    review. Three roles beat five independent reviewers in the source study, and
+    the reason is the third role, not the count."""
+
+    def test_valid_triad_passes(self) -> None:
         self.write("cross-vendor-audit.decisions.md", GOOD_DECISIONS)
         path = self.write("cross-vendor-audit.delegation.md", GOOD_DELEGATION)
         report = va.validate_paths([str(path)])
-        self.assertTrue(report.ok, report.findings)
+        self.assertTrue(report.ok, [f.as_dict() for f in report.findings])
+
+    def test_a_missing_reviewer_is_reported(self) -> None:
+        self.write("r.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "r.delegation.md", GOOD_DELEGATION.replace("## Reviewer", "## Notes")
+        )
+        self.assertIn("REVIEWER_MISSING", self.codes(path))
+
+    def test_a_missing_critic_is_reported(self) -> None:
+        """A reviewer nobody audits is the shape the study found unreliable."""
+        self.write("c.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "c.delegation.md", GOOD_DELEGATION.replace("## Critic", "## Notes")
+        )
+        self.assertIn("CRITIC_MISSING", self.codes(path))
+
+    def test_reviewer_and_critic_on_the_same_vendor_is_reported(self) -> None:
+        """Same model, same blind spots - the critic would mostly agree."""
+        self.write("sv.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "sv.delegation.md", GOOD_DELEGATION.replace("- target: kimi", "- target: codex")
+        )
+        self.assertIn("SAME_VENDOR_REVIEW", self.codes(path))
+
+    def test_a_critic_without_the_three_classes_is_reported(self) -> None:
+        self.write("dc.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "dc.delegation.md",
+            GOOD_DELEGATION.replace(
+                "Classify every point as exactly one of agreement, evidence-backed "
+                "disagreement, or concern-based disagreement.",
+                "Say whether you agree with the reviewer.",
+            ),
+        )
+        self.assertIn("DISAGREEMENT_NOT_CLASSIFIED", self.codes(path))
+
+    def test_a_missing_convergence_rule_is_reported(self) -> None:
+        self.write("cv.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "cv.delegation.md", GOOD_DELEGATION.replace("## Convergence", "## Notes")
+        )
+        self.assertIn("CONVERGENCE_MISSING", self.codes(path))
+
+    def test_an_unbounded_inner_loop_is_reported(self) -> None:
+        self.write("ub.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "ub.delegation.md",
+            GOOD_DELEGATION.replace("At most 5 inner rounds.", "Iterate until they agree."),
+        )
+        self.assertIn("CONVERGENCE_NOT_BOUNDED", self.codes(path))
 
     def test_unknown_target_is_reported(self) -> None:
         self.write("k.decisions.md", GOOD_DECISIONS)
@@ -254,21 +322,47 @@ class DelegationTests(Harness):
         )
         self.assertIn("UNKNOWN_TARGET", self.codes(path))
 
-    def test_worker_without_mission_is_reported(self) -> None:
-        self.write("l.decisions.md", GOOD_DECISIONS)
+    def test_a_role_without_a_mission_is_reported(self) -> None:
+        self.write("m.decisions.md", GOOD_DECISIONS)
         path = self.write(
-            "l.delegation.md",
+            "m.delegation.md",
             GOOD_DELEGATION.replace(
-                "- mission: Audit the same module for reentrancy\n", ""
+                "- mission: Audit the reviewer's review, not the code. Classify every point "
+                "as exactly one of agreement, evidence-backed disagreement, or "
+                "concern-based disagreement.\n",
+                "",
             ),
         )
-        self.assertIn("WORKER_FIELD_MISSING", self.codes(path))
+        self.assertIn("ROLE_FIELD_MISSING", self.codes(path))
 
-    def test_single_worker_is_reported_as_not_a_graph(self) -> None:
-        self.write("m.decisions.md", GOOD_DECISIONS)
-        single = GOOD_DELEGATION.split("## Worker: kimi")[0]
-        path = self.write("m.delegation.md", single)
-        self.assertIn("SINGLE_WORKER_DELEGATION", self.codes(path))
+    def test_status_reports_the_two_roles(self) -> None:
+        self.write("t.decisions.md", GOOD_DECISIONS)
+        self.write("t.delegation.md", GOOD_DELEGATION)
+        item = va.status_paths([str(self.dir)])["artifacts"][0]
+        self.assertEqual(["codex", "kimi"], item["workers"])
+
+
+class GoalVerificationTests(Harness):
+    def test_verification_naming_only_one_role_is_reported(self) -> None:
+        self.write("v1.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "v1.goal.md",
+            GOOD_GOAL.replace(
+                "a critic then audits that review rather\nthan the code, classifying each "
+                "point as agreement, evidence-backed disagreement, or\nconcern-based "
+                "disagreement. At most 5 inner rounds.",
+                "That is the whole check.",
+            ),
+        )
+        self.assertIn("REVIEW_NOT_ADVERSARIAL", self.codes(path))
+
+    def test_verification_without_a_round_cap_is_reported(self) -> None:
+        self.write("v2.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "v2.goal.md",
+            GOOD_GOAL.replace("At most 5 inner rounds.", "Repeat until they agree."),
+        )
+        self.assertIn("CONVERGENCE_NOT_BOUNDED", self.codes(path))
 
 
 class DecisionsTests(Harness):
@@ -608,7 +702,9 @@ class RunnableHandoffTests(Harness):
         path = self.write(
             "nh.goal.md",
             GOOD_GOAL.replace(
-                "```bash\nbash .loops/weekly-dep-upgrade.runner.sh\n```",
+                "```\n/goal Upgrade dependencies until the audit is clean. You have not "
+                "met this goal until\n`pnpm audit --audit-level=high` reports 0 findings "
+                "in this session.\n```",
                 "Just run it the usual way each week.",
             ),
         )
@@ -618,8 +714,8 @@ class RunnableHandoffTests(Harness):
         self.write("sc2.decisions.md", GOOD_DECISIONS)
         self.write("sc2.goal.md", GOOD_GOAL)
         state = va.status_paths([str(self.dir)])
-        self.assertEqual(
-            "bash .loops/weekly-dep-upgrade.runner.sh",
+        self.assertTrue(
+            state["artifacts"][0]["start_command"].startswith("/goal "),
             state["artifacts"][0]["start_command"],
         )
 

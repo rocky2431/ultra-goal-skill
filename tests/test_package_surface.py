@@ -97,7 +97,7 @@ class SkillContractTests(unittest.TestCase):
             "## Refuse these shapes",
             "No anchor, no artifact",
             "never workflow phases",
-            "An agent grading its own output praises it",
+            "who checks the checker?",
             "## Compile one artifact",
             "## Inspect what is running",
             "## Modify an existing loop",
@@ -107,6 +107,10 @@ class SkillContractTests(unittest.TestCase):
             "That record is also the interview's progress",
             "Edit the affected row",
             "A loop whose anchor changed is a different loop",
+            "## Three tiers of frozen",
+            "**False consensus**",
+            "Reviewers split by domain",
+            "loop(<slug>) turn <N>:",
             "## Make the loop evolve",
             "read it before acting and rewrite it before finishing",
             "**Rewrite, never append.**",
@@ -152,6 +156,61 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("48.7% to 63.7%", reference)
         # And what we deliberately did not take from them.
         self.assertIn("deliberately do **not** take", reference)
+
+    def test_verification_asks_for_reviewer_and_critic(self) -> None:
+        """Three roles beat a five-agent panel; the third role is why."""
+        skill = skill_text()
+        self.assertIn("who checks the checker?", skill)
+        self.assertIn("audits the *review* rather than the code", skill)
+        self.assertIn("references/adversarial-review.md", skill)
+        ar = (SKILL_ROOT / "references" / "adversarial-review.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("arXiv 2608.18167", ar)
+        self.assertIn("FROZEN for the whole inner loop", ar)
+        self.assertIn("false consensus", ar)
+        for cls in ("**agreement**", "**evidence-backed disagreement**",
+                    "**concern-based disagreement**"):
+            self.assertIn(cls, ar)
+        self.assertIn("not with a plausible\nrebuttal", ar)
+        self.assertIn("First pass", ar)
+        self.assertIn("give them different underlying models", ar)
+        # And the shape it replaced, named so it is not reintroduced.
+        self.assertIn("## What this replaces", ar)
+        self.assertIn("split delegation by **domain**", ar)
+
+    def test_freeze_tiers_name_the_middle_one(self) -> None:
+        skill = skill_text()
+        for tier in ("**Frozen**", "**Firm**", "**Fluid**"):
+            self.assertIn(tier, skill)
+        self.assertIn("write the row in `decisions.md`", skill)
+        self.assertIn("Nothing mechanical enforces the Firm tier", skill)
+
+    def test_document_system_maps_a_spec_driven_harness(self) -> None:
+        doc = (SKILL_ROOT / "references" / "document-system.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("If you also run a spec-driven development harness", doc)
+        self.assertIn("### Why there is no task ledger", doc)
+        self.assertIn("deliberately absent", doc)
+        self.assertIn("The two compose in one direction", doc)
+
+    def test_delegation_template_is_a_triad(self) -> None:
+        text = (SKILL_ROOT / "assets" / "delegation-package.md").read_text(
+            encoding="utf-8"
+        )
+        for section in ("## Reviewer", "## Critic", "## Convergence"):
+            self.assertIn(section, text)
+        self.assertNotIn("## Worker:", text)
+        self.assertIn("different vendors on", text)
+        self.assertIn("evidence-backed disagreement", text)
+        self.assertIn("At most 5 inner rounds", text)
+        # Targets must differ, and both must be registered.
+        targets = re.findall(r"(?m)^- target: (\S+)$", text)
+        self.assertEqual(2, len(targets))
+        self.assertNotEqual(targets[0], targets[1])
+        for target in targets:
+            self.assertIn(target, va.KNOWN_TARGETS)
 
     def test_boundary_asks_for_three_refusals(self) -> None:
         """4D-ARE names three failures a specification must prevent; the interview
@@ -234,6 +293,12 @@ class SkillContractTests(unittest.TestCase):
             "the_gate_never_denies_twice_on_an_identical_result",
             "worker_transcripts_are_not_the_record",
             "post_tool_use_is_not_registered_yet",
+            "domain_split_reviewers_become_a_triad",
+            "false_consensus_is_named_when_two_agents_agree",
+            "the_critic_audits_the_review_not_the_code",
+            "reviewer_and_critic_need_different_models",
+            "a_firm_threshold_change_gets_a_decisions_row",
+            "a_loop_that_wants_a_task_ledger_should_have_been_a_plan",
         ):
             self.assertIn(required, names)
 

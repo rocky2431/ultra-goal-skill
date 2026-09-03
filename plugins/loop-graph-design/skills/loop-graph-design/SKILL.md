@@ -4,7 +4,7 @@ description: "Turn \"make an agent keep doing this\" into a goal the host will a
 license: MIT
 metadata:
   author: rocky2431
-  version: "0.8.0"
+  version: "0.9.0"
 ---
 
 # Loop Graph Design
@@ -74,6 +74,21 @@ decision is made** is the distinction, and everything else follows from it.
 The first answer is provisional. Re-check it after the interview: detail often turns an
 imagined graph into one loop with a good stop condition, and occasionally the reverse.
 
+## Three tiers of frozen
+
+"The North Star does not move, the details do" needs a sharper line than that, because the
+interesting cases are in between. Three tiers, and the middle one is the one worth naming:
+
+| Tier | What | Changeable mid-run | On change |
+|---|---|---|---|
+| **Frozen** | `## Intent`, `## Boundary`'s three refusals, `## Anchor` | **No** | Stop and report; this reopens the interview and lands in `decisions.md` |
+| **Firm** | the stop condition's threshold, the turn ceiling, who verifies, the cadence | Yes | Allowed, but **write the row in `decisions.md`** - a silently moved threshold is indistinguishable from a moved goal |
+| **Fluid** | `### State`, `### Lessons`, how the work actually gets done | Yes | Just do it; that is what they are for |
+
+Nothing mechanical enforces the Firm tier - a threshold edit looks like any other edit. It is
+enforced socially, by asking for the row. What makes that worth doing anyway: the row is what
+tells a later reader whether the loop met a goal or met a goal that had been made easier.
+
 ## Interview in this order
 
 Each answer unblocks the next. Skip any question whose answer you already derived.
@@ -101,9 +116,11 @@ lost, read it and resume from the first unanswered question instead of starting 
      being grounded.
    - **Inference**: what must it never conclude from documents alone? A changelog, an
      issue thread, or another agent's report explains nothing until it is reproduced.
-5. **Verifier** — who checks the result? It must be an agent that never saw the generator's
-   reasoning. An agent grading its own output praises it. Also name what makes the verifier
-   fail closed, or it will pass the work after a superficial look.
+5. **Verifier** — who checks the result, and **who checks the checker?** Two roles, because
+   one is measurably not enough: a reviewer with a fresh context (an agent grading its own
+   output praises it), plus a critic that audits the *review* rather than the code. Name the
+   round cap too. See [references/adversarial-review.md](references/adversarial-review.md);
+   the short version is that three roles beat a five-agent panel, and the third role is why.
 6. **Shape and split** — confirm loop or graph. If graph, the split must follow **context
    boundaries**, never workflow phases (see the refusals below), and each worker needs its
    own anchor.
@@ -134,6 +151,8 @@ Name the refusal, name the cheap alternative, and go back to the relevant questi
 | Loops that only watch other loops | A closed network of mutual confirmation fails like a single loop, later and with more green lights | At least one node reads the world; freeze the rules the optimizer would want to weaken |
 | One optimized metric, alone | Optimized hard enough, it stops measuring what it once did | Pair it with a counter-metric that catches the cheap way to win |
 | Nodes added for sophistication | Every extra agent is another failure point and 3-10x the tokens | Ship the loop; promote to a graph when it provably breaks |
+| **False consensus** — two agents both say "looks fine" | That is one opinion reported twice, and a loop cannot tell it from verification | A critic that audits the *review*, sorting each point into agreement / evidence-backed disagreement / concern-based disagreement |
+| **Reviewers split by domain** — one per concern, reports merged | Nobody audits either report, and the orchestrator has no independent evidence to arbitrate; measured as unreliable | Domains become one reviewer's checklist; add a critic instead of a second reviewer |
 
 Read [references/anti-patterns.md](references/anti-patterns.md) for the failure modes
 behind this table.
@@ -205,7 +224,8 @@ fail:
 | North Star | `## Intent` | **frozen** — the run may never edit it |
 | Scope / confidence / inference limits | `## Boundary` | frozen |
 | Mechanical gate | `## Anchor` | executed, exit code only |
-| Adversarial review | `## Verification` | fresh context, its verdict is advisory |
+| Adversarial review — reviewer | `## Verification` | fresh context, verdict advisory |
+| Adversarial review — critic | `## Verification` | audits the review, not the artifact |
 | Reflection | `### Lessons` | writes the next turn's input |
 | Carried state | `### State` | rewritten each turn |
 | Edges (what happens in what order) | the clause order of `## Handoff` | authored once |
@@ -216,6 +236,7 @@ Checked against the four ways a single loop fails, plus the way a graph of loops
 | Failure | What closes it here |
 |---|---|
 | Goodhart — the metric gets gamed | `## Verification` is the paired counter-check; the anchor is the half that cannot be argued with |
+| **False consensus — the check agrees without evidence** | the critic sorts each point into agreement / evidence-backed / concern-based, and the reviewer must answer with evidence |
 | Blindness upward — the loop cannot question its target | `## Intent` is frozen; question 8 sends target-level divergence back to the owner |
 | Conflict — independent loops undermine each other | one operating loop per artifact, so there is no collision surface |
 | Measurement decay — nobody watches the watcher | the anchor runs for real every turn, and reports *unknown* when it cannot |
@@ -231,7 +252,7 @@ whichever agent a teammate runs, so they do not go inside any one tool's private
 |---|---|---|
 | Loop | `<slug>.goal.md` — objective, boundary, stop condition, anchor, verifier, and `## Handoff` holding the goal line to paste; add `## Cadence` + `## Carry-over` if it will be started more than once | [assets/goal-package.md](assets/goal-package.md) |
 | Graph, one vendor **(requires a workflow runtime)** | `<slug>.workflow.js` — topology in code, `meta` first and a pure literal, anchor on the top line as `` // anchor: `<command>` `` | [assets/workflow-script.js](assets/workflow-script.js) |
-| Graph, several vendors | `<slug>.delegation.md` — one mission per worker, each with its own anchor | [assets/delegation-package.md](assets/delegation-package.md) |
+| Graph, several vendors | `<slug>.delegation.md` — one adversarial-review triad: reviewer, critic, convergence rule | [assets/delegation-package.md](assets/delegation-package.md) |
 | Always | `<slug>.decisions.md` — Decision / Rejected / Why, three columns | [assets/decisions-record.md](assets/decisions-record.md) |
 
 **A workflow script needs a workflow runtime.** Of the hosts measured, only Claude Code has
@@ -327,8 +348,16 @@ jobs:
 | How it became true | `git log -p <slug>.goal.md` — the diffs *are* the evolution |
 | What each iteration did | the commit message — one line per iteration |
 
-Commit once per iteration that changed anything. That is what puts the evolution in Git, and
-why the document never has to hold history itself.
+Commit once per iteration that changed anything, with a message shaped so the log is the
+trajectory:
+
+```
+loop(<slug>) turn <N>: <one line on what changed> [anchor: green|red|unknown]
+```
+
+`git log --oneline -- .loops/<slug>.goal.md` then reads as the run, one line per turn, with
+each turn's verdict on it. That is what puts the evolution in Git, and why the document never
+has to hold history itself.
 
 What a loop learns stays in that project, beside its artifact:
 one project's dead end is another project's correct answer.

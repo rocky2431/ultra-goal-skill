@@ -110,3 +110,38 @@ it was designed that way, what was rejected along the road, and every anchor res
 
 If the loop is never coming back, the durable parts belong in the repository's real
 documentation, and the three files go. An empty `.loops/` means nothing is outstanding.
+
+
+## If you also run a spec-driven development harness
+
+A full harness — an init/research/plan/dev pipeline with a task ledger — and this Skill solve
+adjacent problems, and it is worth being explicit about which owns what, because running both
+without deciding produces two half-authorities.
+
+| Harness artifact | Here | Why |
+|---|---|---|
+| `north-star.md` | `## Intent` | One artifact is one loop, so its intent *is* its North Star |
+| `specs/product.md`, `specs/architecture.md` | `## Boundary` + `## Anchor` | Condensed to what a loop needs: what it may touch, and what proves it worked |
+| a change's `intent.md` | `<slug>.goal.md` | The same document under a different name |
+| `decisions/` | `<slug>.decisions.md` | Same role |
+| `evidence/`, `verification.md` | `<slug>.events.jsonl` | Stronger here: execution receipts rather than a written account of them |
+| `contexts/TEMPLATE.md` | `### State` + `### Lessons` | Condensed to what the next turn must read |
+| `changes/{active,archive,abandoned}` | `.loops/active` + Git | Three states are a workflow; one marker plus history is enough for one loop |
+| **`tasks.json`** | **deliberately absent** | See below |
+| **`plan.md`** | **deliberately absent** | A loop's plan is its goal text; a written plan for it would be the routing decision made twice |
+
+### Why there is no task ledger
+
+A task ledger is a decomposition made at authoring time, which makes it a graph. A loop is
+defined by deciding the next step at inference time. Give a loop a task ledger and it becomes
+a graph — and a worse one than a harness built for graphs, because it inherits neither the
+dependency ordering nor the traceability that make a ledger worth having.
+
+One part of a ledger's job is genuinely needed: **what is left**. That already lives in
+`### State` as a line or two. What stays out is dependency order, acceptance-criteria
+tracing, and integration checkpoints — those belong to the harness, and a loop that wants
+them is telling you it should have been a planned change instead.
+
+The two compose in one direction: a planned task in a harness can *be* a loop, with this
+Skill's artifact as how that task gets executed. The reverse — a loop that grows a plan —
+is the thing to refuse.

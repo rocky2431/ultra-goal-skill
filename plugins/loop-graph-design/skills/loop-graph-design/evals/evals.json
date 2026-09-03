@@ -269,6 +269,42 @@
       "name": "post_tool_use_is_not_registered_yet",
       "prompt": "Add a PostToolUse hook that reminds the agent of the lessons after every tool call.",
       "expected_output": "Declines for now with the cost stated: PostToolUse fires once per tool call, so it pays a process start per call, and its value duplicates the SessionStart injection plus the goal text's own instruction. Names the trigger that would change it: a real run where the loop retries a path its own Lessons already ruled out."
+    },
+    {
+      "id": 50,
+      "name": "domain_split_reviewers_become_a_triad",
+      "prompt": "Send the overflow audit to Codex and the reentrancy audit to Kimi, then merge their reports.",
+      "expected_output": "Declines the domain split: nobody audits either report and the orchestrator has no independent evidence to arbitrate between them, which is the two-reviewer shape measured as unreliable. Restructures it as one reviewer whose checklist covers both domains plus a critic that audits the review, on a different vendor. Notes that three roles outperformed a five-agent panel and the third role is why."
+    },
+    {
+      "id": 51,
+      "name": "false_consensus_is_named_when_two_agents_agree",
+      "prompt": "Both reviewers came back clean, so we're good.",
+      "expected_output": "Treats two agreements as one opinion reported twice rather than as verification, and asks what each actually exercised. Requires that a 'no finding' naming no command be treated as unexercised. Points at the critic's three-way classification as what makes agreement auditable, and at the anchor as the half that passes through no model."
+    },
+    {
+      "id": 52,
+      "name": "the_critic_audits_the_review_not_the_code",
+      "prompt": "Have the critic do a second independent code review, deeper than the first.",
+      "expected_output": "Corrects the role: the critic reviews the review, not the artifact. A second code review is another independent reviewer, which the source study found does not reliably help. Keeps the artifact frozen during the exchange so the two roles cannot jointly rewrite a solution they still disagree about."
+    },
+    {
+      "id": 53,
+      "name": "reviewer_and_critic_need_different_models",
+      "prompt": "Use Codex for both the reviewer and the critic - it's the strongest one I have.",
+      "expected_output": "Refuses same-vendor pairing: agents differ only by context, scaffolding and the model beneath them, so a critic sharing the reviewer's model shares its blind spots and will mostly agree. Suggests a second vendor for the critic, or - if only one vendor is available - two fresh-context subagents plus the explicit disagreement classification, and says plainly that the independence is weaker."
+    },
+    {
+      "id": 54,
+      "name": "a_firm_threshold_change_gets_a_decisions_row",
+      "prompt": "The stop condition is too strict, let's move it from 0 findings to under 3 and keep going.",
+      "expected_output": "Allows it as a Firm-tier change rather than refusing, and requires the row in the decisions record with the old threshold moved to Rejected. States the reason: a silently moved threshold is indistinguishable afterwards from a moved goal, so the record is what tells a later reader whether the loop met a goal or met an easier one."
+    },
+    {
+      "id": 55,
+      "name": "a_loop_that_wants_a_task_ledger_should_have_been_a_plan",
+      "prompt": "Add a tasks.json to the loop so it can track subtasks and their dependencies.",
+      "expected_output": "Declines: a task ledger is a decomposition made at authoring time, which makes it a graph, and a loop with one inherits neither the dependency ordering nor the traceability that make a ledger worth having. Keeps 'what is left' in State, and says that a loop wanting dependency order and acceptance-criteria tracing is telling you it should have been a planned change in a spec-driven harness instead."
     }
   ],
   "standalone_assumption": "Graded with no neighbouring Skill installed: the Skill must cover intent routing, status, and modification on its own."
