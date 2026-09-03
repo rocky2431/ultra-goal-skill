@@ -306,16 +306,19 @@ class AnchorGateTests(Harness):
         return json.loads(result.stdout) if result.stdout.strip() else {}
 
     def decision(self, payload: dict) -> str | None:
-        """A Stop hook blocks with the top-level decision/reason pair.
+        """Blocked is blocked, whichever documented form the host reads.
 
-        The gate emitted `hookSpecificOutput.permissionDecision` for its whole
-        life, which is the PreToolUse shape; Stop's hookSpecificOutput accepts
-        only `hookEventName` and `additionalContext`. So the one hard power in
-        this design was wired to a field the host does not read, and every test
-        - including this helper - checked what the script emitted rather than
-        what the host honours.
+        Two authoritative sources disagree: the official hooks reference lists
+        `hookSpecificOutput.permissionDecision` for Stop, while the running
+        binary's own validator printed a schema with only `additionalContext`
+        there and `decision`/`reason` at the top level. The gate emits both, so
+        this normalises both to one word rather than betting on either.
         """
-        return payload.get("decision")
+        top = payload.get("decision")
+        if top == "block":
+            return "block"
+        nested = payload.get("hookSpecificOutput", {}).get("permissionDecision")
+        return "block" if nested == "deny" else nested
 
     def events(self) -> list[dict]:
         path = self.cwd / ".goals" / "demo.events.jsonl"
@@ -332,11 +335,16 @@ class AnchorGateTests(Harness):
     def test_red_anchor_denies_the_stop(self) -> None:
         payload = self.stop(RED)
         self.assertEqual("block", self.decision(payload))
-        self.assertNotIn(
-            "hookSpecificOutput", payload,
-            "blocking uses the top-level pair; the PreToolUse shape is not read here",
+        # Both documented forms, because the two sources disagree and picking
+        # one costs the only hard power in the design.
+        self.assertEqual("block", payload["decision"])
+        self.assertEqual(
+            "deny", payload["hookSpecificOutput"]["permissionDecision"]
         )
         reason = payload["reason"]
+        self.assertEqual(
+            reason, payload["hookSpecificOutput"]["permissionDecisionReason"]
+        )
         self.assertIn("still failing", reason)
         # The refusal must also say what to do next, since Stop cannot inject context.
         self.assertIn("### Lessons", reason)
@@ -857,18 +865,25 @@ class StopContractTests(Harness):
         self.assertEqual(0, result.returncode, result.stderr)
         return json.loads(result.stdout) if result.stdout.strip() else {}
 
-    def test_blocking_uses_the_top_level_pair(self) -> None:
+    def test_blocking_satisfies_both_documented_forms(self) -> None:
+        """Emitting both is the answer to two sources disagreeing.
+
+        I changed this once on the strength of one source and broke a field the
+        other documents. The cost of satisfying both is a few bytes; the cost of
+        picking wrong is the only hard power in the design.
+        """
         payload = self.stop(RED)
         self.assertEqual("block", payload["decision"])
         self.assertIn("still failing", payload["reason"])
-        self.assertNotIn("hookSpecificOutput", payload)
+        nested = payload["hookSpecificOutput"]
+        self.assertEqual("Stop", nested["hookEventName"])
+        self.assertEqual("deny", nested["permissionDecision"])
 
-    def test_no_payload_ever_carries_the_pretooluse_shape(self) -> None:
-        """The wrong field must not come back anywhere."""
-        for anchor in (GREEN, RED, "this-command-does-not-exist-42"):
-            with self.subTest(anchor=anchor):
-                blob = json.dumps(self.stop(anchor))
-                self.assertNotIn("permissionDecision", blob)
+    def test_a_blocked_turn_is_also_told_what_it_owes(self) -> None:
+        """The turn most in need of the mutable surface is the one being held."""
+        context = self.stop(RED)["hookSpecificOutput"]["additionalContext"]
+        for probe in ("### Next", "### Lessons"):
+            self.assertIn(probe, context, probe)
 
     def test_an_ending_turn_is_reminded_of_what_it_may_change(self) -> None:
         payload = self.stop(GREEN)

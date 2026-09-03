@@ -419,7 +419,40 @@ judge-review.md(盲审落盘)、TRAJECTORY.md + `tools/check-trajectory.sh`
 (证据↔commit 一一对应)。**全是 MD + 一个校验脚本,零编排器。**
 印证了我们"MD 是声称、JSONL 是证据、不写编排器"的判据。
 
-## 十二、刻意还没做
+## 十二、业主的一条长期规矩,以及它当场纠正的三处(v2.2.0)
+
+> **定义从官方文档取。**hook 能干什么、skill 的 frontmatter 接受什么、plugin 清单要什么——
+> 读 reference,不从工程博客、bundle strings、或别人机器上的样例反推。
+
+三处当场纠正:
+
+1. **冲突 3 是个假冲突,而且已裁决。**官方 hooks reference 写明:`SessionStart` 是
+   "initialize session state... perform any other one-time setup",`PreCompact` 是
+   "save state, log information about the current context, or prepare for context
+   reduction"。**我们两个恢复 hook 做的正是文档为它们定义的事。**Anthropic 那篇博客说的
+   "dropped context resets" 是一个 harness 架构选择(要不要清空重启),不是"要不要用这两个
+   事件"。我把博客当成了对两个事件的裁决。**冲突 3 关闭,不改代码。**
+2. **我上一轮"修好"的 Stop 阻塞字段,原来是对的。**官方 reference 明列 Stop 的
+   `hookSpecificOutput.permissionDecision: "allow|deny"`;而我依据的是会话开头 CC 验证器
+   打印的**缩略** schema(只列了 `additionalContext`,阻塞在顶层 `decision`/`reason`)。
+   **两个权威源冲突**,所以现在两个都发,并把冲突记在代码注释里。判据:
+   **源冲突时同时满足两边,代价是几个字节;挑错一边的代价是设计里唯一的硬权力。**
+3. **skill frontmatter 是我从样例反推的,漏了三样文档里有的东西**:
+   - `when_to_use` —— 触发语的官方归属地,我把它塞进了 `description`
+   - **真实上限 1,536**(`description` + `when_to_use` 合计),我自设的 380 是拍的
+   - **`context: fork` + `agent:`** —— **在 forked subagent 里跑 skill 的官方机制**,
+     而且 `Explore`/`Plan` 会跳过 CLAUDE.md 和 git status,所以 forked skill **只看到
+     自己的 SKILL.md 和 agent 系统提示**。这正是 R/C/design-critic 需要的上下文隔离,
+     而且是**文件的声明属性**而不是调用方每次要记得安排的事——这点关键,因为调用方正是
+     那个"说辞不该到达审查者"的作者。
+
+顺带从 reference 读到的、之前不知道的:`SessionStart` 的 source 有 **`fork`**(我们漏了,
+forked 会话此前完全没有注入)、`Stop` 会收到 **`last_assistant_message` 和 `turn_count`**、
+`Notification` 有 **`quota_auto_resume_*`** matcher、还有 **`PostToolUseFailure`** 事件——
+后两个意味着"派发失败"其实**有** hook 侧的观测路径,所以我删掉 `role_unavailable` 的推理
+(只有运行能观测)是错的,但结论(当时那个实现是假货)仍然对。这条留作下一项。
+
+## 十三、刻意还没做
 
 - **74 道 eval 仍然只有题目没有成绩,连执行器都没有。**这是唯一还没有任何证据的一半:
   所有依赖"我照着做"的东西 —— 访谈顺序、9 条 refusal、means 标签、真教训 vs 事件、

@@ -71,12 +71,27 @@ class IdentityTests(unittest.TestCase):
 
 class SkillContractTests(unittest.TestCase):
     def test_description_states_the_artifact_boundary(self) -> None:
-        description = re.search(r'(?m)^description: "(.+)"$', skill_text())
+        """The real cap is the reference's, not one this project invented.
+
+        `description` and `when_to_use` are truncated together at 1,536
+        characters in the skill listing. A self-imposed 380 was a guess made
+        before the reference was read; the deliberate budget below is well
+        under the real limit and says which is which.
+        """
+        skill = skill_text()
+        description = re.search(r'(?m)^description: "(.+)"$', skill)
+        when = re.search(r'(?m)^when_to_use: "(.+)"$', skill)
         self.assertIsNotNone(description)
+        self.assertIsNotNone(when, "trigger phrases belong in `when_to_use`")
         text = description.group(1)
-        self.assertLessEqual(len(text), 380)
+        combined = len(text) + len(when.group(1))
+        self.assertLessEqual(combined, 1536, "the documented listing cap")
+        self.assertLessEqual(combined, 900, "and a deliberate budget under it")
         self.assertIn("not a design note", text)
-        for shape in ("goal line to paste", "workflow script", "delegation package"):
+        # The three shapes, named as they now are: a goal package is started by
+        # this plugin's own command rather than pasted into a host's goal mode.
+        for shape in ("goal package to start with /ultra-goal", "workflow script",
+                      "cross-vendor delegation triad"):
             self.assertIn(shape, text)
         # The artifact shapes are portable; the primitives that start them are not.
         # Only one host has a built-in loop command, so naming one here would bind
@@ -763,9 +778,12 @@ class ActivationScopeTests(unittest.TestCase):
     already loaded.
     """
 
-    def test_the_description_excludes_executing_a_running_goal(self) -> None:
+    def test_when_to_use_carries_the_triggers_and_the_exclusion(self) -> None:
+        """The reference calls `when_to_use` the home for trigger phrases."""
         front = skill_text().split("---")[1]
-        self.assertIn("Not for carrying out a goal already running", front)
+        for trigger in ("make an agent keep doing this", "keep going until"):
+            self.assertIn(trigger, front, trigger)
+        self.assertIn("Not when a goal is already running", front)
 
     def test_the_intent_table_has_the_executing_row(self) -> None:
         skill = skill_text()
@@ -1221,3 +1239,50 @@ class DecisionAuthorContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReferenceFirstTests(unittest.TestCase):
+    """Definitions come from the vendor's reference, not from examples.
+
+    Three wrong answers in this project came from the three cheaper sources:
+    an engineering blog read as a verdict on hook events the reference defines
+    differently, an abbreviated schema printed by a validator read as the whole
+    contract, and skill frontmatter reconstructed from installed plugins while
+    the reference documented fields none of them used.
+    """
+
+    def test_the_interview_protocol_carries_the_rule(self) -> None:
+        skill = skill_text()
+        self.assertIn(
+            "**Definitions come from the vendor's reference documentation.**", skill
+        )
+        self.assertIn(
+            "**An example shows one thing\n  that works; a reference says what is "
+            "allowed.**",
+            skill,
+        )
+
+    def test_the_documented_fork_mechanism_is_named(self) -> None:
+        doc = (SKILL_ROOT / "references" / "agent-modes.md").read_text(encoding="utf-8")
+        self.assertIn("## How to actually run a fresh-context role", doc)
+        self.assertIn("context: fork", doc)
+        self.assertIn("agent: Explore", doc)
+        # And why it is better than arranging isolation at the call site.
+        self.assertIn("declared property of the file", doc)
+
+    def test_the_gate_records_which_sources_disagreed(self) -> None:
+        """A conflict between two authoritative sources is worth keeping."""
+        gate = (SKILL_ROOT / "scripts" / "goal_stop.py").read_text(encoding="utf-8")
+        self.assertIn("Two authoritative sources disagree", gate)
+        self.assertIn("official hooks reference lists", gate)
+        self.assertIn("running binary's own validator", gate)
+        self.assertIn("satisfying both costs a few bytes", gate)
+
+    def test_session_start_covers_every_documented_source(self) -> None:
+        """`fork` was missing, so a forked session got no injection at all."""
+        sys.path.insert(0, str(SKILL_ROOT / "scripts"))
+        import goal_session_start as ss
+
+        self.assertEqual(
+            {"startup", "resume", "clear", "compact", "fork"}, set(ss.SOURCES)
+        )

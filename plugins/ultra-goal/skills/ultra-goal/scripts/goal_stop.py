@@ -207,20 +207,42 @@ def _allow(reason: str, context: str | None = None) -> dict[str, Any]:
     return payload
 
 
-def _deny(reason: str) -> dict[str, Any]:
-    """Refuse to let the turn end.
+def _deny(reason: str, context: str | None = None) -> dict[str, Any]:
+    """Refuse to let the turn end, in every documented form at once.
 
-    A Stop hook blocks with the **top-level** `decision`/`reason` pair. This was
-    wrong for the whole life of the gate: it emitted
-    `hookSpecificOutput.permissionDecision`, which is the *PreToolUse* shape and
-    is not among the fields Claude Code accepts for Stop - whose
-    hookSpecificOutput takes only `hookEventName` and `additionalContext`. So the
-    one hard power in this design was wired to a field the host does not read,
-    and every test checked what this script emitted rather than what the host
-    honours. The lesson generalises past this bug: a payload contract is a claim
-    until something outside the emitter agrees with it.
+    Two authoritative sources disagree about how a Stop hook blocks, and both
+    were read directly rather than assumed:
+
+    - The official hooks reference lists, for Stop,
+      `hookSpecificOutput.permissionDecision: "allow|deny"` alongside
+      `additionalContext` and `systemMessage`.
+    - The running binary's own validator, when it rejected a malformed payload,
+      printed a schema in which Stop's `hookSpecificOutput` carries only
+      `hookEventName` and `additionalContext`, with `decision: "approve"|"block"`
+      and `reason` at the top level.
+
+    I changed this once on the strength of the second source alone and broke a
+    field that the first source documents. So it now emits both, and says why:
+    when the sources conflict, satisfying both costs a few bytes, while picking
+    one costs the only hard power in the design. The docs also record a third
+    route - exit code 2 - which this deliberately does not use, because exiting
+    non-zero would discard the JSON that carries the reason.
+
+    Which one the host honours is still a claim until a live run settles it. The
+    observable is simple: a denied turn does not end.
     """
-    return {"decision": "block", "reason": reason}
+    payload: dict[str, Any] = {
+        "decision": "block",
+        "reason": reason,
+        "hookSpecificOutput": {
+            "hookEventName": "Stop",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": reason,
+        },
+    }
+    if context:
+        payload["hookSpecificOutput"]["additionalContext"] = context
+    return payload
 
 
 def _mutable_surface(found: dict[str, str]) -> str | None:
@@ -453,7 +475,8 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
         f"{goal.slug}: anchor `{anchor}` is still failing (exit {exit_code}) on turn "
         f"{turn} of {ceiling}, so the goal is not met. Keep working. Before the next "
         "attempt, write one lesson into `### Lessons` naming the cause and the next "
-        "action - and run the independent verification named in `## Verification`."
+        "action - and run the independent verification named in `## Verification`.",
+        _mutable_surface(found),
     )
 
 

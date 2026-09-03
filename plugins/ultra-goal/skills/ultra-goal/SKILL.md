@@ -1,10 +1,11 @@
 ---
 name: ultra-goal
-description: "Turn \"make an agent keep doing this\" into a goal a host will hold to: interview for intent, anchor, stop condition, boundary, droppable means and an adversarial verifier, refuse the shapes that fail, then emit the artifact - a goal line to paste, a workflow script, or a cross-vendor delegation package. Runnable, not a design note. Not for carrying out a goal already running."
+description: "Turn \"make an agent keep doing this\" into a goal a host will hold to: interview for intent, anchor, stop condition, boundary, droppable means, roles and an adversarial verifier, refuse the shapes that fail, then emit the artifact - a goal package to start with /ultra-goal, a workflow script, or a cross-vendor delegation triad. Runnable, not a design note."
+when_to_use: "When the owner wants work to keep running without them - \"make an agent keep doing this\", \"turn this into something that runs itself\", \"set up a loop for\", \"have it keep going until\" - or wants to inspect or change a goal already in .goals/. Not when a goal is already running and the request is a step of that work: that is the run doing its job."
 license: MIT
 metadata:
   author: rocky2431
-  version: "2.1.1"
+  version: "2.2.0"
 ---
 
 # UltraGoal
@@ -92,6 +93,15 @@ silence, and it is the only reason erring this way is cheap.
 - **Facts are yours, decisions are theirs.** Resolve anything the repository, git history,
   test config, CI, or a tool can tell you before asking. Check the project's and the user's
   `CLAUDE.md` (or equivalent) for a standing answer and skip that question when you find one.
+- **Definitions come from the vendor's reference documentation.** What a hook event is for,
+  which fields its output honours, what a skill's frontmatter accepts - read the reference,
+  do not infer it from an engineering blog, a strings dump of the binary, or a working
+  example on this machine. Every one of those three has produced a wrong answer here: a
+  blog post about dropping context resets was read as a verdict on two hook events the
+  reference defines differently, an abbreviated schema printed by a validator was read as
+  the whole contract, and a skill's frontmatter was reconstructed from installed plugins
+  while the reference documented fields none of them used. **An example shows one thing
+  that works; a reference says what is allowed.**
 - **Do not write the artifact until the owner confirms** the decisions read back correctly.
   Not the first plausible agreement — an explicit confirmation.
 

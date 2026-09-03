@@ -18,7 +18,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from goal_hooks import ActiveGoal, read_events, run_hook, sections  # noqa: E402
 
 
-SOURCES = {"startup", "resume", "clear", "compact"}
+# Every source the hooks reference documents. `fork` was missing, so a forked
+# session - which starts with the parent's context and then diverges - received
+# no injection at all. Read from the docs rather than inferred from the four we
+# happened to have seen.
+SOURCES = {"startup", "resume", "clear", "compact", "fork"}
 # Raised from 6000 once `## Roles` and `## Acceptance` existed: measured, the
 # load-bearing sections came to about 5.9k, so the old budget dropped
 # `## Carry-over` - the state and lessons this hook exists to restore. A resume

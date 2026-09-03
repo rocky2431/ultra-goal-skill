@@ -35,6 +35,16 @@ never a reason to declare done**; and if the model beneath a run no longer does 
 two recovery hooks are a defence against a fixed defect, which is
 exactly the kind of mechanism to delete rather than keep.
 
+**That second consequence was then checked against the reference, and it does not apply
+here.** The hooks reference defines `SessionStart` as the place to "initialize session
+state... or perform any other one-time setup", and `PreCompact` as the place to "save state,
+log information about the current context, or prepare for context reduction" - which is
+precisely what these two do. What Anthropic dropped on a stronger model was **context
+resets**: clearing the window and restarting a fresh agent. These hooks do not do that; they
+inject on boundaries the host creates anyway. Reading the blog as a verdict on two events the
+reference defines differently was the mistake, and it is the kind that gets caught by opening
+the reference rather than by thinking harder about the blog.
+
 The refusals in SKILL.md are shorthand. These are the failure modes behind them, so you
 can explain a refusal to the owner instead of just quoting a rule.
 

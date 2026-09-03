@@ -81,6 +81,26 @@ it. Recommend it wherever the work is delegated.
 Splitting the test from the code is a phase split, and phase splits are already refused:
 each phase needs the previous phase's context.
 
+## How to actually run a fresh-context role
+
+Not an ad-hoc subagent call. The skills reference documents a frontmatter field for exactly
+this:
+
+```yaml
+context: fork          # run in a forked subagent context
+agent: Explore         # and which agent type executes it
+```
+
+With `context: fork` the task is written in the skill and an agent type executes it, and the
+built-in `Explore` and `Plan` agents skip CLAUDE.md and git status, so **a forked skill sees
+only its own SKILL.md content and the agent's system prompt**. That is context isolation as
+a declared property of the file rather than something the caller has to remember to arrange -
+which matters, because the caller here is the author whose argument must not reach the
+reviewer.
+
+Read the reference before choosing a mechanism. This one was reconstructed from installed
+plugins for several versions while the field that does the job was documented all along.
+
 ## The two axes of semantic review
 
 These are independent, and conflating them was the original error. They defend against
