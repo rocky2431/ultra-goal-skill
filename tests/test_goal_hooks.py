@@ -554,3 +554,118 @@ class FrozenSpecTests(Harness):
             witness.exists(),
             "running the anchor after the spec moved would prove the wrong thing",
         )
+
+
+class CeilingParsingTests(Harness):
+    """An unparsed ceiling is unknown, not twelve.
+
+    The original regex accepted only `<digits> turn(s)`, so "six turns",
+    "6 iterations" and "6-turn ceiling" all missed - and a miss silently
+    enforced DEFAULT_CEILING instead of the owner's number, which is a moved
+    threshold wearing the owner's own handwriting.
+    """
+
+    def gate(self):
+        import importlib
+        return importlib.import_module("goal_stop")
+
+    def test_the_phrasings_an_owner_actually_writes(self) -> None:
+        ceiling = self.gate()._ceiling
+        for text, expected in (
+            ("Stop when the audit is clean, or after 6 turns.", 6),
+            ("Stop when the audit is clean, or after six turns.", 6),
+            ("stop after 6 iterations", 6),
+            ("a 6-turn ceiling", 6),
+            ("at most twelve passes", 12),
+            ("three cycles", 3),
+        ):
+            with self.subTest(text=text):
+                turns, declared = ceiling(text)
+                self.assertEqual(expected, turns)
+                self.assertTrue(declared, "this is the owner's number, not a default")
+
+    def test_plural_pass_is_reachable(self) -> None:
+        """`pass` pluralises to `passes`, which `s?` cannot match.
+
+        This near-miss hid during development because the fallback happened to
+        equal the right answer, so the count looked correct while the flag was
+        wrong. The flag is what the assertion has to check.
+        """
+        turns, declared = self.gate()._ceiling("at most twelve passes")
+        self.assertEqual(12, turns)
+        self.assertTrue(declared)
+
+    def test_an_unreadable_ceiling_is_flagged_not_assumed(self) -> None:
+        for text in ("when it feels done", "", "stop when you are happy"):
+            with self.subTest(text=text):
+                turns, declared = self.gate()._ceiling(text)
+                self.assertEqual(self.gate().DEFAULT_CEILING, turns)
+                self.assertFalse(declared)
+
+    def test_the_gate_says_when_the_ceiling_is_its_own(self) -> None:
+        goal = GOAL.replace("or after 4 turns", "when it feels done")
+        self.make_loop(goal=goal.replace(f"```\n{GREEN}\n```", f"```\n{RED}\n```"))
+        log = self.cwd / ".goals" / "demo.events.jsonl"
+        log.write_text("".join(
+            json.dumps({"event": "anchor_checked", "turn": n, "outcome": "red",
+                        "signature": f"red:1:sig{n}"}) + "\n"
+            for n in range(1, 13)
+        ), encoding="utf-8")
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
+            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            capture_output=True, text=True, timeout=30,
+        )
+        payload = json.loads(result.stdout)
+        self.assertIn("this gate's default, not yours", payload["systemMessage"])
+        entry = json.loads(log.read_text().splitlines()[-1])
+        self.assertEqual("default", entry["ceiling_source"])
+
+
+class InjectionBudgetTests(Harness):
+    """A section cut in half is worse than an absent one.
+
+    Measured, not imagined: injecting the whole artifact truncated the shipped
+    template mid-clause at the default limit, on the first run.
+    """
+
+    def context(self, goal: str = GOAL) -> str:
+        self.make_loop(goal=goal)
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_session_start.py")],
+            input=json.dumps({"hook_event_name": "SessionStart", "cwd": str(self.cwd),
+                              "source": "resume"}),
+            capture_output=True, text=True, timeout=30,
+        )
+        return json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+
+    def test_recovery_gets_the_frozen_terms_and_the_carried_state(self) -> None:
+        context = self.context()
+        for probe in ("## Intent", "## Boundary", "## Anchor", "## Carry-over"):
+            self.assertIn(probe, context)
+
+    def test_handoff_is_not_injected(self) -> None:
+        """It holds the command that starts the run, and the run has started."""
+        self.assertNotIn("## Handoff", self.context())
+
+    def test_a_section_is_dropped_whole_and_named(self) -> None:
+        import goal_session_start as ss
+        padded = GOAL.replace(
+            "A fresh agent re-runs the anchor.",
+            "A fresh agent re-runs the anchor. " + ("padding " * 900),
+        )
+        context = self.context(padded)
+        self.assertIn("Not injected for space:", context)
+        self.assertIn("verification", context)
+        # Whole sections only: no half-instruction may survive.
+        self.assertNotIn("padding padding", context)
+        self.assertLessEqual(len(context), ss.CONTEXT_LIMIT)
+
+    def test_the_frozen_terms_outrank_everything_else(self) -> None:
+        padded = GOAL.replace("Started by hand.", "Started by hand. " + ("x " * 3000))
+        context = self.context(padded)
+        self.assertIn("Keep the suite green.", context)
+        self.assertIn("## Boundary", context)
+
+    def test_the_injection_tells_the_run_it_is_the_run(self) -> None:
+        self.assertIn("You are the run, not its designer", self.context())

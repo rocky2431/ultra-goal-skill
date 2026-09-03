@@ -15,11 +15,27 @@ import sys
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from goal_hooks import ActiveGoal, read_events, run_hook  # noqa: E402
+from goal_hooks import ActiveGoal, read_events, run_hook, sections  # noqa: E402
 
 
 SOURCES = {"startup", "resume", "clear", "compact"}
 CONTEXT_LIMIT = 6000
+# What a resuming session needs, most important first. `## Handoff` is absent on
+# purpose: it holds the command that starts the run, and the run is already
+# started - injecting it wastes the budget that `## Carry-over` needs.
+# Measured before choosing this: injecting the whole artifact truncated the
+# shipped template mid-clause at the default limit, on day one.
+INJECT_ORDER = (
+    "intent",
+    "boundary",
+    "anchor",
+    "stop condition",
+    "means",
+    "carry-over",
+    "verification",
+    "cadence",
+)
+SKIP = ("handoff",)
 
 
 def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
@@ -27,6 +43,7 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
         return None
 
     spec = goal.goal_path.read_text(encoding="utf-8")
+    found = sections(spec)
     checks = [e for e in read_events(goal) if e.get("event") == "anchor_checked"]
     last = checks[-1] if checks else None
 
@@ -38,6 +55,8 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
         "anchor, or the boundary turns out to be wrong, stop and report it rather than",
         "editing them yourself.",
         "",
+        "You are the run, not its designer. Do not reopen the design as an interview.",
+        "",
     ]
     if last is not None:
         lines += [
@@ -45,11 +64,31 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
             f"{last.get('outcome')}, exit {last.get('exit_code')}.",
             "",
         ]
-    lines += ["Read `## Carry-over` before acting and rewrite it before finishing.", "", "---", "", spec]
+    lines += ["Read `## Carry-over` before acting and rewrite it before finishing.", ""]
 
-    context = "\n".join(lines)
-    if len(context) > CONTEXT_LIMIT:
-        context = context[:CONTEXT_LIMIT] + "\n\n[truncated - read the artifact directly]"
+    head = "\n".join(lines)
+    budget = CONTEXT_LIMIT - len(head)
+    body: list[str] = []
+    dropped: list[str] = []
+    for name in INJECT_ORDER:
+        section = found.get(name)
+        if section is None:
+            continue
+        block = f"\n## {name.title()}\n{section.rstrip()}\n"
+        # Whole sections only. A section cut in half is worse than an absent
+        # one: a truncated instruction still reads as an instruction.
+        if len(block) > budget:
+            dropped.append(name)
+            continue
+        body.append(block)
+        budget -= len(block)
+
+    context = head + "".join(body)
+    if dropped:
+        context += (
+            f"\nNot injected for space: {', '.join(dropped)}. Read "
+            f"`{goal.goal_path.name}` directly for those.\n"
+        )
 
     return {
         "hookSpecificOutput": {

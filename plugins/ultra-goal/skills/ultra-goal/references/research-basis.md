@@ -16,6 +16,78 @@ before treating any specific number as still true.
   resource across iterations.
   https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents
 
+## Long-running harnesses (primary)
+
+- Anthropic, *Effective harnesses for long-running agents* — the closest published work to
+  what this Skill builds. States plainly that **"compaction isn't sufficient"**, which is
+  the whole basis for `## Carry-over`. Their artifacts: a progress log, a structured
+  `feature_list.json` of requirements all initially failing, descriptive commits, and an
+  `init.sh`. Discipline: one feature per session, and "Only mark features as 'passing'
+  after careful testing". Names the failure this Skill's anchor exists for: "Absent
+  explicit prompting, Claude tended to make code changes but would fail to recognize that
+  the feature didn't work end-to-end" — and lists "relying on unit tests without
+  end-to-end validation" as an anti-pattern.
+  https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents
+- Anthropic, *Harness design for long-running application development* — Planner /
+  Generator / Evaluator, with the generator later **removed** as the model improved. Two
+  things taken directly: the **sprint contract**, where generator and evaluator agree what
+  "done" means for a chunk before any code is written; and **context anxiety**, a named
+  failure where a model wraps up early as it approaches what it believes is its context
+  limit. Also the criterion this Skill's own mechanism audit uses: "every component in a
+  harness encodes an assumption about what the model can't do on its own, and those
+  assumptions are worth stress testing."
+  https://www.anthropic.com/engineering/harness-design-long-running-apps
+
+## The arithmetic of long tasks
+
+- Ord, *Is there a half-life for the success rates of AI agents?* (arXiv 2505.05115) — a
+  constant per-minute failure rate fits the data, so success decays **exponentially** with
+  task length, because long tasks "involve increasingly large sets of subtasks where
+  failing any one fails the task". The consequence for this Skill: success is exponential
+  in the size of one turn, so halving the work per turn more than doubles the chance of a
+  green turn. The turn ceiling decides when a run gives up; the turn *size* decides
+  whether it can succeed at all.
+  https://arxiv.org/abs/2505.05115
+- METR, *Time Horizon 1.1* — near-100% success on tasks under roughly four minutes of
+  human time, under 10% beyond roughly four hours; the 50%-reliability horizon doubling
+  every 4-7 months. Re-check the numbers before quoting them.
+  https://metr.org/blog/2026-1-29-time-horizon-1-1/
+
+## Single writer, and the case against multi-agent
+
+- Cognition, *Don't Build Multi-Agents* — the argument this Skill's phase-split refusal
+  rests on: fanned-out subagents each act on a partial view and make conflicting implicit
+  decisions. Its positive rule endorses the triad exactly: **"extra agents are fine when
+  they contribute intelligence, reading and analyzing, but the writes, the actions that
+  change state, should stay single-threaded."** That is M editing while R and C only read.
+  https://cognition.com/blog/dont-build-multi-agents
+
+## Context engineering in production
+
+- Manus, *Context Engineering for AI Agents* — three practices that map onto this Skill's
+  document system: **recitation** (rewriting a todo file so the objective is pushed into
+  the model's most recent attention), **the file system as the ultimate context** (which
+  is why artifacts live in the project rather than a tool's private directory), and
+  **keeping errors in context** rather than cleaning them away. Note the scope difference
+  on the last one: Manus means one session's own context, while `### Lessons` is what gets
+  carried *between* sessions and is therefore pruned.
+  https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus
+
+## Cross-agent coordination
+
+- Google, *Agent2Agent (A2A)* — an Agent Card advertising capability, and a named task
+  lifecycle: `submitted / working / input-required / completed / failed / canceled /
+  rejected`. The transport (HTTP, SSE, JSON-RPC) is the opposite of this Skill's
+  text-protocol stance and is **not** adopted; the state vocabulary is what transfers, and
+  `input-required` and `rejected` are two states a delegation package currently lacks.
+  https://developers.googleblog.com/en/a2a-a-new-era-of-agent-interoperability/
+- OpenAI, *A practical guide to building agents* — guardrails as a **layered defense**,
+  added "as you uncover new vulnerabilities" rather than up front; manager versus
+  decentralized orchestration; and two triggers for human intervention, the first of which
+  is this Skill's turn ceiling: **exceeding failure thresholds — set limits on agent
+  retries or actions**.
+  https://cdn.openai.com/business-guides-and-resources/a-practical-guide-to-building-agents.pdf
+
 ## Multi-agent cost and decomposition (primary)
 
 - Anthropic, *When to use multi-agent systems (and when not to)* — 3-10x token overhead,

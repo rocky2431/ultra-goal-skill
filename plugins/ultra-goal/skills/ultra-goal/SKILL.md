@@ -4,7 +4,7 @@ description: "Turn \"make an agent keep doing this\" into a goal a host will hol
 license: MIT
 metadata:
   author: rocky2431
-  version: "1.2.0"
+  version: "1.2.1"
 ---
 
 # UltraGoal

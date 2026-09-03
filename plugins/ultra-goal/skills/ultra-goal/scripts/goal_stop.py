@@ -51,7 +51,36 @@ ANCHOR_TIMEOUT_SECONDS = 180
 DEFAULT_CEILING = 12
 FENCE = re.compile(r"```[a-z]*\n(.+?)\n```", re.S)
 INLINE = re.compile(r"`([^`\n]+)`")
-TURNS = re.compile(r"(\d+)\s+turns?\b", re.I)
+# Widened after measuring the original against real phrasings: "six turns",
+# "6 iterations" and "6-turn ceiling" all missed, and a miss meant silently
+# enforcing DEFAULT_CEILING instead of the owner's number - a moved threshold
+# that looks exactly like the owner's own.
+WORD_NUMBERS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+    "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
+    "fifteen": 15, "twenty": 20,
+}
+UNIT = r"(?:(?:turn|iteration|round|cycle)s?|pass(?:es)?)"
+TURNS = re.compile(rf"(\d+)[\s-]+{UNIT}\b", re.I)
+TURNS_WORD = re.compile(
+    rf"\b({'|'.join(WORD_NUMBERS)})[\s-]+{UNIT}\b", re.I
+)
+
+
+def _ceiling(stop_section: str) -> tuple[int, bool]:
+    """The owner's turn ceiling, and whether it was actually found.
+
+    The second value is the point. A ceiling nobody could parse is not a
+    ceiling of twelve; it is an unknown, and the gate says so rather than
+    enforcing a number the owner never wrote.
+    """
+    digits = TURNS.search(stop_section)
+    if digits is not None:
+        return int(digits.group(1)), True
+    word = TURNS_WORD.search(stop_section)
+    if word is not None:
+        return WORD_NUMBERS[word.group(1).lower()], True
+    return DEFAULT_CEILING, False
 # Exit codes for "command not found" are a per-shell detail: POSIX shells use
 # 127 (and 126 for found-but-not-executable), cmd.exe uses 9009, and CI proved
 # that guessing from the code alone leaves the third outcome missing on some
@@ -156,8 +185,7 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
         )
 
     stop_section = found.get("stop condition") or ""
-    ceiling_match = TURNS.search(stop_section)
-    ceiling = int(ceiling_match.group(1)) if ceiling_match else DEFAULT_CEILING
+    ceiling, declared = _ceiling(stop_section)
 
     # Step 4: the ceiling is the owner's, and it wins even when the goal is unmet.
     if turn > ceiling:
@@ -168,11 +196,18 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
                 "event": "ceiling_reached",
                 "turn": turn,
                 "ceiling": ceiling,
+                "ceiling_source": "declared" if declared else "default",
             },
+        )
+        source = (
+            "" if declared else
+            f" This ceiling is this gate's default, not yours: no turn count could be "
+            f"read from `## Stop condition`, so state one there in the form "
+            f"`or after N turns`."
         )
         return _allow(
             f"{goal.slug}: ceiling of {ceiling} turns reached without meeting the "
-            "goal. Stopping. Report what is left rather than claiming success."
+            f"goal. Stopping. Report what is left rather than claiming success.{source}"
         )
 
     # Step 6: is the anchor even runnable? Answered by looking, not by inference.
