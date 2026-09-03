@@ -5,7 +5,7 @@ when_to_use: "When the owner wants work to keep running without them - \"make an
 license: MIT
 metadata:
   author: rocky2431
-  version: "2.5.1"
+  version: "2.6.0"
 ---
 
 # UltraGoal
@@ -744,29 +744,28 @@ Ask with three answers, because yes-or-no folds "those objections changed my min
 >   <slug>` starts it later, in any session
 > - **change something first** — say what, and we amend before arming
 
-If they pick **start it**, say this once and then stop offering it: `/clear` before turn 1
-gives the run a clean context, and the SessionStart hook re-delivers the frozen terms and
-the carry-over by itself, so clearing loses nothing that the run needs.
-
-Tell them the rest of it too: **injection is not activation.** The hooks reference has
-SessionStart's `additionalContext` as context the model can see and act on, and it sits
-there until the owner's first message. So the clean-context path is three steps rather than
-one - arm the gate, stop there, and let them `/clear` and send any single line (`continue`
-does it) - and a run sitting idle after a clear looks exactly like a run that is stuck,
-which is the failure this sentence exists to prevent. Their call, not
-yours - a run that keeps the interview in context is worse but not broken, and one more
-prompt before they can walk away is a real cost.
-
 Arming writes one file in this repository and `rm .goals/active` undoes it, so "start it"
 is authorization enough; nothing at this step reaches outside the machine. But never arm
 without asking, and never read silence or an unrelated reply as consent.
 
+**Do not send them to clear the context first.** Turn 1's context is the best it will ever
+be: it holds why each term was chosen, what the design critic objected to, and what the
+owner rejected - none of which survives in the artifact, which keeps at most three lessons.
+Clearing trades that for a re-injection of what was already on disk. It also buys nothing
+that is actually missing, because a clean context is not reachable anyway: the host's own
+setup, the project's instructions and every other installed hook's injection are all in a
+fresh session before the owner types anything.
+
 **When they say start it, this manual stops applying to you.** Invoke
 `/ultra-goal:goal-run <slug>` and follow that file instead. It puts you in the run's seat,
 where the terms you just negotiated are frozen and your job is to satisfy them rather than
-to keep improving them. The host does not drop this Skill's content from the conversation
-after the handoff, so the pull to reopen the interview is real and outlives the handoff —
-these two sentences are the whole defence against it.
+to keep improving them. The host keeps this Skill's content in the conversation after the
+handoff, so wanting to reopen the interview is the live risk - and what answers it is not a
+cleaner window but three things that work with the window as it is: the injection's own
+first line says you are the run and not its designer, `frozen_digest()` is written and
+compared by machine so a moved goalpost surfaces in `--audit` and in `git log`, and a term
+that really is wrong has a channel - a row under `## Challenges from the run` - that is
+faster than editing it.
 
 The other two shapes have nothing to arm: a workflow script has the runtime's own entry
 point and a delegation triad is one call per worker. Offer those the same way, in the same

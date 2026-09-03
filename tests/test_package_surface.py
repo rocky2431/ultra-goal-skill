@@ -1416,25 +1416,45 @@ class ChainedHandoffTests(unittest.TestCase):
         self.assertIn(
             "**When they say start it, this manual stops applying to you.**", skill
         )
-        self.assertIn("The host does not drop this Skill's content", skill)
+        self.assertIn("The host keeps this Skill's content in the conversation", skill)
 
-    def test_the_cheaper_alternative_is_named_once(self) -> None:
-        """Clearing gives the run a clean context, and the SessionStart hook
-        re-delivers what it needs - so the alternative costs one prompt, and the
-        owner is told rather than routed."""
+    def test_the_handoff_does_not_send_the_owner_to_clear(self) -> None:
+        """A context reset at the handoff is the anti-pattern this project's own
+        reference names: it discards the interview - the richest context turn 1
+        will ever have - to chase a clean window that a fresh session does not
+        have either.
+        """
         skill = skill_text()
-        self.assertIn("`/clear` before turn 1", skill)
-        self.assertIn("SessionStart hook re-delivers the frozen terms", skill)
-        self.assertIn("Their call, not\nyours", skill)
+        self.assertIn("**Do not send them to clear the context first.**", skill)
+        self.assertIn("a clean context is not reachable anyway", skill)
+        self.assertNotIn("/clear", skill)
 
-    def test_the_owner_is_told_that_injection_is_not_activation(self) -> None:
-        """A cleared session holds the spec but does nothing until the owner
-        sends a line, so an owner who expects the run to resume by itself sees
-        an idle session and reads it as broken."""
+    def test_the_handoff_names_what_actually_holds_the_line(self) -> None:
+        """Replacing a mechanism with a plea would be the weaker fix, so the
+        paragraph names the three defences that already exist instead."""
         skill = skill_text()
-        self.assertIn("**injection is not activation.**", skill)
-        self.assertIn("send any single line", skill)
-        self.assertIn("looks exactly like a run that is stuck", skill)
+        self.assertIn("not a\ncleaner window but three things", skill)
+        self.assertIn("`frozen_digest()` is written and\ncompared by machine", skill)
+        self.assertIn("`## Challenges from the run`", skill)
 
     def test_the_shapes_with_nothing_to_arm_are_offered_too(self) -> None:
         self.assertIn("The other two shapes have nothing to arm", skill_text())
+
+class ContextResetTests(unittest.TestCase):
+    """The reset this project recommended, and then removed.
+
+    Worth a test because the reasoning is the reusable part: a window is worth
+    dropping when what is in it is wrong, not when it is large.
+    """
+
+    def test_the_reversal_is_recorded_where_the_rule_lives(self) -> None:
+        doc = (
+            SKILL_ROOT / "references" / "anti-patterns.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("**And then this Skill recommended a reset anyway.**", doc)
+        self.assertIn("A clean context is not reachable.", doc)
+        self.assertIn(
+            "what is in this window that is **wrong**, not what is in it\nthat is "
+            "**large**",
+            doc,
+        )

@@ -15,7 +15,7 @@ import tempfile
 from typing import Any
 
 
-VERSION = "2.5.1"
+VERSION = "2.6.0"
 PACKAGE = "ultra-goal"
 MARKER_NAME = ".ultra-goal-managed.json"
 REPO_ROOT = Path(__file__).resolve().parents[1]

@@ -45,6 +45,31 @@ inject on boundaries the host creates anyway. Reading the blog as a verdict on t
 reference defines differently was the mistake, and it is the kind that gets caught by opening
 the reference rather than by thinking harder about the blog.
 
+**And then this Skill recommended a reset anyway.** v2.5.0 told the owner to clear the
+context before turn 1 so the run would start clean - a context reset, the exact mechanism
+the paragraph above records as dropped on a stronger model, proposed by the file that
+records it. The owner caught it in one question: *the context is never going to be clean
+going into the loop anyway, is it?* It was removed in v2.6.0, and the four reasons
+generalise past this instance:
+
+- **A clean context is not reachable.** A fresh session already carries the host's setup,
+  the project's instructions and every installed hook's injection before the owner types
+  anything. "Cleaner" was the honest word; "clean" was the one that made it sound worth an
+  action.
+- **What the reset discarded was the most valuable context that will ever exist.** At the
+  handoff the window holds why each term was chosen, what the design critic objected to and
+  what the owner rejected. The artifact keeps at most three lessons. Trading the first for
+  the second is a downgrade dressed as hygiene.
+- **The worry it answered already had three answers**, one of them mechanical: the
+  injection's own first line, `frozen_digest()` written and compared by machine, and the
+  challenge row for a term that really is wrong. A fourth defence that costs the owner an
+  action is not a defence, it is a tax.
+- **The only real gain was token headroom**, which is a 200k-window instinct. It did not
+  survive being asked how many tokens an interview actually is.
+
+So ask of any proposed reset: what is in this window that is **wrong**, not what is in it
+that is **large**. Only the first is a reason to drop it.
+
 The refusals in SKILL.md are shorthand. These are the failure modes behind them, so you
 can explain a refusal to the owner instead of just quoting a rule.
 
