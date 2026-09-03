@@ -26,7 +26,41 @@ from goal_hooks import (  # noqa: E402
 )
 
 
-KNOWN_TARGETS = ("claude", "codex", "hermes", "kimi", "opencode", "zcode")
+# The fallback list, used only when `agent-delegate list --json` cannot answer.
+# Hardcoding it was one of this Skill's own audited bets: a seventh vendor would
+# have failed UNKNOWN_TARGET for existing. The tool is now asked first, and the
+# fallback is what keeps the validator usable on a machine without it.
+FALLBACK_TARGETS = ("claude", "codex", "hermes", "kimi", "opencode", "zcode")
+WHO_VALUES = ("owner", "agent")
+
+
+def known_targets() -> tuple[tuple[str, ...], bool]:
+    """Delegation targets, and whether they came from the tool or the fallback.
+
+    Asked rather than assumed, because which agents a machine has is a fact and
+    a stale constant reports a working target as a typo.
+    """
+    try:
+        completed = subprocess.run(
+            ["agent-delegate", "list", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return FALLBACK_TARGETS, False
+    if completed.returncode != 0:
+        return FALLBACK_TARGETS, False
+    try:
+        payload = json.loads(completed.stdout)
+    except (json.JSONDecodeError, UnicodeError):
+        return FALLBACK_TARGETS, False
+    names = tuple(
+        str(t["name"]).lower()
+        for t in payload.get("targets", [])
+        if isinstance(t, dict) and t.get("name")
+    )
+    return (names, True) if names else (FALLBACK_TARGETS, False)
 PLACEHOLDERS = ("TO" + "DO:", "TB" + "D", "<FILL", "XX" + "X:")
 KINDS = (
     (".decisions.md", "decisions"),
@@ -288,27 +322,44 @@ def check_decisions(path: Path, text: str, out: list[Finding]) -> None:
     text = decisions_region(text)
     rows = [line.strip() for line in text.splitlines() if line.strip().startswith("|")]
     header = next((row for row in rows if "decision" in row.lower()), None)
-    if header is None or not {"rejected", "why"} <= set(
-        cell.strip().lower() for cell in header.strip("|").split("|")
-    ):
+    columns = (
+        {cell.strip().lower() for cell in header.strip("|").split("|")}
+        if header is not None
+        else set()
+    )
+    if header is None or not {"rejected", "why", "who"} <= columns:
         out.append(
             Finding(
                 str(path),
                 "DECISIONS_TABLE_MALFORMED",
-                "expected a table with Decision | Rejected | Why columns",
+                "expected a table with Decision | Rejected | Why | Who columns. `Who` is "
+                "`owner` or `agent`: an assumption the owner never saw is not an agreement, "
+                "and without the column the two cannot be told apart",
             )
         )
         return
+    index = [c.strip().lower() for c in header.strip("|").split("|")].index("who")
     for row in rows[rows.index(header) + 1 :]:
         cells = [cell.strip() for cell in row.strip("|").split("|")]
         if set("".join(cells)) <= set("- "):
             continue
-        if len(cells) < 3 or not all(cells[:3]):
+        if len(cells) < 4 or not all(cells[:4]):
             out.append(
                 Finding(
                     str(path),
                     "DECISIONS_TABLE_MALFORMED",
                     f"row has an empty or missing cell: {row}",
+                )
+            )
+            return
+        who = cells[index].strip().lower()
+        if who not in WHO_VALUES:
+            out.append(
+                Finding(
+                    str(path),
+                    "DECISION_AUTHOR_UNCLEAR",
+                    f"`Who` is {cells[index]!r}; it must be `owner` or `agent` so an "
+                    f"assumption is never mistaken for an agreement: {row[:80]}",
                 )
             )
             return
@@ -714,13 +765,18 @@ def check_delegation(path: Path, text: str, out: list[Finding]) -> None:
         target = fields.get("target", "").strip("`").lower()
         if target:
             targets[role] = target
-            if target not in KNOWN_TARGETS:
+            allowed, from_tool = known_targets()
+            if target not in allowed:
                 out.append(
                     Finding(
                         str(path),
                         "UNKNOWN_TARGET",
-                        f"{target!r} is not a registered target; run "
-                        "`agent-delegate list --json`",
+                        f"{target!r} is not among the delegation targets "
+                        + ("`agent-delegate list --json` reports"
+                           if from_tool else
+                           "this Skill knows about, and `agent-delegate` could not be "
+                           "asked - install it or check the name"),
+                        "error" if from_tool else "advisory",
                     )
                 )
 
@@ -882,6 +938,33 @@ def challenge_count(record: Path) -> int:
     return count
 
 
+def assumed_count(record: Path) -> int:
+    """Rows the agent set or assumed rather than the owner deciding.
+
+    Reported apart from the decision count so the owner can see how much of
+    their own spec they never actually agreed to.
+    """
+    if not record.is_file():
+        return 0
+    text = decisions_region(record.read_text(encoding="utf-8"))
+    rows = [l.strip() for l in text.splitlines() if l.strip().startswith("|")]
+    header = next((r for r in rows if "decision" in r.lower()), None)
+    if header is None:
+        return 0
+    cells = [c.strip().lower() for c in header.strip("|").split("|")]
+    if "who" not in cells:
+        return 0
+    index = cells.index("who")
+    count = 0
+    for row in rows[rows.index(header) + 1 :]:
+        values = [c.strip() for c in row.strip("|").split("|")]
+        if set("".join(values)) <= set("- "):
+            continue
+        if len(values) > index and values[index].strip().lower() == "agent":
+            count += 1
+    return count
+
+
 def decision_count(record: Path) -> int:
     if not record.is_file():
         return 0
@@ -964,6 +1047,7 @@ def describe(path: Path, kind: str) -> dict[str, object]:
         "workers": [],
         "decisions": decision_count(path.with_name(f"{slug_of(path)}.decisions.md")),
         "challenges": challenge_count(path.with_name(f"{slug_of(path)}.decisions.md")),
+        "assumed": assumed_count(path.with_name(f"{slug_of(path)}.decisions.md")),
         "anchor_result": None,
     }
     item["cadence"] = None
@@ -1298,6 +1382,10 @@ def print_status(state: dict[str, object]) -> None:
         print("no artifacts found")
     for item in artifacts:
         line = f"{item['slug']}  [{item['shape']}]  decisions={item['decisions']}"
+        if item.get("assumed"):
+            # Not a sub-count of decisions: these are the rows the owner never
+            # chose, and reading them as agreed is the failure this prevents.
+            line += f"  assumed={item['assumed']}"
         if item.get("challenges"):
             # An unresolved objection to the terms is the most decision-shaped
             # thing an inspect can surface, so it is never merely counted away.

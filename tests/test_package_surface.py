@@ -213,7 +213,7 @@ class SkillContractTests(unittest.TestCase):
         self.assertEqual(2, len(targets))
         self.assertNotEqual(targets[0], targets[1])
         for target in targets:
-            self.assertIn(target, va.KNOWN_TARGETS)
+            self.assertIn(target, va.known_targets()[0])
 
     def test_boundary_asks_for_three_refusals(self) -> None:
         """4D-ARE names three failures a specification must prevent; the interview
@@ -445,7 +445,7 @@ class TemplateTests(unittest.TestCase):
             encoding="utf-8"
         )
         for target in re.findall(r"(?m)^- target: (\S+)$", text):
-            self.assertIn(target, va.KNOWN_TARGETS)
+            self.assertIn(target, va.known_targets()[0])
 
 
 class GateAndDocumentSystemTests(unittest.TestCase):
@@ -1016,6 +1016,71 @@ class HostManifestTests(unittest.TestCase):
         self.assertIn("${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}", text)
         self.assertNotIn('"$PLUGIN_ROOT/', text)
         self.assertIn("%CLAUDE_PLUGIN_ROOT%", text)
+
+
+class AgentModeTests(unittest.TestCase):
+    """Which agents, where they run, and when they review.
+
+    The first real run left all three implicit: its record says "reviewer +
+    critic" and never names a target, so whether the review was independent or
+    a second opinion from the same model cannot be told afterwards. The owner
+    identified the gap before that evidence arrived.
+    """
+
+    def test_the_interview_discovers_before_it_asks(self) -> None:
+        skill = skill_text()
+        self.assertIn("run\n   `agent-delegate list --json` yourself", skill)
+        self.assertIn("which agents exist\n   is a fact", skill)
+
+    def test_three_sub_decisions_are_put_to_the_owner(self) -> None:
+        skill = skill_text()
+        self.assertIn("**Then put three sub-decisions to the owner, not one.**", skill)
+        for row in ("**Where R and C run**", "**When review runs**", "**Round cap**"):
+            self.assertIn(row, skill)
+        # The failure this prevents, stated rather than implied.
+        self.assertIn("**Never decide this silently**", skill)
+
+    def test_the_reference_holds_four_modes_and_says_why_four(self) -> None:
+        doc = (SKILL_ROOT / "references" / "agent-modes.md").read_text(encoding="utf-8")
+        for mode in ("### A — Internal triad", "### B — Cross-vendor triad",
+                     "### C — Parallel triads", "### D — Graph"):
+            self.assertIn(mode, doc)
+        # Padding the list would contradict an existing refusal, so the count
+        # is justified rather than arbitrary.
+        self.assertIn("Four, not seven.", doc)
+        self.assertIn("Nodes added for sophistication", doc)
+
+    def test_the_reference_separates_cost_from_what_it_buys(self) -> None:
+        doc = (SKILL_ROOT / "references" / "agent-modes.md").read_text(encoding="utf-8")
+        self.assertEqual(2, doc.count("- **Does not buy**"))
+        self.assertIn("## When does the review run", doc)
+        self.assertIn("## The mode can differ by turn, and usually should", doc)
+
+    def test_the_shipped_goal_names_its_mode_and_cadence(self) -> None:
+        goal = (SKILL_ROOT / "assets" / "goal-package.md").read_text(encoding="utf-8")
+        self.assertIn("**Mode A**", goal)
+        self.assertIn("**Review runs at proposed completion**", goal)
+
+
+class DecisionAuthorContractTests(unittest.TestCase):
+    """`Who` exists because a run wrote parentheses instead."""
+
+    def test_the_skill_explains_the_fourth_column(self) -> None:
+        skill = skill_text()
+        self.assertIn(
+            "**The fourth column is `Who`, and it holds `owner` or `agent`.**", skill
+        )
+        self.assertIn("| Always | `<slug>.decisions.md` — Decision / Rejected / Why / Who", skill)
+        # An agent-authored row is legitimate; leaving it unmarked is not.
+        self.assertIn("What is not\nlegitimate is leaving it unmarked.", skill)
+
+    def test_the_template_ships_both_kinds_of_row(self) -> None:
+        record = (SKILL_ROOT / "assets" / "decisions-record.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("| Decision | Rejected | Why | Who |", record)
+        self.assertIn("| owner |", record)
+        self.assertIn("| agent |", record)
 
 
 if __name__ == "__main__":

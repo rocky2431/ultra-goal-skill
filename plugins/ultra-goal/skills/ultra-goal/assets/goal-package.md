@@ -61,6 +61,13 @@ not authorized at all - stop and report instead.
 
 ## Verification
 
+**Mode A**, chosen from the four in `references/agent-modes.md`: reviewer and critic are
+fresh-context subagents on the same model, an order of magnitude cheaper than crossing
+vendors, and they still keep the third role - which is the part that works. Nothing in this
+goal is both expensive to get wrong and invisible from inside, so independence from the
+model's blind spots is not worth 10x here. **Review runs at proposed completion**, not every
+turn: on intermediate turns the anchor is already the check.
+
 A **reviewer** with a fresh context reviews the diff against this boundary, citing file:line
 and the command whose output proves each finding. It receives the frozen diff, this
 boundary, and the anchor's own output - never the main agent's account of why the change is

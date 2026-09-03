@@ -287,6 +287,41 @@ can write any file it can read, `events.jsonl` included. What defends the log is
 permission but publication — it is committed, so a rewritten history is a diff. Making a
 moved goalpost **visible** is the achievable property; making it impossible is not.
 
+## Which agents, where they run, and when they review
+
+Three sub-decisions, not one, and the Skill discovers before it asks. `agent-delegate list
+--json` reports which targets exist and at what version — a fact, so spending your turn on it
+is the mistake. What is put to you is the choice:
+
+| Sub-decision | Options | Default recommendation |
+|---|---|---|
+| **Where the reviewer and critic run** | subagents on the same model · two different vendors · parallel triads, one per independent artifact · a graph | subagents, except at the turns where a mistake is expensive *and* looks correct from inside |
+| **When review runs** | every turn · at proposed completion · at named acceptance lines | at proposed completion, plus the lines a green anchor would not prove |
+| **Round cap** | a number | 5, accepting round 1 if it converges clean |
+
+Four modes rather than seven: the refusals already rule out most fan-out shapes, and padding
+the list would contradict *Nodes added for sophistication*. See
+[references/agent-modes.md](plugins/ultra-goal/skills/ultra-goal/references/agent-modes.md)
+for what each mode buys and — the half usually left out — what it does not.
+
+The mode may differ by turn and usually should. It is never decided silently: a review that
+turned out to be a second opinion from its own model, with no row saying so, cannot be told
+apart afterwards from one that was independent.
+
+## Owner-decided versus agent-assumed
+
+`decisions.md` has a fourth column, `Who`, holding `owner` or `agent`. It exists because a
+real run needed it and did not have it: its first artifact carried "(my inline assumption,
+the owner did not object)" and "(I set this outright, not offered as an option)" inside Why
+cells. Both were the right call. Neither was a decision the owner made — and without the
+column an assumption is indistinguishable from an agreement, so `--status` counts them apart:
+
+```
+closed-loop-skeleton  [loop]  decisions=12  assumed=2  **challenges=1**
+```
+
+An `agent` row is legitimate and often necessary. Leaving it unmarked is not.
+
 ## The one thing the goal can learn from
 
 `### Lessons` carries method forward. `### Next` re-aims within the terms. Neither can say
@@ -384,7 +419,7 @@ designed with its owner in the room has no validation set.
 python3 -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-215 tests: the validator's rules at two severities, the status projection, the
+241 tests: the validator's rules at two severities, the status projection, the
 claim-versus-measurement audit
 against a real Git repository, the gate's eight outcomes, the package surface, version
 consistency across three files, every relative link in `SKILL.md` resolving, and the shipped

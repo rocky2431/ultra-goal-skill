@@ -4,7 +4,7 @@ description: "Turn \"make an agent keep doing this\" into a goal a host will hol
 license: MIT
 metadata:
   author: rocky2431
-  version: "1.5.0"
+  version: "1.6.0"
 ---
 
 # UltraGoal
@@ -188,11 +188,27 @@ lost, read it and resume from the first unanswered question instead of starting 
      issue thread, or another agent's report explains nothing until it is reproduced.
 6. **Verifier** — who checks the result, and **who checks the checker?** Two roles, because
    one is measurably not enough: a reviewer with a fresh context (an agent grading its own
-   output praises it), plus a critic that audits the *review* rather than the code. Name the
-   round cap too, and name **what each role is given**: the reviewer gets the frozen
-   artifact, the criteria, and the anchor's output — never the author's account of why the
-   work is correct, because a reviewer handed that account reviews the account. See [references/adversarial-review.md](references/adversarial-review.md);
-   the short version is that three roles beat a five-agent panel, and the third role is why.
+   output praises it), plus a critic that audits the *review* rather than the code. Name
+   **what each role is given**: the reviewer gets the frozen artifact, the criteria, and the
+   anchor's output — never the author's account of why the work is correct, because a
+   reviewer handed that account reviews the account. See
+   [references/adversarial-review.md](references/adversarial-review.md); the short version is
+   that three roles beat a five-agent panel, and the third role is why.
+
+   **Then put three sub-decisions to the owner, not one.** Discover first: run
+   `agent-delegate list --json` yourself and note each target's vendor — which agents exist
+   is a fact, and spending the owner's turn on it is the mistake this question used to make.
+   Read [references/agent-modes.md](references/agent-modes.md) for the four modes, then ask:
+
+   | Sub-decision | Options | Recommend |
+   |---|---|---|
+   | **Where R and C run** | **A** subagents, same model, an order of magnitude cheaper · **B** two different vendors, real independence · **C** parallel triads, one per independent artifact · **D** graph | **A**, except at the turns where a mistake is expensive *and* looks correct from inside — those get **B** |
+   | **When review runs** | every turn · at proposed completion only · at named acceptance lines | at proposed completion, plus the lines where a green anchor would not prove the claim |
+   | **Round cap** | a number | 5, accepting round 1 if it converges with no findings |
+
+   The mode may differ by turn and usually should. **Never decide this silently** — a run
+   whose review turned out to be a second opinion from its own model, with no row saying so,
+   cannot be told afterwards from one that was independent.
 7. **Shape and split** — confirm loop or graph. If graph, the split must follow **context
    boundaries**, never workflow phases (see the refusals below), and each worker needs its
    own anchor.
@@ -379,11 +395,23 @@ whichever agent a teammate runs, so they do not go inside any one tool's private
 | Loop | `<slug>.goal.md` — objective, boundary, stop condition, anchor, verifier, and `## Handoff` holding the goal line to paste; add `## Cadence` + `## Acceptance` + `## Carry-over` if it will be started more than once | [assets/goal-package.md](assets/goal-package.md) |
 | Graph, one vendor **(requires a workflow runtime)** | `<slug>.workflow.js` — topology in code, `meta` first and a pure literal, anchor on the top line as `` // anchor: `<command>` `` | [assets/workflow-script.js](assets/workflow-script.js) |
 | Graph, several vendors | `<slug>.delegation.md` — one adversarial-review triad: reviewer, critic, convergence rule | [assets/delegation-package.md](assets/delegation-package.md) |
-| Always | `<slug>.decisions.md` — Decision / Rejected / Why, three columns | [assets/decisions-record.md](assets/decisions-record.md) |
+| Always | `<slug>.decisions.md` — Decision / Rejected / Why / Who, four columns | [assets/decisions-record.md](assets/decisions-record.md) |
 
 **A workflow script needs a workflow runtime.** Of the hosts measured, only Claude Code has
 one, so where yours does not, do **not** emit `<slug>.workflow.js` — it would be a file
 nothing can run. Keep it one goal, or use the cross-vendor delegation shape.
+
+**The fourth column is `Who`, and it holds `owner` or `agent`.** A first real run wrote
+"(my inline assumption, the owner did not object)" and "(I set this outright, not offered as
+an option)" into two Why cells, because the record had nowhere to put the difference. Both
+were the right call; neither was a decision the owner made. Without the column an assumption
+is indistinguishable from an agreement, and the owner cannot see how much of their own spec
+they never actually agreed to — so `--status` counts them apart, the way challenges are
+counted apart from decisions.
+
+An `agent` row is legitimate and often necessary: the interview cannot ask everything, and a
+hard prohibition on irreversible effects should be set rather than offered. What is not
+legitimate is leaving it unmarked.
 
 The decisions record holds decisions, not architecture. The script or prompt is the only
 description of what the thing does; a second prose copy of it goes stale and starts lying.

@@ -44,10 +44,10 @@ return { verdicts }
 
 GOOD_DECISIONS = """# Decisions
 
-| Decision | Rejected | Why |
-| --- | --- | --- |
-| Graph, pure Claude Workflow | Star delegation across vendors | No vendor-specific tool is needed |
-| Split by suite | Split by phase (triage/fix/verify) | Phases share context; suites isolate it |
+| Decision | Rejected | Why | Who |
+| --- | --- | --- | --- |
+| Graph, pure Claude Workflow | Star delegation across vendors | No vendor-specific tool is needed | owner |
+| Split by suite | Split by phase (triage/fix/verify) | Phases share context; suites isolate it | owner |
 """
 
 GOOD_GOAL = """# Goal: weekly-dep-upgrade
@@ -915,6 +915,82 @@ class MultilineAnchorTests(Harness):
             ),
         )
         self.assertNotIn("ANCHOR_MULTILINE", self.codes(path))
+
+
+class DecisionAuthorTests(Harness):
+    """Told apart because a real run could not tell them apart.
+
+    Its first artifact carried "(my inline assumption, the owner did not
+    object)" and "(I set this outright, not offered as an option)" inside Why
+    cells, because the record had nowhere to put the difference. Both were the
+    right call; neither was a decision the owner made.
+    """
+
+    ASSUMED = GOOD_DECISIONS + (
+        "| Offline-reproducible anchor | Live data as the anchor's input | "
+        "A network-dependent anchor keeps returning unknown | agent |\n"
+    )
+
+    def test_a_three_column_record_is_no_longer_enough(self) -> None:
+        path = self.write(
+            "d.decisions.md",
+            GOOD_DECISIONS.replace(
+                "| Decision | Rejected | Why | Who |", "| Decision | Rejected | Why |"
+            ),
+        )
+        self.assertIn("DECISIONS_TABLE_MALFORMED", self.codes(path))
+
+    def test_who_must_be_owner_or_agent(self) -> None:
+        path = self.write("d.decisions.md", GOOD_DECISIONS.replace("| owner |", "| me |"))
+        self.assertIn("DECISION_AUTHOR_UNCLEAR", self.codes(path))
+
+    def test_an_agent_row_is_legitimate(self) -> None:
+        """The interview cannot ask everything, and a hard prohibition on
+        irreversible effects should be set rather than offered."""
+        path = self.write("d.decisions.md", self.ASSUMED)
+        report = va.validate_paths([str(path)])
+        self.assertTrue(report.ok, report.findings)
+        self.assertEqual(1, va.assumed_count(path))
+
+    def test_assumptions_are_counted_apart_from_decisions(self) -> None:
+        record = self.write("d.decisions.md", self.ASSUMED)
+        self.write("d.goal.md", GOOD_GOAL)
+        state = va.status_paths([str(self.dir)])
+        item = next(i for i in state["artifacts"] if i["slug"] == "d")
+        self.assertEqual(3, item["decisions"])
+        self.assertEqual(1, item["assumed"])
+        self.assertEqual(va.assumed_count(record), item["assumed"])
+
+
+class TargetDiscoveryTests(unittest.TestCase):
+    """Which agents a machine has is a fact, so it is asked rather than frozen.
+
+    Hardcoding the list was one of this Skill's own audited bets: a seventh
+    vendor would have failed UNKNOWN_TARGET for the crime of existing.
+    """
+
+    def test_targets_come_from_the_tool_when_it_answers(self) -> None:
+        names, from_tool = va.known_targets()
+        self.assertTrue(names)
+        if from_tool:
+            self.assertIn("claude", names)
+        else:
+            self.assertEqual(va.FALLBACK_TARGETS, names)
+
+    def test_the_fallback_is_used_and_downgraded_when_the_tool_is_absent(self) -> None:
+        import subprocess as sp
+        original = sp.run
+
+        def missing(*args, **kwargs):
+            raise OSError("agent-delegate not installed")
+
+        va.subprocess.run = missing
+        try:
+            names, from_tool = va.known_targets()
+            self.assertEqual(va.FALLBACK_TARGETS, names)
+            self.assertFalse(from_tool)
+        finally:
+            va.subprocess.run = original
 
 
 if __name__ == "__main__":
