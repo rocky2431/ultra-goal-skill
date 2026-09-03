@@ -330,6 +330,30 @@ def check_goal(path: Path, text: str, out: list[Finding]) -> None:
                     "it before finishing, or it stays empty forever",
                 )
             )
+    # An unattended loop is started by something. If the handoff does not contain a
+    # command, nobody can start it - and on a host without a goal primitive the
+    # handoff is the only place the stop condition is actually enforced.
+    if cadence and UNATTENDED.search(cadence):
+        handoff = found.get("handoff")
+        if handoff is None:
+            out.append(
+                Finding(
+                    str(path),
+                    "HANDOFF_MISSING",
+                    "an unattended loop needs a `## Handoff` section with the exact "
+                    "command that starts it on this host",
+                )
+            )
+        elif not FENCE.search(handoff):
+            out.append(
+                Finding(
+                    str(path),
+                    "HANDOFF_NOT_RUNNABLE",
+                    "the handoff must contain a fenced command block, not a description "
+                    "of how to run it",
+                )
+            )
+
     if carry_over and len(BULLET.findall(carry_over)) > CARRYOVER_MAX_ITEMS:
         out.append(
             Finding(
@@ -497,6 +521,7 @@ def describe(path: Path, kind: str) -> dict[str, object]:
     }
     item["cadence"] = None
     item["carry_over"] = None
+    item["start_command"] = None
     if kind == "goal":
         found = sections(text)
         item["anchor"] = first_command(found.get("anchor", ""))
@@ -506,6 +531,11 @@ def describe(path: Path, kind: str) -> dict[str, object]:
         carry_over = found.get("carry-over")
         if carry_over is not None:
             item["carry_over"] = len(BULLET.findall(carry_over))
+        handoff = found.get("handoff", "")
+        start = FENCE.search(handoff)
+        item["start_command"] = (
+            start.group(1).strip().splitlines()[0].strip() if start else None
+        )
     elif kind == "workflow":
         comment = ANCHOR_COMMENT.search(text)
         if comment is not None:
@@ -603,6 +633,8 @@ def print_status(state: dict[str, object]) -> None:
             print(f"  cadence: {item['cadence']}")
         if item["carry_over"] is not None:
             print(f"  carry-over: {item['carry_over']} item(s)")
+        if item["start_command"]:
+            print(f"  starts by: {item['start_command']}")
         if item["phases"]:
             print(f"  phases: {', '.join(item['phases'])}")
         if item["workers"]:

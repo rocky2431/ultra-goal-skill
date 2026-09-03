@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -189,32 +190,59 @@ class SkillContractTests(unittest.TestCase):
             "cadence_does_not_name_a_command_the_host_lacks",
             "artifacts_do_not_live_in_a_tool_directory",
             "external_schedule_still_needs_carry_over",
+            "use_the_hosts_goal_mode_do_not_reinvent_it",
+            "interactive_goal_command_cannot_be_scheduled",
+            "host_capability_claim_gets_checked_not_assumed",
         ):
             self.assertIn(required, names)
 
     def test_skill_is_host_neutral(self) -> None:
         skill = skill_text()
-        self.assertIn("## Know your host before compiling", skill)
+        self.assertIn("## Know your host, and use its goal mode", skill)
         self.assertIn("You are the host.", skill)
         self.assertIn("On most hosts, scheduling is external.", skill)
         self.assertIn("requires a workflow runtime", skill)
-        self.assertIn("it would be a file nothing can run", skill)
+        self.assertIn("do **not** emit `<slug>.workflow.js`", skill)
         # Artifacts are project assets, not one tool's private configuration.
         self.assertNotIn(".claude/workflows", skill)
         self.assertIn(".loops/", skill)
-        # The measured matrix, so a wrong claim about a host is checkable.
-        for host in ("Claude Code", "zCode", "Kimi", "OpenCode"):
+        # Activation scope must not name one host's commands either.
+        # No host slash-command may appear outside the measured matrix and the
+        # runner's own worked examples - that is where this Skill kept re-binding
+        # itself. Matched inside backticks so filenames like goal-runner.sh and
+        # <slug>.goal.md do not count.
+        head, rest = skill.split("## Know your host", 1)
+        tail = rest.split("### What this changes about the artifact", 1)[1]
+        leaks = re.findall(r"`/(?:goal|loop|schedule)[` ]", head + tail)
+        self.assertEqual([], leaks, f"host commands leaked: {leaks}")
+        # Every measured host, Codex included - it was missed on the first pass.
+        for host in ("Claude Code", "Codex", "Kimi", "zCode", "OpenCode"):
             self.assertIn(host, skill)
+
+    def test_matrix_says_most_hosts_do_have_goal_mode(self) -> None:
+        """The first version of this table claimed the opposite. It was wrong."""
+        skill = skill_text()
+        self.assertIn("most hosts *do* have goal mode", skill)
+        self.assertIn("Goal mode is two layers, and they are complements", skill)
+        self.assertIn("use the host's own goal mode", skill)
+        self.assertIn("asks the anchor", skill)
+        # A negative result must read as absence of evidence, not proof.
+        self.assertIn("not found", skill)
+        self.assertIn(
+            "check your\nown host rather than trusting this table", skill
+        )
 
     def test_templates_and_references_are_host_neutral(self) -> None:
         goal = (SKILL_ROOT / "assets" / "goal-package.md").read_text(encoding="utf-8")
         self.assertNotIn(".claude/workflows", goal)
         handoff = goal.split("## Handoff", 1)[1]
-        # Both start paths, and one prompt shared by them.
-        self.assertIn("With a built-in loop command", handoff)
-        self.assertIn("Without one", handoff)
+        # One mechanism, portable: the runner, scheduled from outside the agent.
+        self.assertIn("runner.sh", handoff)
         self.assertIn("crontab", handoff)
-        self.assertIn("The prompt is the same on every host", handoff)
+        self.assertIn("byte-identical on every host", handoff)
+        # And no host-specific command as the way to start it.
+        for host_specific in ("/loop ", "/schedule "):
+            self.assertNotIn(host_specific, handoff)
 
         primitives = (SKILL_ROOT / "references" / "loop-primitives.md").read_text(
             encoding="utf-8"
@@ -284,6 +312,60 @@ class TemplateTests(unittest.TestCase):
         )
         for target in re.findall(r"(?m)^- target: (\S+)$", text):
             self.assertIn(target, va.KNOWN_TARGETS)
+
+
+class GoalRunnerTests(unittest.TestCase):
+    """The portable goal mechanism has to be real: valid shell, and host-agnostic."""
+
+    RUNNER = SKILL_ROOT / "assets" / "goal-runner.sh"
+
+    def test_runner_is_valid_shell(self) -> None:
+        result = subprocess.run(
+            ["bash", "-n", str(self.RUNNER)], capture_output=True, text=True
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_runner_is_executable(self) -> None:
+        import os
+
+        self.assertTrue(os.access(self.RUNNER, os.X_OK))
+
+    def test_runner_has_the_four_fill_ins_and_every_host(self) -> None:
+        text = self.RUNNER.read_text(encoding="utf-8")
+        for fill_in in ("SLUG=", "MAX_TURNS=", "ANCHOR=(", "run_host()"):
+            self.assertIn(fill_in, text)
+        # Every host's one-shot entry, and Codex, which was missed entirely at first.
+        for host in (
+            "claude -p",
+            "codex exec",
+            "zcode --target",
+            "kimi -p",
+            "opencode run",
+        ):
+            self.assertIn(host, text)
+        # And the instruction not to trust the list without checking.
+        self.assertIn("check yours rather than trusting this list", text)
+
+    def test_runner_lets_the_anchor_decide_not_the_model(self) -> None:
+        text = self.RUNNER.read_text(encoding="utf-8")
+        self.assertIn("the ANCHOR command's exit code decides", text)
+        self.assertIn("A nonzero host exit is not a verdict", text)
+        # No -e: an anchor that fails is the normal case and must not abort the loop.
+        self.assertIn("set -uo pipefail", text)
+        self.assertNotIn("set -euo", text)
+
+    def test_skill_and_template_point_at_the_runner(self) -> None:
+        skill = skill_text()
+        self.assertIn("### Goal mode is two layers", skill)
+        self.assertIn("the anchor gives the verdict", skill)
+        self.assertIn("the ceiling is the for-loop", skill)
+        self.assertIn("a nonzero host exit is\nnot a verdict", skill)
+        self.assertIn("assets/goal-runner.sh", skill)
+        # The Skill must not present the runner as a replacement for the host's own
+        # goal mode - four of five hosts have one, and theirs is better integrated.
+        self.assertIn("rather than replacing it", skill)
+        goal = (SKILL_ROOT / "assets" / "goal-package.md").read_text(encoding="utf-8")
+        self.assertIn("runner.sh", goal.split("## Handoff", 1)[1])
 
 
 class EvalTests(unittest.TestCase):

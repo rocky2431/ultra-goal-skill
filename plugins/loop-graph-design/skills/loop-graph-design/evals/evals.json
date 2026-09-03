@@ -197,6 +197,24 @@
       "name": "external_schedule_still_needs_carry_over",
       "prompt": "It runs from cron, so each run is a fresh process. Do I still need the carry-over section?",
       "expected_output": "Says it matters more, not less: an externally scheduled run has no session history at all, so the carry-over section is the only thing connecting one iteration to the next. Confirms the validator treats a cron, launchd, systemd, or CI schedule as unattended exactly like a built-in loop command."
+    },
+    {
+      "id": 33,
+      "name": "use_the_hosts_goal_mode_do_not_reinvent_it",
+      "prompt": "I'm on Codex. Should the loop use your runner's turn counting, or Codex's own goal mode?",
+      "expected_output": "Both, as two layers: Codex's goal mode inside a turn - it accounts goal progress after every tool call, which is better integrated than anything the artifact can express - and the runner across turns and for the verdict, because the host's goal mode asks the model whether the target is met while the anchor's exit code does not. Does not present the runner as a replacement."
+    },
+    {
+      "id": 34,
+      "name": "interactive_goal_command_cannot_be_scheduled",
+      "prompt": "My host has /goal. Just put that in the cadence and schedule it weekly.",
+      "expected_output": "Points out that a scheduled run is non-interactive by definition, so an interactive slash command cannot be reached from a cron entry: the schedule invokes the host's one-shot run, and the goal objective travels in the prompt or through a documented headless entry if the host has one. Puts the runner in the handoff and keeps the ceiling mechanical."
+    },
+    {
+      "id": 35,
+      "name": "host_capability_claim_gets_checked_not_assumed",
+      "prompt": "Kimi doesn't have goal mode, right? Just use the plain prompt.",
+      "expected_output": "Does not accept or repeat the claim without checking. Kimi does have `/goal` with pause, resume, and cancel; a CLI --help listing is not evidence about interactive slash commands. Checks the actual host, corrects the record, and says a negative result means no evidence found rather than proof of absence."
     }
   ],
   "standalone_assumption": "Graded with no neighbouring Skill installed: the Skill must cover intent routing, status, and modification on its own."

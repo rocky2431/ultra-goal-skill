@@ -41,8 +41,8 @@ anchor means rejected, not "probably fine".
 Weekly. Advisories arrive continuously but this codebase absorbs them weekly, and running it
 daily costs six extra runs to find the same finding.
 
-Host: Claude Code, so `/loop 1w`. On a host with no built-in scheduler this becomes a `cron`
-entry invoking that host's one-shot command - see Handoff. Nothing else in this file changes.
+Scheduled outside the agent, so this is host-independent: a `cron` entry, `launchd` agent,
+systemd timer, or CI `schedule:` trigger invoking the runner. See Handoff.
 
 ## Carry-over
 
@@ -55,31 +55,30 @@ keeps the history, this section keeps only what is still the case.
 
 ## Handoff
 
-The prompt is the same on every host; only the way it gets started differs.
+Goal mode is enforced by the runner, not by the model: the anchor's exit code decides whether
+the goal is met, and the ceiling is a for-loop.
 
-**With a built-in loop command** (Claude Code):
-
+```bash
+bash .loops/weekly-dep-upgrade.runner.sh
 ```
-/loop 1w <the prompt below>
-```
 
-**Without one** (Kimi, OpenCode, zCode - none of them has a scheduler), schedule it outside
-the agent and invoke the host's one-shot command:
+Copy `goal-runner.sh` to `.loops/weekly-dep-upgrade.runner.sh` and fill in SLUG, MAX_TURNS,
+ANCHOR, and run_host for whichever host runs this. Then schedule the runner:
 
-```
+```bash
 # crontab -e
-0 9 * * 1 cd /absolute/repo && kimi -p "$(cat .loops/weekly-dep-upgrade.prompt.txt)"
+0 9 * * 1 cd /absolute/repo && bash .loops/weekly-dep-upgrade.runner.sh
 ```
 
-`launchd`, a systemd timer, or a CI `schedule:` trigger all work the same way. zCode can
-also carry the goal itself with `--target`.
+`launchd`, a systemd timer, or a CI `schedule:` trigger are equivalent. On a host that also
+has a goal primitive, layer it on for per-turn self-checking; the runner still decides the run.
 
-**The prompt:**
+**The prompt** - `.loops/weekly-dep-upgrade.prompt.txt`, byte-identical on every host:
 
 ```
 Read the Carry-over section of .loops/weekly-dep-upgrade.goal.md first.
 Then upgrade dependencies within the stated boundary until `pnpm audit --audit-level=high`
-reports 0 findings, or 6 turns pass. Run the anchor command before claiming anything.
+reports 0 findings. Run the anchor command before claiming anything.
 Rewrite the Carry-over section before you finish, deleting what is no longer true.
 Commit once with a one-line summary of this iteration.
 ```

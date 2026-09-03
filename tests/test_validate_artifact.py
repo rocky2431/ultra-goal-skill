@@ -85,6 +85,12 @@ Read this before acting; rewrite it before finishing. Drop anything no longer tr
 
 - `@types/node` 22 breaks tsconfig under `moduleResolution: bundler` - do not retry
 - remaining after iteration 6: `packages/api`
+
+## Handoff
+
+```bash
+bash .loops/weekly-dep-upgrade.runner.sh
+```
 """
 
 GOOD_DELEGATION = """# Delegation: cross-vendor-audit
@@ -557,3 +563,37 @@ class HostPortabilityTests(Harness):
         )
         state = va.status_paths([str(self.dir)])
         self.assertIn("kimi", state["artifacts"][0]["cadence"])
+
+
+class RunnableHandoffTests(Harness):
+    def test_handoff_without_a_runnable_block_is_reported(self) -> None:
+        self.write("nh.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "nh.goal.md",
+            GOOD_GOAL.replace(
+                "```bash\nbash .loops/weekly-dep-upgrade.runner.sh\n```",
+                "Just run it the usual way each week.",
+            ),
+        )
+        self.assertIn("HANDOFF_NOT_RUNNABLE", self.codes(path))
+
+    def test_status_reports_the_start_command(self) -> None:
+        self.write("sc2.decisions.md", GOOD_DECISIONS)
+        self.write("sc2.goal.md", GOOD_GOAL)
+        state = va.status_paths([str(self.dir)])
+        self.assertEqual(
+            "bash .loops/weekly-dep-upgrade.runner.sh",
+            state["artifacts"][0]["start_command"],
+        )
+
+    def test_missing_handoff_is_not_required_for_a_one_shot_goal(self) -> None:
+        self.write("oneshot.decisions.md", GOOD_DECISIONS)
+        without_cadence = GOOD_GOAL.split("## Cadence")[0]
+        path = self.write("oneshot.goal.md", without_cadence)
+        report = va.validate_paths([str(path)])
+        self.assertTrue(report.ok, [f.as_dict() for f in report.findings])
+
+    def test_unattended_loop_must_have_a_handoff(self) -> None:
+        self.write("noh.decisions.md", GOOD_DECISIONS)
+        path = self.write("noh.goal.md", GOOD_GOAL.replace("## Handoff", "## Notes"))
+        self.assertIn("HANDOFF_MISSING", self.codes(path))

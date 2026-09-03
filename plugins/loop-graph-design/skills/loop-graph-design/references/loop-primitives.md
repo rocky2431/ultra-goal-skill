@@ -40,9 +40,15 @@ maintain, and it will not survive a session restart unless you made it.
 
 ## When the host has no scheduler
 
-Measured: Claude Code has `/loop` and `/schedule`; zCode, Kimi, and OpenCode have none. All
-three do have a one-shot non-interactive run (`--prompt` / `-p`, `opencode run`), and zCode
-additionally has `/goal` and a headless `--target`.
+Measured on this machine: only Claude Code has a built-in scheduler (`/loop`, `/schedule`).
+Goal mode is far more widely available than scheduling - Claude Code, Codex, Kimi, and zCode
+all have `/goal` as an interactive command, and Codex accounts goal progress after every
+tool call - but of those only zCode documents a **headless** goal entry (`--target`). That
+gap is what matters here, because a scheduled run is non-interactive by definition, so an
+interactive slash command cannot reach it.
+
+Every host does have a one-shot non-interactive run: `claude -p`, `codex exec`,
+`zcode --prompt`, `kimi -p`, `opencode run`.
 
 So on those hosts the timer lives outside the agent:
 

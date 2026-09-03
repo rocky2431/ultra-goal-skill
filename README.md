@@ -106,20 +106,28 @@ The interview and the artifacts are portable. The primitives that *start* a loop
 the Skill picks the mechanism from what the running host actually has. Measured on real
 installs:
 
-| Capability | Claude Code | zCode | Kimi | OpenCode |
+| Host | Goal mode (interactive) | Non-interactive goal entry | Built-in scheduler | Workflow runtime |
 |---|---|---|---|---|
-| Goal with a stop condition | `/goal` | `/goal`, `--target` | in the prompt | in the prompt |
-| One-shot non-interactive run | — | `--prompt` / `-p` | `-p` / `--prompt` | `opencode run` |
-| Built-in scheduling | `/loop`, `/schedule` | none | none | none |
-| Single-vendor graph runtime | `pipeline`/`agent`/`phase` | none | none | none |
-| Cross-vendor delegation | `agent-delegate` | `agent-delegate` | `agent-delegate` | `agent-delegate` |
+| Claude Code | `/goal` (stop hook) | not confirmed | `/loop`, `/schedule` | yes |
+| Codex 0.150.1 | `/goal`, progress accounted per tool call | not found | not found | no |
+| Kimi | `/goal` + `pause`/`resume`/`cancel` | not found | not found | no |
+| zCode 0.16.5 | `/goal` | `--target` (headless) | not found | no |
+| OpenCode 1.18 | not found | — | not found | no |
 
-Two things follow. **Scheduling is external on most hosts** — a built-in loop command is
-sugar for "feed this prompt again on a timer", so without one the same loop is a `cron`
-entry, a `launchd` agent, a systemd timer, or a CI `schedule:` trigger invoking the host's
-one-shot run. The prompt is byte-identical; only the cadence and handoff lines differ. And
-**a single-vendor workflow script needs that runtime** — on a host without one the Skill
-will not emit it, because the file would be something nothing can run.
+"Not found" means no evidence in that host's help output or shipped binary, not proof of
+absence. One-shot non-interactive runs exist everywhere: `claude -p`, `codex exec`,
+`zcode --prompt`, `kimi -p`, `opencode run`. Cross-vendor delegation works on all of them.
+
+**Goal mode is two layers.** Inside a turn, the host's own goal mode is better than anything
+this Skill can write — so it gets used where it exists. Across turns and for the verdict, a
+portable runner wraps it: the anchor's exit code decides whether the goal is met and the
+ceiling is a for-loop, so neither passes through the model's judgement. The runner also
+covers the part almost no host has natively — waking up on a schedule, which is a `cron`
+entry, `launchd` agent, systemd timer, or CI `schedule:` trigger invoking a *non-interactive*
+run, where an interactive slash command cannot reach.
+
+**A single-vendor workflow script needs a workflow runtime.** Only one host measured has one,
+so elsewhere the Skill will not emit that shape — the file would be something nothing can run.
 
 Artifacts live in the project's `.loops/`, not inside any tool's private directory: they are
 project assets that belong in Git and may be read by whichever agent a teammate runs.
@@ -200,7 +208,7 @@ designed with its owner in the room has no validation set.
 python3 -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-70 tests: the validator's rules, the status projection, the package surface, version
+79 tests: the validator's rules, the status projection, the package surface, version
 consistency across three files, every relative link in `SKILL.md` resolving, and the shipped
 templates passing the shipped validator. Two are safety tests — that an anchor is never
 executed unasked, and that the validator never edits an artifact.

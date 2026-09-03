@@ -4,7 +4,7 @@ description: "Turn \"make an agent keep doing this\" into a running loop: interv
 license: MIT
 metadata:
   author: rocky2431
-  version: "0.4.0"
+  version: "0.5.0"
 ---
 
 # Loop Graph Design
@@ -18,9 +18,8 @@ Most work is a loop. Reach for a graph only when a loop provably cannot hold it.
 
 ## Keep activation scoped
 
-Use this Skill when the deliverable is an **executable artifact**: a prompt the owner will
-run with `/goal` or `/loop`, a Workflow script, or a delegation package other agents
-consume.
+Use this Skill when the deliverable is an **executable artifact**: a prompt the owner runs
+on a schedule, a workflow script, or a delegation package other agents consume.
 
 The loop's own boundary — what it may touch, and which of its effects need approval before
 they run — is question 4 below and belongs here. A broader authority model for an agent
@@ -122,33 +121,62 @@ Name the refusal, name the cheap alternative, and go back to the relevant questi
 Read [references/anti-patterns.md](references/anti-patterns.md) for the failure modes
 behind this table.
 
-## Know your host before compiling
+## Know your host, and use its goal mode
 
-You are the host. Use the primitives you actually have, not the ones a different agent has.
-Measured on real installs they differ, and the differences change what you may emit:
+You are the host. Use the primitives you actually have. Measured on the installs on this
+machine, they differ more than expected — most hosts *do* have goal mode:
 
-| Capability | Claude Code | zCode | Kimi | OpenCode |
-|---|---|---|---|---|
-| Goal with a stop condition | `/goal` | `/goal`, `--target` | put it in the prompt | put it in the prompt |
-| One-shot non-interactive run | — | `--prompt` / `-p` | `-p` / `--prompt` | `opencode run` |
-| Built-in scheduling | `/loop`, `/schedule` | none | none | none |
-| Single-vendor graph runtime | `pipeline`/`agent`/`phase` | none | none | none |
-| Cross-vendor delegation | `agent-delegate` | `agent-delegate` | `agent-delegate` | `agent-delegate` |
+| Host | Goal mode (interactive) | Non-interactive goal entry | Built-in scheduler |
+|---|---|---|---|
+| Claude Code | `/goal`, backed by a stop hook | not confirmed | `/loop`, `/schedule` |
+| Codex 0.150.1 | `/goal`; a `goal` extension accounts progress after each tool call | not found | not found |
+| Kimi | `/goal <objective>` with `pause` / `resume` / `cancel` | not found | not found |
+| zCode 0.16.5 | `/goal` | **`--target`**, documented as headless | not found |
+| OpenCode 1.18 | not found | — | not found |
 
-Two consequences, and both change the artifact:
+"Not found" means no evidence in that host's help output or shipped binary — **check your
+own host rather than trusting this table**, and say so when you find it is wrong. One-shot
+non-interactive runs exist everywhere: `claude -p`, `codex exec`, `zcode --prompt`,
+`kimi -p`, `opencode run`.
 
-- **On most hosts, scheduling is external.** A built-in loop command is sugar for "feed this
-  prompt again on a timer". Without one, the same loop is a `cron` entry, a `launchd` agent,
-  a systemd timer, or a CI `schedule:` trigger invoking the host's one-shot command. The
-  goal package is identical; only `## Cadence` and `## Handoff` change.
-- **A single-vendor workflow script needs that runtime.** If your host has no workflow
-  engine, do **not** emit `<slug>.workflow.js` — it would be a file nothing can run. Keep it
-  one loop, or use the cross-vendor delegation shape, which works everywhere.
+### Goal mode is two layers, and they are complements
 
-Write `## Cadence` and `## Handoff` for the host that will actually run this, and record
-which host that is in the decisions record. If you are unsure whether you have a primitive,
-check rather than assume — a cadence line naming a command the host does not have is worse
-than an honest external schedule.
+- **Inside a turn, use the host's own goal mode.** It is better integrated than anything
+  this Skill can write: Codex accounts goal progress after every tool call, Kimi can pause
+  and resume a goal, Claude Code refuses to end the turn. Put the objective in the artifact
+  and name the host's command in `## Handoff`.
+- **Across turns, and for the verdict, use the runner.** A host's goal mode asks the
+  **model** whether the target is met. The runner asks the anchor, and its ceiling is a
+  for-loop — neither passes through the model's judgement. It also covers what only one host
+  has natively: waking up on a schedule at all. A cron entry starts a *non-interactive* run,
+  where an interactive slash command is out of reach.
+
+So the runner wraps the host's goal mode rather than replacing it:
+
+```bash
+for turn in $(seq 1 "$MAX_TURNS"); do
+  run_host "$(cat "$PROMPT_FILE")"   # use the host's goal entry here if it has one
+  "${ANCHOR[@]}" && exit 0           # the anchor gives the verdict
+done
+exit 1                                # the ceiling is the for-loop
+```
+
+Ship it as `<slug>.runner.sh` from [assets/goal-runner.sh](assets/goal-runner.sh) and put its
+command in `## Handoff`. One rule inside it is easy to get wrong: **a nonzero host exit is
+not a verdict.** Report it and check the anchor anyway — the anchor is the only thing that
+knows whether the work landed.
+
+### What this changes about the artifact
+
+- **On most hosts, scheduling is external.** Without a built-in scheduler the same loop is a
+  `cron` entry, a `launchd` agent, a systemd timer, or a CI `schedule:` trigger invoking the
+  runner. The prompt is byte-identical; only `## Cadence` and `## Handoff` change.
+- **A single-vendor workflow script needs a workflow runtime.** Only one host measured has
+  one, so where yours does not, do **not** emit `<slug>.workflow.js` — it would be a file
+  nothing can run. Keep it one loop, or use the cross-vendor delegation shape.
+
+Record which host this was written for in the decisions record. A cadence line naming a
+command the host does not have is worse than an honest external schedule.
 
 ## Compile one artifact
 
@@ -158,9 +186,10 @@ whichever agent a teammate runs, so they do not go inside any one tool's private
 
 | Answer | Artifact | Template |
 |---|---|---|
-| Loop | `<slug>.goal.md` — the prompt the owner runs with `/goal` or `/loop`; an unattended one also needs `## Cadence` and `## Carry-over` | [assets/goal-package.md](assets/goal-package.md) |
+| Loop | `<slug>.goal.md` — the objective, boundary, stop condition, anchor, verifier; an unattended one also needs `## Cadence`, `## Carry-over`, and `## Handoff` | [assets/goal-package.md](assets/goal-package.md) |
 | Graph, one vendor **(requires a workflow runtime)** | `<slug>.workflow.js` — topology in code, `meta` first and a pure literal, anchor on the top line as `` // anchor: `<command>` `` | [assets/workflow-script.js](assets/workflow-script.js) |
 | Graph, several vendors | `<slug>.delegation.md` — one mission per worker, each with its own anchor | [assets/delegation-package.md](assets/delegation-package.md) |
+| Unattended loop, also | `<slug>.runner.sh` + `<slug>.prompt.txt` — the anchor-driven ceiling, and the prompt it feeds | [assets/goal-runner.sh](assets/goal-runner.sh) |
 | Always | `<slug>.decisions.md` — Decision / Rejected / Why, three columns | [assets/decisions-record.md](assets/decisions-record.md) |
 
 The decisions record holds decisions, not architecture. The script or prompt is the only
@@ -215,10 +244,11 @@ An unattended loop wakes with an empty context every iteration. Unless something
 forward it rebuilds history from git logs — expensively, unreliably — and retries paths it
 has already proven dead, believing each time that it is the first attempt.
 
-So a `/loop` or `/schedule` artifact gets a `## Carry-over` section, and the prompt itself
-must instruct the loop to **read it before acting and rewrite it before finishing**. Without
-that instruction the section stays empty forever and the loop never improves. A one-shot
-`/goal` needs neither section.
+So an artifact scheduled by anything — a host loop command, `cron`, `launchd`, a systemd
+timer, a CI trigger — gets a `## Carry-over` section, and the prompt itself must instruct
+the loop to **read it before acting and rewrite it before finishing**. Without that
+instruction the section stays empty forever and the loop never improves. A one-shot goal a
+person is watching needs neither section.
 
 A few lines, in whatever form each takes: a path already proven dead, a standing fact the
 next iteration needs, where the work stopped.
@@ -256,9 +286,9 @@ delegation targets, JavaScript syntax — and never edits the artifact. Fix what
 its silence is not evidence that the design is right.
 
 Then hand off in one line: the exact command the owner runs, and what the first iteration
-should produce. Spell the command out — a goal or loop invocation, the workflow runtime's
-own entry point, or one delegation call per worker with its working directory and mission
-file. Assume no other Skill is installed to fill in the gaps, and state which effects the
+should produce. Spell the command out — the runner, this host's goal entry, the workflow
+runtime's own entry point, or one delegation call per worker with its working directory and
+mission file. Assume no other Skill is installed to fill in the gaps, and state which effects the
 owner has already authorized and which still need approval.
 
 Do not run it yourself unless the owner asks.
