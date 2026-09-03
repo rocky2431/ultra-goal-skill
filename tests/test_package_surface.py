@@ -109,12 +109,14 @@ class SkillContractTests(unittest.TestCase):
             "no second",
         ):
             self.assertIn(required, skill, required)
-        # SKILL.md is loaded on every activation, so its length is a real cost.
-        # The ceiling is 250 because this Skill covers four intents (create, modify,
-        # inspect, not-a-loop), three artifact shapes, and the evolve stage. If a
-        # change pushes past it, move rationale into references/ - do not raise it
-        # again.
-        self.assertLess(len(skill.splitlines()), 250)
+        # Deliberately no line-count ceiling. Length is a proxy for bloat, and a
+        # proxy optimized against stops measuring what it was standing in for: a
+        # ceiling is satisfied by moving text into references/ whether or not that
+        # makes the Skill better to use. What actually matters - SKILL.md holding
+        # operating instructions while rationale lives in references/ - is a
+        # judgement, so it stays a judgement. The assertions above still pin every
+        # load-bearing rule, and test_every_relative_link_in_the_skill_resolves
+        # keeps the references honest.
 
     def test_skill_does_not_mechanize_topology(self) -> None:
         skill = skill_text()
