@@ -19,12 +19,16 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import hashlib
+import os
+from pathlib import Path
 import re
+import shlex
+import shutil
 import subprocess
 import sys
 from typing import Any
 
-sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from loop_hooks import (  # noqa: E402
     ActiveLoop,
     append_event,
@@ -40,12 +44,11 @@ DEFAULT_CEILING = 12
 FENCE = re.compile(r"```[a-z]*\n(.+?)\n```", re.S)
 INLINE = re.compile(r"`([^`\n]+)`")
 TURNS = re.compile(r"(\d+)\s+turns?\b", re.I)
-# The anchor itself being broken is not a verdict about the work.
-#   POSIX: 127 command not found, 126 found but not executable.
-#   Windows: cmd.exe returns 9009 for a command it does not recognise.
-# Missing 9009 meant the third outcome did not exist on Windows at all - a
-# missing anchor there was reported as a failing one, which is exactly the lie
-# this distinction exists to prevent. CI on windows-latest caught it.
+# Exit codes for "command not found" are a per-shell detail: POSIX shells use
+# 127 (and 126 for found-but-not-executable), cmd.exe uses 9009, and CI proved
+# that guessing from the code alone leaves the third outcome missing on some
+# platform. They are kept as a fallback, but the primary check happens before
+# the command runs, where it can be answered by looking rather than inferring.
 UNRUNNABLE_EXITS = {126, 127, 9009}
 
 
@@ -74,6 +77,35 @@ def _first_command(text: str) -> str | None:
             return body.splitlines()[0].strip()
     inline = INLINE.search(text)
     return inline.group(1).strip() if inline is not None else None
+
+
+def _resolvable(command: str) -> bool:
+    """Can this command's executable actually be found?
+
+    Asked before running, because "command not found" is reported differently
+    by every shell and inferring it from an exit code is how the unknown
+    outcome went missing on Windows. Looking is cheaper and portable.
+
+    A false negative here costs an unnecessary "unknown", which allows the turn
+    to end and says the result is unverified. A false negative in the other
+    direction - treating a broken anchor as a failing one - denies the stop on
+    no evidence. Erring toward unknown is the safe direction.
+    """
+    try:
+        parts = shlex.split(command, posix=(os.name != "nt"))
+    except ValueError:
+        return True  # unparseable quoting: let the shell have a go at it
+    if not parts:
+        return False
+    head = parts[0].strip('"\'')
+    if not head:
+        return False
+    try:
+        if Path(head).exists():
+            return True
+    except OSError:
+        pass
+    return shutil.which(head) is not None
 
 
 def _allow(reason: str) -> dict[str, Any]:
@@ -128,7 +160,29 @@ def handle(event: dict[str, Any], loop: ActiveLoop) -> dict[str, Any] | None:
             "goal. Stopping. Report what is left rather than claiming success."
         )
 
-    # Step 5+6+7: run the anchor. Three outcomes, not two.
+    # Step 5: is the anchor even runnable? Answered by looking, not by inference.
+    if not _resolvable(anchor):
+        append_event(
+            loop,
+            {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "event": "anchor_checked",
+                "turn": turn,
+                "anchor": anchor,
+                "outcome": "unknown",
+                "exit_code": None,
+                "output_digest": "",
+                "signature": "unknown:unresolvable:",
+                "tail": "executable not found",
+            },
+        )
+        return _allow(
+            f"{loop.slug}: the anchor's command was not found on PATH, so whether "
+            "the work landed is unknown - not failed. Stopping. Fix the anchor or "
+            "say the result is unverified; do not guess either way."
+        )
+
+    # Step 6+7: run it. Three outcomes, not two.
     try:
         completed = subprocess.run(
             anchor,

@@ -327,11 +327,32 @@ class AnchorGateTests(Harness):
         self.assertEqual("red", self.events()[-1]["outcome"])
 
     def test_a_missing_command_is_unknown_not_failed(self) -> None:
-        """127 means the anchor is broken, not that the work failed."""
-        payload = self.stop("this-command-does-not-exist-42")
+        """A broken anchor is not a failing one, on any platform.
+
+        Checked by resolving the executable rather than reading an exit code:
+        shells disagree about what "not found" returns, and that disagreement
+        is how this outcome went missing on Windows.
+        """
+        payload = self.stop("this-command-does-not-exist-42 --run")
         self.assertIsNone(self.decision(payload), "unknown must never deny")
         self.assertIn("unknown - not failed", payload["systemMessage"])
         self.assertEqual("unknown", self.events()[-1]["outcome"])
+
+    def test_resolvability_is_decided_by_looking(self) -> None:
+        import importlib
+        gate = importlib.import_module("loop_stop")
+        self.assertTrue(gate._resolvable(f'"{sys.executable}" -c "pass"'))
+        self.assertTrue(gate._resolvable(sys.executable))
+        self.assertFalse(gate._resolvable("this-command-does-not-exist-42"))
+        self.assertFalse(gate._resolvable("   "))
+        # Unparseable quoting must not be judged - hand it to the shell.
+        self.assertTrue(gate._resolvable('unbalanced "quote'))
+
+    def test_an_unresolvable_anchor_is_never_executed(self) -> None:
+        """Cheaper and safer: nothing runs when the executable is absent."""
+        payload = self.stop("this-command-does-not-exist-42 && rm -rf /")
+        self.assertIsNone(self.decision(payload))
+        self.assertEqual("unknown:unresolvable:", self.events()[-1]["signature"])
 
     def test_a_goal_with_no_runnable_anchor_lets_the_turn_end(self) -> None:
         goal = GOAL.replace(f"```\n{GREEN}\n```", "it should feel right")
