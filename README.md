@@ -47,7 +47,7 @@ Skill installed to do any of that.
 
 | Shape | Artifact | Consumer |
 |---|---|---|
-| Loop | `<slug>.goal.md` — the prompt plus cadence | a goal primitive, or an external scheduler |
+| Loop | `<slug>.goal.md` — the objective plus the goal line to paste | the host's goal mode |
 | Graph, one vendor | `<slug>.workflow.js` — topology in code | a workflow runtime, where one exists |
 | Graph, several vendors | `<slug>.delegation.md` — one mission per worker | cross-agent delegation |
 | Always | `<slug>.decisions.md` — Decision / Rejected / Why | you, next time |
@@ -102,32 +102,34 @@ without `--status`.
 
 ## Hosts
 
-The interview and the artifacts are portable. The primitives that *start* a loop are not, so
-the Skill picks the mechanism from what the running host actually has. Measured on real
-installs:
+Goal mode is the mechanism: paste one objective into your CLI, walk away, and the host keeps
+the model working until it is met or a ceiling is hit. Measured on real installs:
 
-| Host | Goal mode (interactive) | Non-interactive goal entry | Built-in scheduler | Workflow runtime |
-|---|---|---|---|---|
-| Claude Code | `/goal` (stop hook) | not confirmed | `/loop`, `/schedule` | yes |
-| Codex 0.150.1 | `/goal`, progress accounted per tool call | not found | not found | no |
-| Kimi | `/goal` + `pause`/`resume`/`cancel` | not found | not found | no |
-| zCode 0.16.5 | `/goal` | `--target` (headless) | not found | no |
-| OpenCode 1.18 | not found | — | not found | no |
+| Host | Goal mode | Notes |
+|---|---|---|
+| Claude Code | `/goal <objective>` | backed by a stop hook; also has `/loop`, `/schedule` |
+| Codex 0.150.1 | `/goal <objective>` | a `goal` extension accounts progress after every tool call |
+| Kimi | `/goal <objective>` | plus `/goal pause` / `resume` / `cancel` |
+| zCode 0.16.5 | `/goal <objective>` | also `--target` for a headless session |
+| OpenCode 1.18 | not found | the same text works as a plain prompt |
 
 "Not found" means no evidence in that host's help output or shipped binary, not proof of
-absence. One-shot non-interactive runs exist everywhere: `claude -p`, `codex exec`,
-`zcode --prompt`, `kimi -p`, `opencode run`. Cross-vendor delegation works on all of them.
+absence. Cross-vendor delegation works on all of them.
 
-**Goal mode is two layers.** Inside a turn, the host's own goal mode is better than anything
-this Skill can write — so it gets used where it exists. Across turns and for the verdict, a
-portable runner wraps it: the anchor's exit code decides whether the goal is met and the
-ceiling is a for-loop, so neither passes through the model's judgement. The runner also
-covers the part almost no host has natively — waking up on a schedule, which is a `cron`
-entry, `launchd` agent, systemd timer, or CI `schedule:` trigger invoking a *non-interactive*
-run, where an interactive slash command cannot reach.
+**What goal mode does not do is decide what counts as done — it asks the model.** That gap
+gets closed in the goal text itself, not with machinery around the host:
 
-**A single-vendor workflow script needs a workflow runtime.** Only one host measured has one,
-so elsewhere the Skill will not emit that shape — the file would be something nothing can run.
+```
+/goal <objective, inside <boundary>>. You have not met this goal until you have actually
+run `<anchor>` in this session and seen it <exact result>. Do not claim completion from
+reasoning. Stop after <N> turns even if unmet, and say so.
+```
+
+Three clauses: the objective with its boundary, the anchor as the only accepted evidence,
+and the ceiling. The same text pastes into all four hosts.
+
+**A workflow script needs a workflow runtime.** Only Claude Code has one, so elsewhere the
+Skill will not emit that shape — the file would be something nothing can run.
 
 Artifacts live in the project's `.loops/`, not inside any tool's private directory: they are
 project assets that belong in Git and may be read by whichever agent a teammate runs.
@@ -208,7 +210,7 @@ designed with its owner in the room has no validation set.
 python3 -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-79 tests: the validator's rules, the status projection, the package surface, version
+72 tests: the validator's rules, the status projection, the package surface, version
 consistency across three files, every relative link in `SKILL.md` resolving, and the shipped
 templates passing the shipped validator. Two are safety tests — that an anchor is never
 executed unasked, and that the validator never edits an artifact.

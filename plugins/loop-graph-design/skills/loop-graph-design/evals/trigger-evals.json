@@ -241,11 +241,11 @@
       "id": 21,
       "name": "positive_loop_on_a_non_claude_host",
       "kind": "positive",
-      "prompt": "I want a recurring nightly check like this, but I'm running OpenCode, not Claude Code.",
+      "prompt": "I want a recurring nightly check like this, and I run it from Kimi rather than Claude Code.",
       "expected_skills": [
         "loop-graph-design"
       ],
-      "note": "Same interview and same artifact; only cadence and handoff change, because that host has a one-shot run but no scheduler."
+      "note": "Same interview and same artifact; only the goal command's prefix changes. Kimi has /goal, so no wrapper is needed."
     }
   ],
   "standalone_assumption": "This Skill must behave correctly when no neighbouring Skill is installed. `expected_skills` therefore names only this Skill; `optional_skills` records where a neighbour would take over if the host happened to have it."

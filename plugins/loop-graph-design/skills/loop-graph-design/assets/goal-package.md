@@ -38,11 +38,10 @@ anchor means rejected, not "probably fine".
 
 ## Cadence
 
-Weekly. Advisories arrive continuously but this codebase absorbs them weekly, and running it
-daily costs six extra runs to find the same finding.
+Roughly weekly, started by hand. Advisories arrive continuously but this codebase absorbs
+them weekly, and starting it daily costs six extra runs to find the same finding.
 
-Scheduled outside the agent, so this is host-independent: a `cron` entry, `launchd` agent,
-systemd timer, or CI `schedule:` trigger invoking the runner. See Handoff.
+Because it gets started more than once, it needs the Carry-over section below.
 
 ## Carry-over
 
@@ -55,33 +54,22 @@ keeps the history, this section keeps only what is still the case.
 
 ## Handoff
 
-Goal mode is enforced by the runner, not by the model: the anchor's exit code decides whether
-the goal is met, and the ceiling is a for-loop.
-
-```bash
-bash .loops/weekly-dep-upgrade.runner.sh
-```
-
-Copy `goal-runner.sh` to `.loops/weekly-dep-upgrade.runner.sh` and fill in SLUG, MAX_TURNS,
-ANCHOR, and run_host for whichever host runs this. Then schedule the runner:
-
-```bash
-# crontab -e
-0 9 * * 1 cd /absolute/repo && bash .loops/weekly-dep-upgrade.runner.sh
-```
-
-`launchd`, a systemd timer, or a CI `schedule:` trigger are equivalent. On a host that also
-has a goal primitive, layer it on for per-turn self-checking; the runner still decides the run.
-
-**The prompt** - `.loops/weekly-dep-upgrade.prompt.txt`, byte-identical on every host:
+Paste this into the host's goal mode - `/goal` on Claude Code, Codex, Kimi, or zCode; on a
+host without goal mode, the same text as a plain prompt:
 
 ```
-Read the Carry-over section of .loops/weekly-dep-upgrade.goal.md first.
-Then upgrade dependencies within the stated boundary until `pnpm audit --audit-level=high`
-reports 0 findings. Run the anchor command before claiming anything.
-Rewrite the Carry-over section before you finish, deleting what is no longer true.
-Commit once with a one-line summary of this iteration.
+/goal Read the Carry-over section of .loops/weekly-dep-upgrade.goal.md first. Then upgrade
+dependencies, touching only package.json and the lockfile, until `pnpm audit
+--audit-level=high` reports 0 findings. You have not met this goal until you have actually
+run `pnpm test -- --run && pnpm build` in this session and seen it exit 0 - do not claim
+completion from reasoning about the code. Open a PR but do not merge it.
+Rewrite the Carry-over section before you finish, deleting what is no longer true, and
+commit once with a one-line summary. Stop after 6 turns even if unmet, and say so.
 ```
+
+Three clauses do the work: the objective with its boundary, the anchor as the only accepted
+evidence, and the turn ceiling. Host: Claude Code (recorded in the decisions record) - the
+objective is portable, the `/goal` prefix is what changes.
 
 First iteration should produce: the audit output, the version bumps it implies, the anchor
-command's result, and a rewritten Carry-over section.
+command's real output, and a rewritten Carry-over section.

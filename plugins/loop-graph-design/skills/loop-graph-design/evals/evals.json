@@ -175,46 +175,40 @@
       "expected_output": "Does not emit a workflow script: the pipeline/agent/phase runtime does not exist on that host, so the file would be something nothing can run. Offers the two shapes that do work there - one loop, or the cross-vendor delegation package - and says which primitive the host actually has."
     },
     {
-      "id": 29,
-      "name": "external_schedule_when_the_host_has_none",
-      "prompt": "Set up a weekly loop. I use zCode.",
-      "expected_output": "Writes the same goal package but schedules it outside the agent - a cron entry, launchd agent, systemd timer, or CI schedule trigger invoking the host's one-shot run - because that host has no built-in scheduler. Notes that zCode does have a goal primitive and a headless target flag, and keeps the turn ceiling in the prompt text since nothing else will enforce it."
-    },
-    {
-      "id": 30,
-      "name": "cadence_does_not_name_a_command_the_host_lacks",
-      "prompt": "Just write the cadence as /loop 1w, it's fine.",
-      "expected_output": "Refuses to write a cadence naming a command this host does not have, because the line would read as instructions and fail at the first run. Writes the honest external schedule instead and records which host it is in the decisions record."
-    },
-    {
       "id": 31,
       "name": "artifacts_do_not_live_in_a_tool_directory",
       "prompt": "Put these under .claude/workflows/ like the other Claude stuff.",
       "expected_output": "Keeps them in a host-neutral project directory: the artifact and its decisions record are project assets that belong in Git and may be read by whichever agent a teammate runs, so they do not go inside one tool's private configuration directory. Notes that no workflow runtime requires that specific path."
     },
     {
-      "id": 32,
-      "name": "external_schedule_still_needs_carry_over",
-      "prompt": "It runs from cron, so each run is a fresh process. Do I still need the carry-over section?",
-      "expected_output": "Says it matters more, not less: an externally scheduled run has no session history at all, so the carry-over section is the only thing connecting one iteration to the next. Confirms the validator treats a cron, launchd, systemd, or CI schedule as unattended exactly like a built-in loop command."
-    },
-    {
-      "id": 33,
-      "name": "use_the_hosts_goal_mode_do_not_reinvent_it",
-      "prompt": "I'm on Codex. Should the loop use your runner's turn counting, or Codex's own goal mode?",
-      "expected_output": "Both, as two layers: Codex's goal mode inside a turn - it accounts goal progress after every tool call, which is better integrated than anything the artifact can express - and the runner across turns and for the verdict, because the host's goal mode asks the model whether the target is met while the anchor's exit code does not. Does not present the runner as a replacement."
-    },
-    {
-      "id": 34,
-      "name": "interactive_goal_command_cannot_be_scheduled",
-      "prompt": "My host has /goal. Just put that in the cadence and schedule it weekly.",
-      "expected_output": "Points out that a scheduled run is non-interactive by definition, so an interactive slash command cannot be reached from a cron entry: the schedule invokes the host's one-shot run, and the goal objective travels in the prompt or through a documented headless entry if the host has one. Puts the runner in the handoff and keeps the ceiling mechanical."
-    },
-    {
       "id": 35,
       "name": "host_capability_claim_gets_checked_not_assumed",
       "prompt": "Kimi doesn't have goal mode, right? Just use the plain prompt.",
       "expected_output": "Does not accept or repeat the claim without checking. Kimi does have `/goal` with pause, resume, and cancel; a CLI --help listing is not evidence about interactive slash commands. Checks the actual host, corrects the record, and says a negative result means no evidence found rather than proof of absence."
+    },
+    {
+      "id": 36,
+      "name": "anchor_goes_into_the_goal_text_not_a_wrapper",
+      "prompt": "How do I stop it from declaring the goal met when it hasn't actually run the tests?",
+      "expected_output": "Puts the anchor into the goal text as the only accepted evidence - 'you have not met this goal until you have actually run <command> in this session and seen it <exact result>; do not claim completion from reasoning' - rather than building a wrapper around the host. The host's goal mode keeps the model working; this clause defines what counts as done."
+    },
+    {
+      "id": 37,
+      "name": "ceiling_must_be_in_the_goal_text",
+      "prompt": "Write the goal. It should just keep going until it's done.",
+      "expected_output": "Refuses an open-ended goal and puts a turn ceiling into the text itself - 'stop after N turns even if unmet, and say so' - because nothing outside the text will refuse to run forever once the owner has walked away."
+    },
+    {
+      "id": 38,
+      "name": "no_scheduling_machinery_when_the_owner_starts_it_by_hand",
+      "prompt": "Set up the weekly dependency goal. I'll start it myself each Monday.",
+      "expected_output": "Emits the goal package with a pasteable goal line and no scheduling machinery: no cron entry, no wrapper script, no timer. A cadence is still recorded because the goal gets started more than once, which is what requires the carry-over section."
+    },
+    {
+      "id": 39,
+      "name": "carry_over_survives_compaction_not_just_reruns",
+      "prompt": "It's one long goal run, not a weekly thing. Carry-over is pointless there, right?",
+      "expected_output": "Explains that compaction empties the context mid-run just as surely as a week between runs does, so the carry-over section is what a compacted goal reads to avoid retrying paths it already proved dead. Keeps it."
     }
   ],
   "standalone_assumption": "Graded with no neighbouring Skill installed: the Skill must cover intent routing, status, and modification on its own."

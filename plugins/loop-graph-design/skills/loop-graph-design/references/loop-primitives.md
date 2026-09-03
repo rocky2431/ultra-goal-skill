@@ -38,57 +38,28 @@ so classify by shape first and pick the mechanism from what the host actually ha
 Prefer the host's own primitive when it has one. A loop you wrote yourself is a loop you now
 maintain, and it will not survive a session restart unless you made it.
 
-## When the host has no scheduler
+## Goal mode across hosts
 
-Measured on this machine: only Claude Code has a built-in scheduler (`/loop`, `/schedule`).
-Goal mode is far more widely available than scheduling - Claude Code, Codex, Kimi, and zCode
-all have `/goal` as an interactive command, and Codex accounts goal progress after every
-tool call - but of those only zCode documents a **headless** goal entry (`--target`). That
-gap is what matters here, because a scheduled run is non-interactive by definition, so an
-interactive slash command cannot reach it.
+Measured on this machine: `/goal` exists on Claude Code, Codex, Kimi, and zCode; no evidence
+of it on OpenCode. Only Claude Code has a built-in *scheduler* (`/loop`, `/schedule`), but
+that matters less than it sounds - a goal started by hand and left alone covers the same
+ground for recurring work, and it is the shape all four hosts share.
 
-Every host does have a one-shot non-interactive run: `claude -p`, `codex exec`,
-`zcode --prompt`, `kimi -p`, `opencode run`.
+Each host's goal mode differs in how it holds the model to the objective: Claude Code refuses
+to end the turn, Codex accounts goal progress after every tool call, Kimi can pause and
+resume a goal, zCode also offers a headless `--target`. None of that changes the artifact.
 
-So on those hosts the timer lives outside the agent:
-
-```bash
-# crontab -e  — weekly, Monday 09:00
-0 9 * * 1 cd /absolute/repo && kimi -p "$(cat .loops/<slug>.prompt.txt)"
-```
-
-`launchd`, a systemd timer, and a CI `schedule:` trigger are equivalent. Three things to
-keep right when the loop runs this way:
-
-- **The prompt still carries the stop condition.** Without a goal primitive, nothing else
-  will refuse to stop early or refuse to run forever — so the turn ceiling has to be words
-  in the prompt.
-- **Carry-over matters more, not less.** An externally scheduled run has no session history
-  at all, so the carry-over section is the only thing connecting one iteration to the next.
-- **Record which host it is** in the decisions record. A cadence line naming a command the
-  host does not have is worse than an honest external schedule.
-
-## Writing the stop condition
-
-The stop condition is the artifact's load-bearing sentence. Shape it as:
+What every host has in common is the gap: **goal mode asks the model whether the objective is
+met.** Close it in the goal text, not with machinery around the host:
 
 ```
-Stop when <anchor command> reports <exact threshold>, or after <N> turns.
+/goal <objective, inside <boundary>>. You have not met this goal until you have actually
+run `<anchor>` in this session and seen it <exact result>. Do not claim completion from
+reasoning. Stop after <N> turns even if unmet, and say so.
 ```
 
-- Anchor command, not a feeling. `pytest -q` exiting 0 is a stop condition; "tests look
-  healthy" is not.
-- A ceiling, always. Without one, a loop that cannot reach its threshold runs until
-  someone notices the bill.
-- Quantitative beats qualitative: the more numeric the check, the less the agent has to
-  guess whether it is finished.
+Two things to keep right when a goal runs unwatched:
 
-## Token discipline
-
-- Run deterministic work as a script. Running a script is cheaper than reasoning about it,
-  and it produces the same answer twice.
-- Do not schedule a routine more often than the thing it watches actually changes.
-- Pin the stable part of the prompt — system instructions, the spec, the boundary — at the
-  front so the prefix caches. A loop that rebuilds its context in a different order every
-  iteration pays full price every iteration; that is the most expensive way to run an agent.
-- Match the model to the job rather than defaulting to the largest one for every node.
+- **The ceiling has to be in the text.** Nothing else will refuse to run forever.
+- **Carry-over matters even within a single run**, because compaction empties the context
+  mid-goal just as surely as a week between runs does.

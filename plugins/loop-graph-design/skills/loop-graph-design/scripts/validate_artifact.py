@@ -44,14 +44,6 @@ FENCE = re.compile(r"```[a-z]*\n(.+?)\n```", re.S)
 INLINE = re.compile(r"`([^`\n]+)`")
 ANCHOR_COMMENT = re.compile(r"(?m)^\s*//\s*anchor:\s*(.+?)\s*$")
 ANCHOR_TIMEOUT_SECONDS = 300
-# "Unattended" is about nobody watching, not about which host is running it.
-# Only one host has a built-in loop command; everywhere else the same loop is a
-# cron entry, a launchd agent, a systemd timer, or a CI schedule trigger.
-UNATTENDED = re.compile(
-    r"/loop\b|\bschedul\w*|\bcron(?:tab)?\b|\blaunchd\b|\bsystemd\b"
-    r"|\bnightly\b|\bunattended\b",
-    re.I,
-)
 BULLET = re.compile(r"(?m)^\s*[-*]\s+\S")
 CARRYOVER_MAX_ITEMS = 20
 
@@ -306,9 +298,12 @@ def check_goal(path: Path, text: str, out: list[Finding]) -> None:
     # An unattended loop wakes with an empty context every iteration. Without a
     # carry-over section it rebuilds history from scratch and retries paths it has
     # already proven dead.
-    cadence = found.get("cadence", "")
+    # A cadence means this goal gets started more than once, so something has to
+    # survive between runs - and inside one long run, across compaction. Its
+    # wording is not pattern-matched: the section's presence is the fact.
+    cadence = found.get("cadence")
     carry_over = found.get("carry-over")
-    if cadence and UNATTENDED.search(cadence):
+    if cadence is not None:
         if carry_over is None:
             out.append(
                 Finding(
@@ -330,29 +325,27 @@ def check_goal(path: Path, text: str, out: list[Finding]) -> None:
                     "it before finishing, or it stays empty forever",
                 )
             )
-    # An unattended loop is started by something. If the handoff does not contain a
-    # command, nobody can start it - and on a host without a goal primitive the
-    # handoff is the only place the stop condition is actually enforced.
-    if cadence and UNATTENDED.search(cadence):
-        handoff = found.get("handoff")
-        if handoff is None:
-            out.append(
-                Finding(
-                    str(path),
-                    "HANDOFF_MISSING",
-                    "an unattended loop needs a `## Handoff` section with the exact "
-                    "command that starts it on this host",
-                )
+    # The handoff is the line the owner pastes into their CLI. Without it the
+    # artifact describes a loop nobody can start.
+    handoff = found.get("handoff")
+    if handoff is None:
+        out.append(
+            Finding(
+                str(path),
+                "HANDOFF_MISSING",
+                "a goal package needs a `## Handoff` section holding the exact goal "
+                "command to paste into this host",
             )
-        elif not FENCE.search(handoff):
-            out.append(
-                Finding(
-                    str(path),
-                    "HANDOFF_NOT_RUNNABLE",
-                    "the handoff must contain a fenced command block, not a description "
-                    "of how to run it",
-                )
+        )
+    elif not FENCE.search(handoff):
+        out.append(
+            Finding(
+                str(path),
+                "HANDOFF_NOT_RUNNABLE",
+                "the handoff must contain a fenced command block, not a description "
+                "of how to run it",
             )
+        )
 
     if carry_over and len(BULLET.findall(carry_over)) > CARRYOVER_MAX_ITEMS:
         out.append(

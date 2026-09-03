@@ -462,7 +462,12 @@ class CarryOverTests(Harness):
 
     def test_one_shot_goal_needs_no_carry_over(self) -> None:
         self.write("os.decisions.md", GOOD_DECISIONS)
-        without_cadence = GOOD_GOAL.split("## Cadence")[0]
+        without_cadence = GOOD_GOAL.split("## Cadence")[0] + """## Handoff
+
+```
+/goal Fix the failing test until `pytest -q` exits 0.
+```
+"""
         path = self.write("os.goal.md", without_cadence)
         report = va.validate_paths([str(path)])
         self.assertTrue(report.ok, [f.as_dict() for f in report.findings])
@@ -507,62 +512,51 @@ class CarryOverTests(Harness):
         self.assertEqual("/loop 1w", item["cadence"])
 
 
-class HostPortabilityTests(Harness):
-    """Unattended means scheduled by anything, not just by a Claude Code command."""
+class CadenceTests(Harness):
+    """Carry-over is required by the presence of a cadence, not by guessing at
+    scheduler keywords. A goal that repeats needs carried state; a one-shot does not."""
 
-    def _goal_with_cadence(self, name: str, cadence: str, carry_over: bool) -> Path:
-        self.write(f"{name}.decisions.md", GOOD_DECISIONS)
-        text = GOOD_GOAL.replace("`/loop 1w`", cadence)
-        if not carry_over:
-            text = text.replace("## Carry-over", "## Notes")
-        return self.write(f"{name}.goal.md", text)
-
-    def test_cron_scheduled_loop_needs_carry_over(self) -> None:
-        path = self._goal_with_cadence(
-            "cron", '`cron: 0 9 * * 1 kimi -p "$(cat prompt.md)"`', carry_over=False
+    def test_any_cadence_requires_carry_over(self) -> None:
+        self.write("c1.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "c1.goal.md",
+            GOOD_GOAL.replace("`/loop 1w`", "Started by hand, roughly weekly.").replace(
+                "## Carry-over", "## Notes"
+            ),
         )
         self.assertIn("CARRYOVER_MISSING", self.codes(path))
 
-    def test_launchd_scheduled_loop_needs_carry_over(self) -> None:
-        path = self._goal_with_cadence(
-            "launchd", "a `launchd` agent every Monday at 09:00", carry_over=False
-        )
-        self.assertIn("CARRYOVER_MISSING", self.codes(path))
+    def test_cadence_wording_is_not_pattern_matched(self) -> None:
+        """No keyword list: a cadence described in any words still requires it."""
+        for i, wording in enumerate(
+            (
+                "Whenever I get around to it.",
+                "Each sprint, when I remember.",
+                "`cron: 0 9 * * 1`",
+                "Twice a release.",
+            )
+        ):
+            with self.subTest(wording=wording):
+                self.write(f"w{i}.decisions.md", GOOD_DECISIONS)
+                path = self.write(
+                    f"w{i}.goal.md",
+                    GOOD_GOAL.replace("`/loop 1w`", wording).replace(
+                        "## Carry-over", "## Notes"
+                    ),
+                )
+                self.assertIn("CARRYOVER_MISSING", self.codes(path))
 
-    def test_ci_scheduled_loop_needs_carry_over(self) -> None:
-        path = self._goal_with_cadence(
-            "ci", "a GitHub Actions `schedule:` trigger, weekly", carry_over=False
-        )
-        self.assertIn("CARRYOVER_MISSING", self.codes(path))
+    def test_no_cadence_means_no_carry_over_required(self) -> None:
+        self.write("c2.decisions.md", GOOD_DECISIONS)
+        one_shot = GOOD_GOAL.split("## Cadence")[0] + """## Handoff
 
-    def test_systemd_timer_needs_carry_over(self) -> None:
-        path = self._goal_with_cadence(
-            "sd", "a `systemd` timer, daily", carry_over=False
-        )
-        self.assertIn("CARRYOVER_MISSING", self.codes(path))
-
-    def test_hand_run_cadence_does_not_require_carry_over(self) -> None:
-        path = self._goal_with_cadence(
-            "manual", "I run it by hand when I remember to", carry_over=False
-        )
-        report = va.validate_paths([str(path)])
-        self.assertNotIn(
-            "CARRYOVER_MISSING", {f.code for f in report.findings}
-        )
-
-    def test_cron_scheduled_loop_with_carry_over_passes(self) -> None:
-        path = self._goal_with_cadence(
-            "ok", '`cron: 0 9 * * 1 zcode -p "$(cat prompt.md)"`', carry_over=True
-        )
+```
+/goal Fix the failing test until `pytest -q` exits 0.
+```
+"""
+        path = self.write("c2.goal.md", one_shot)
         report = va.validate_paths([str(path)])
         self.assertTrue(report.ok, [f.as_dict() for f in report.findings])
-
-    def test_status_reports_a_non_claude_cadence(self) -> None:
-        self._goal_with_cadence(
-            "k", '`cron: 0 9 * * 1 kimi -p "$(cat prompt.md)"`', carry_over=True
-        )
-        state = va.status_paths([str(self.dir)])
-        self.assertIn("kimi", state["artifacts"][0]["cadence"])
 
 
 class RunnableHandoffTests(Harness):
@@ -586,14 +580,13 @@ class RunnableHandoffTests(Harness):
             state["artifacts"][0]["start_command"],
         )
 
-    def test_missing_handoff_is_not_required_for_a_one_shot_goal(self) -> None:
+    def test_a_one_shot_goal_still_needs_a_handoff(self) -> None:
+        """The handoff is the line the owner pastes into the CLI. Always required."""
         self.write("oneshot.decisions.md", GOOD_DECISIONS)
-        without_cadence = GOOD_GOAL.split("## Cadence")[0]
-        path = self.write("oneshot.goal.md", without_cadence)
-        report = va.validate_paths([str(path)])
-        self.assertTrue(report.ok, [f.as_dict() for f in report.findings])
+        path = self.write("oneshot.goal.md", GOOD_GOAL.split("## Cadence")[0])
+        self.assertIn("HANDOFF_MISSING", self.codes(path))
 
-    def test_unattended_loop_must_have_a_handoff(self) -> None:
+    def test_goal_artifact_must_have_a_handoff(self) -> None:
         self.write("noh.decisions.md", GOOD_DECISIONS)
         path = self.write("noh.goal.md", GOOD_GOAL.replace("## Handoff", "## Notes"))
         self.assertIn("HANDOFF_MISSING", self.codes(path))

@@ -1,10 +1,10 @@
 ---
 name: loop-graph-design
-description: "Turn \"make an agent keep doing this\" into a running loop: interview for intent, anchor, quantified stop condition, boundary, and an independent verifier, refuse the shapes that fail, then emit the artifact the host can run — a goal prompt with its schedule, a workflow script, or a cross-vendor delegation package. Use when the deliverable is runnable, not a design note."
+description: "Turn \"make an agent keep doing this\" into a goal the host will actually hold to: interview for intent, anchor, quantified stop condition, boundary, and an independent verifier, refuse the shapes that fail, then emit the runnable artifact — a goal line to paste, a workflow script, or a cross-vendor delegation package. Use when the deliverable is runnable, not a design note."
 license: MIT
 metadata:
   author: rocky2431
-  version: "0.5.0"
+  version: "0.6.0"
 ---
 
 # Loop Graph Design
@@ -18,8 +18,9 @@ Most work is a loop. Reach for a graph only when a loop provably cannot hold it.
 
 ## Keep activation scoped
 
-Use this Skill when the deliverable is an **executable artifact**: a prompt the owner runs
-on a schedule, a workflow script, or a delegation package other agents consume.
+Use this Skill when the deliverable is an **executable artifact**: a goal the owner pastes
+into their CLI and walks away from, a workflow script, or a delegation package other agents
+consume.
 
 The loop's own boundary — what it may touch, and which of its effects need approval before
 they run — is question 4 below and belongs here. A broader authority model for an agent
@@ -121,62 +122,44 @@ Name the refusal, name the cheap alternative, and go back to the relevant questi
 Read [references/anti-patterns.md](references/anti-patterns.md) for the failure modes
 behind this table.
 
-## Know your host, and use its goal mode
+## Goal mode, on whichever host you are
 
-You are the host. Use the primitives you actually have. Measured on the installs on this
-machine, they differ more than expected — most hosts *do* have goal mode:
+You are the host. Goal mode is the mechanism: the owner pastes one objective into their CLI,
+walks away, and the host keeps the model working until the objective is met or a ceiling is
+hit. Four of the
+five hosts measured on this machine have it as an interactive command:
 
-| Host | Goal mode (interactive) | Non-interactive goal entry | Built-in scheduler |
-|---|---|---|---|
-| Claude Code | `/goal`, backed by a stop hook | not confirmed | `/loop`, `/schedule` |
-| Codex 0.150.1 | `/goal`; a `goal` extension accounts progress after each tool call | not found | not found |
-| Kimi | `/goal <objective>` with `pause` / `resume` / `cancel` | not found | not found |
-| zCode 0.16.5 | `/goal` | **`--target`**, documented as headless | not found |
-| OpenCode 1.18 | not found | — | not found |
+| Host | Goal mode | Notes |
+|---|---|---|
+| Claude Code | `/goal <objective>` | backed by a stop hook; also has `/loop`, `/schedule` |
+| Codex 0.150.1 | `/goal <objective>` | a `goal` extension accounts progress after every tool call |
+| Kimi | `/goal <objective>` | plus `/goal pause` / `resume` / `cancel` |
+| zCode 0.16.5 | `/goal <objective>` | also `--target` for a headless session |
+| OpenCode 1.18 | not found | fall back to a plain prompt with the ceiling stated in words |
 
-"Not found" means no evidence in that host's help output or shipped binary — **check your
-own host rather than trusting this table**, and say so when you find it is wrong. One-shot
-non-interactive runs exist everywhere: `claude -p`, `codex exec`, `zcode --prompt`,
-`kimi -p`, `opencode run`.
+"Not found" means no evidence in that host's help output or shipped binary, not proof of
+absence — **check your own host rather than trusting this table**, and say so when it is
+wrong. Use the host's own goal mode; it is better integrated than anything this Skill could
+wrap around it.
 
-### Goal mode is two layers, and they are complements
+### The host decides when to stop asking. The anchor decides what counts as done.
 
-- **Inside a turn, use the host's own goal mode.** It is better integrated than anything
-  this Skill can write: Codex accounts goal progress after every tool call, Kimi can pause
-  and resume a goal, Claude Code refuses to end the turn. Put the objective in the artifact
-  and name the host's command in `## Handoff`.
-- **Across turns, and for the verdict, use the runner.** A host's goal mode asks the
-  **model** whether the target is met. The runner asks the anchor, and its ceiling is a
-  for-loop — neither passes through the model's judgement. It also covers what only one host
-  has natively: waking up on a schedule at all. A cron entry starts a *non-interactive* run,
-  where an interactive slash command is out of reach.
+A host's goal mode keeps the model working, but it asks **the model** whether the objective
+is met. That is the gap this Skill closes, and it closes it in the goal text itself rather
+than with any machinery:
 
-So the runner wraps the host's goal mode rather than replacing it:
-
-```bash
-for turn in $(seq 1 "$MAX_TURNS"); do
-  run_host "$(cat "$PROMPT_FILE")"   # use the host's goal entry here if it has one
-  "${ANCHOR[@]}" && exit 0           # the anchor gives the verdict
-done
-exit 1                                # the ceiling is the for-loop
+```
+/goal <what to achieve, inside <boundary>>. You have not met this goal until you have
+actually run `<anchor command>` in this session and seen it <exact result>. Do not claim
+completion from reasoning about the code. Stop after <N> turns even if unmet, and say so.
 ```
 
-Ship it as `<slug>.runner.sh` from [assets/goal-runner.sh](assets/goal-runner.sh) and put its
-command in `## Handoff`. One rule inside it is easy to get wrong: **a nonzero host exit is
-not a verdict.** Report it and check the anchor anyway — the anchor is the only thing that
-knows whether the work landed.
+Three clauses, each doing one job: the objective, the anchor as the only accepted evidence,
+and the ceiling. Written this way the same text works on all four hosts, and on the fifth as
+a plain prompt.
 
-### What this changes about the artifact
-
-- **On most hosts, scheduling is external.** Without a built-in scheduler the same loop is a
-  `cron` entry, a `launchd` agent, a systemd timer, or a CI `schedule:` trigger invoking the
-  runner. The prompt is byte-identical; only `## Cadence` and `## Handoff` change.
-- **A single-vendor workflow script needs a workflow runtime.** Only one host measured has
-  one, so where yours does not, do **not** emit `<slug>.workflow.js` — it would be a file
-  nothing can run. Keep it one loop, or use the cross-vendor delegation shape.
-
-Record which host this was written for in the decisions record. A cadence line naming a
-command the host does not have is worse than an honest external schedule.
+Record which host it was written for in the decisions record — the objective is portable, the
+command that starts it is not.
 
 ## Compile one artifact
 
@@ -186,11 +169,14 @@ whichever agent a teammate runs, so they do not go inside any one tool's private
 
 | Answer | Artifact | Template |
 |---|---|---|
-| Loop | `<slug>.goal.md` — the objective, boundary, stop condition, anchor, verifier; an unattended one also needs `## Cadence`, `## Carry-over`, and `## Handoff` | [assets/goal-package.md](assets/goal-package.md) |
+| Loop | `<slug>.goal.md` — objective, boundary, stop condition, anchor, verifier, and `## Handoff` holding the goal line to paste; add `## Cadence` + `## Carry-over` if it will be started more than once | [assets/goal-package.md](assets/goal-package.md) |
 | Graph, one vendor **(requires a workflow runtime)** | `<slug>.workflow.js` — topology in code, `meta` first and a pure literal, anchor on the top line as `` // anchor: `<command>` `` | [assets/workflow-script.js](assets/workflow-script.js) |
 | Graph, several vendors | `<slug>.delegation.md` — one mission per worker, each with its own anchor | [assets/delegation-package.md](assets/delegation-package.md) |
-| Unattended loop, also | `<slug>.runner.sh` + `<slug>.prompt.txt` — the anchor-driven ceiling, and the prompt it feeds | [assets/goal-runner.sh](assets/goal-runner.sh) |
 | Always | `<slug>.decisions.md` — Decision / Rejected / Why, three columns | [assets/decisions-record.md](assets/decisions-record.md) |
+
+**A workflow script needs a workflow runtime.** Of the hosts measured, only Claude Code has
+one, so where yours does not, do **not** emit `<slug>.workflow.js` — it would be a file
+nothing can run. Keep it one goal, or use the cross-vendor delegation shape.
 
 The decisions record holds decisions, not architecture. The script or prompt is the only
 description of what the thing does; a second prose copy of it goes stale and starts lying.
@@ -240,15 +226,16 @@ the interview again. A loop whose anchor changed is a different loop.
 
 ## Make the loop evolve
 
-An unattended loop wakes with an empty context every iteration. Unless something carries
-forward it rebuilds history from git logs — expensively, unreliably — and retries paths it
-has already proven dead, believing each time that it is the first attempt.
+An unattended loop wakes with an empty context every iteration — and inside one long goal
+run, compaction has the same effect. Unless something carries forward it rebuilds history
+from git logs and retries paths it has already proven dead, believing each time that it is
+the first attempt.
 
-So an artifact scheduled by anything — a host loop command, `cron`, `launchd`, a systemd
-timer, a CI trigger — gets a `## Carry-over` section, and the prompt itself must instruct
-the loop to **read it before acting and rewrite it before finishing**. Without that
-instruction the section stays empty forever and the loop never improves. A one-shot goal a
-person is watching needs neither section.
+So any artifact with a `## Cadence` — it will be started more than once — gets a
+`## Carry-over` section, and the goal text itself must tell the loop to
+**read it before acting and rewrite it before finishing**.
+Without that instruction the section stays empty forever and the loop never improves. A goal
+started once and watched needs neither section.
 
 A few lines, in whatever form each takes: a path already proven dead, a standing fact the
 next iteration needs, where the work stopped.
@@ -285,10 +272,9 @@ It checks mechanical facts only — pairing, required sections, declared phases,
 delegation targets, JavaScript syntax — and never edits the artifact. Fix what it reports;
 its silence is not evidence that the design is right.
 
-Then hand off in one line: the exact command the owner runs, and what the first iteration
-should produce. Spell the command out — the runner, this host's goal entry, the workflow
-runtime's own entry point, or one delegation call per worker with its working directory and
-mission file. Assume no other Skill is installed to fill in the gaps, and state which effects the
+Then hand off in one line: the exact command the owner pastes, and what the first iteration
+should produce. Spell it out — this host's goal line, the workflow runtime's own entry point,
+or one delegation call per worker with its working directory and mission file. Assume no other Skill is installed to fill in the gaps, and state which effects the
 owner has already authorized and which still need approval.
 
 Do not run it yourself unless the owner asks.
