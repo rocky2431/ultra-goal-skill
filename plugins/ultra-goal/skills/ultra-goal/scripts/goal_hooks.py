@@ -34,6 +34,15 @@ ACTIVE_MARKER = "active"
 DISABLE_ENV = "ULTRA_GOAL_HOOKS_DISABLED"
 # A slug names one artifact in `.goals/`. It is never a path.
 SLUG_MAX = 100
+# The Stop registration in hooks/hooks.json declares this timeout, and the host
+# kills the hook process when it expires. Every budget inside the gate has to
+# fit under it, so the number lives here once and a test pins it against the
+# manifest - two copies with no stated relationship is how a gate acquires a
+# ceiling nobody chose.
+HOOK_TIMEOUT_SECONDS = 200
+# Headroom for reading the artifact, the log, and writing the event.
+ANCHOR_BUDGET_CEILING = 170
+DEFAULT_ANCHOR_BUDGET = 180
 
 
 @dataclass(frozen=True)

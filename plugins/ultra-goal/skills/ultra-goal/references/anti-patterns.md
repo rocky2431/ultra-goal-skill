@@ -1,5 +1,40 @@
 # Anti-patterns
 
+## An anchor that only tests the code
+
+A unit suite goes green when the code compiles and the product is still broken. This is the
+most common way a loop finishes proud and wrong, and it is not a subtle failure: Anthropic's
+long-running harness names it directly — absent explicit prompting the agent "tended to make
+code changes but would fail to recognize that the feature didn't work end-to-end" — and
+lists relying on unit tests without end-to-end validation as an anti-pattern of its own.
+Giving their agents browser automation let them find "bugs that weren't obvious from the
+code alone".
+
+The fix is not a better test suite. It is choosing an anchor that
+**drives the running thing**: build, start, and one real interaction. Where that is impossible, say so in the
+artifact rather than letting a narrower anchor stand in for it, because the gate cannot tell
+the difference and will report green either way.
+
+## Context anxiety
+
+A model closing out its work as it approaches what it *believes* is its context limit —
+wrapping up on a feeling rather than on evidence. Anthropic named this while building a
+long-running harness and found that compaction does not fix it: "compaction preserves
+continuity, it doesn't give the agent a clean slate, which means context anxiety can still
+persist". Their answer was a context reset with a structured handoff; on a stronger model
+they were able to drop the resets entirely, because the model largely stopped doing it.
+
+For a goal this matters because it produces a *premature success*, not a visible failure.
+The mechanical answer is already here and worth recognising as such: the gate refuses the
+stop while the anchor is red, so ending the turn early is not something the run can choose.
+`## Acceptance` is the other half — what is left is written down rather than remembered, so
+"nearly done" has to be checked against a list instead of felt.
+
+Two consequences worth keeping: **running low on context is a reason to write carry-over,
+never a reason to declare done**; and if the model beneath a run no longer does this, the
+two recovery hooks are a defence against a fixed defect, which is
+exactly the kind of mechanism to delete rather than keep.
+
 The refusals in SKILL.md are shorthand. These are the failure modes behind them, so you
 can explain a refusal to the owner instead of just quoting a rule.
 

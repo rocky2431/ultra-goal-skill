@@ -50,6 +50,39 @@ question a finished run is ever asked.
 Nothing here auto-resolves a divergence. The log cannot know why a turn claimed green; it
 knows only what it measured.
 
+## `## Acceptance` is not a task ledger, and here is the line
+
+This is the boundary most likely to be misread later, so it is drawn explicitly rather
+than left to taste. An earlier version of this Skill refused a task ledger outright. That
+refusal was half right, and the half that was wrong was conflating two different objects.
+
+| | A plan / task ledger | An acceptance list |
+|---|---|---|
+| Shape | ordered, with dependencies | **unordered**; every line stands alone |
+| Answers | *what to do next* | *what is still not true* |
+| Decided | at authoring time | the run picks, every turn |
+| Makes it | a graph — routing already decided | still a loop — routing decided at inference |
+| Mechanically | a numbered list | `- [ ]` / `- [x]` lines, and `ACCEPTANCE_ORDERED` refuses a numbered one |
+
+A plan says "first the API, then the web package, then release". An acceptance list says
+"these four things are not true yet" and lets the run decide which to attempt with what it
+knows this turn. The first takes the routing decision away from the run, which is the
+definition of a graph. The second is **the stop condition written out longhand**.
+
+So the rule stays one-directional and unchanged: **`plan.md` and a dependency-ordered
+`tasks.json` are still refused.** What was added is the enumerated form of a section that
+already existed.
+
+Why bother, when `## Stop condition` was already there: one sentence plus one anchor can
+answer *is the whole thing done*, and cannot answer *which parts are*. The second question
+is the one a long run gets wrong, by declaring victory on the strength of the part it
+finished. Anthropic's long-running harness reached for the same object for the same reason
+— a feature list, every entry failing at the start, one entry per session, and a state that
+may only move to passing after real testing.
+
+And `[x]` is a claim. It is written by the run, so it sits on the claims side of the line
+above, and the anchor's output is what settles it. `--audit` is where the two meet.
+
 ## Why the spec is frozen while a run is in flight
 
 A loop that can edit its own intent, anchor, or boundary will edit them — and the edit will

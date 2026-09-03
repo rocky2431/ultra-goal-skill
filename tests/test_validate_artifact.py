@@ -83,6 +83,11 @@ A reviewer with a fresh context reviews the diff; a critic then audits that revi
 than the code, classifying each point as agreement, evidence-backed disagreement, or
 concern-based disagreement. At most 5 inner rounds.
 
+## Acceptance
+
+- [x] `packages/core` current with a green anchor
+- [ ] `packages/api` current with a green anchor
+
 ## Cadence
 
 `/loop 1w`
@@ -136,7 +141,9 @@ that share a model share its blind spots.
 
 The artifact stays frozen for the whole inner loop. The reviewer answers a disagreement with
 evidence, never with a rebuttal. At most 5 inner rounds. If round 1 converges with no
-findings, accept and stop.
+findings, accept and stop. A report ends in exactly one outcome: completed, failed,
+input-required (name what is needed), or rejected (say why). Silence is input-required,
+never completed.
 """
 
 
@@ -720,6 +727,168 @@ class ChallengeTests(Harness):
         report = va.validate_paths([str(path)])
         self.assertTrue(report.ok, report.findings)
         self.assertEqual(0, va.challenge_count(path))
+
+
+class AcceptanceTests(Harness):
+    """The stop condition, enumerated - required only where it earns its keep.
+
+    One sentence plus one anchor answers "is the whole thing done" and cannot
+    answer "which parts are". The second granularity is where a long run
+    declares victory on the strength of the part it finished.
+    """
+
+    def test_a_goal_with_a_cadence_needs_it(self) -> None:
+        self.write("a.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "a.goal.md", GOOD_GOAL.replace("## Acceptance", "## Notes")
+        )
+        self.assertIn("ACCEPTANCE_MISSING", self.codes(path))
+
+    def test_a_one_shot_goal_does_not(self) -> None:
+        """Where it would be ceremony, it is not asked for."""
+        self.write("a.decisions.md", GOOD_DECISIONS)
+        one_shot = GOOD_GOAL
+        for section in ("## Acceptance", "## Cadence", "## Carry-over"):
+            one_shot = one_shot.replace(section, "## Notes", 1)
+        path = self.write("a.goal.md", one_shot)
+        codes = self.codes(path)
+        self.assertNotIn("ACCEPTANCE_MISSING", codes)
+        self.assertNotIn("CARRYOVER_MISSING", codes)
+
+    def test_a_numbered_acceptance_list_is_a_plan(self) -> None:
+        self.write("a.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "a.goal.md",
+            GOOD_GOAL.replace(
+                "- [x] `packages/core` current with a green anchor",
+                "1. `packages/core` current with a green anchor",
+            ),
+        )
+        self.assertIn("ACCEPTANCE_ORDERED", self.codes(path))
+
+    def test_a_line_with_no_state_is_reported(self) -> None:
+        self.write("a.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "a.goal.md",
+            GOOD_GOAL.replace(
+                "- [ ] `packages/api` current with a green anchor",
+                "- `packages/api` current with a green anchor",
+            ),
+        )
+        self.assertIn("ACCEPTANCE_UNSTATED", self.codes(path))
+
+    def test_both_states_are_accepted(self) -> None:
+        self.write("a.decisions.md", GOOD_DECISIONS)
+        path = self.write("a.goal.md", GOOD_GOAL)
+        self.assertNotIn("ACCEPTANCE_UNSTATED", self.codes(path))
+
+
+class SeverityTests(Harness):
+    """Two different things were being reported as the same thing.
+
+    A missing anchor means the artifact cannot do its job. Nine state entries
+    against a budget this Skill invented is a sentence worth saying - and
+    failing over it would be the Skill enforcing its own guess as a fact.
+    """
+
+    def test_an_invented_budget_is_advisory_and_does_not_fail(self) -> None:
+        self.write("s.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "s.goal.md",
+            GOOD_GOAL.replace(
+                "- remaining after iteration 6: `packages/api`",
+                "\n".join(f"- fact {i}" for i in range(10)),
+            ),
+        )
+        report = va.validate_paths([str(path)])
+        self.assertIn("STATE_UNPRUNED", {f.code for f in report.findings})
+        self.assertTrue(report.ok, "an advisory must not fail the artifact")
+        self.assertEqual([], report.errors)
+        self.assertEqual(1, len(report.advisories))
+
+    def test_a_cited_budget_stays_an_error(self) -> None:
+        """LESSONS_MAX has a basis (Reflexion bounds its memory at 1-3)."""
+        self.write("s.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "s.goal.md",
+            GOOD_GOAL.replace(
+                "- `@types/node` 22 breaks tsconfig because the bundler resolver rejects its new\n  conditional exports - pin at 20 and revisit when tsconfig moves to `node20`",
+                "\n".join(f"- cause {i} therefore action {i}" for i in range(5)),
+            ),
+        )
+        report = va.validate_paths([str(path)])
+        self.assertIn("LESSONS_UNPRUNED", {f.code for f in report.errors})
+        self.assertFalse(report.ok)
+
+    def test_the_cli_labels_advisories_and_still_exits_zero(self) -> None:
+        self.write("s.decisions.md", GOOD_DECISIONS)
+        self.write(
+            "s.goal.md",
+            GOOD_GOAL.replace(
+                "- remaining after iteration 6: `packages/api`",
+                "\n".join(f"- fact {i}" for i in range(10)),
+            ),
+        )
+        result = subprocess.run(
+            [sys.executable, str(VALIDATOR), str(self.dir)],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(0, result.returncode, result.stdout)
+        self.assertIn("[advisory]", result.stdout)
+        self.assertIn("ok (advisories above)", result.stdout)
+
+
+class AnchorBudgetTests(Harness):
+    """How long to wait is the owner's call, not a constant in the gate."""
+
+    def test_a_budget_above_the_hook_timeout_is_flagged_as_useless(self) -> None:
+        self.write("b.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "b.goal.md",
+            GOOD_GOAL.replace("pnpm test -- --run\n```", "pnpm test -- --run\n```\n\nbudget: 30 minutes"),
+        )
+        report = va.validate_paths([str(path)])
+        codes = {f.code for f in report.findings}
+        self.assertIn("ANCHOR_BUDGET_UNREACHABLE", codes)
+        # Advisory: the artifact is not broken, the number just has no effect.
+        self.assertTrue(report.ok)
+
+    def test_a_budget_inside_the_ceiling_is_silent(self) -> None:
+        self.write("b.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "b.goal.md",
+            GOOD_GOAL.replace("pnpm test -- --run\n```", "pnpm test -- --run\n```\n\nbudget: 2 minutes"),
+        )
+        self.assertNotIn("ANCHOR_BUDGET_UNREACHABLE", self.codes(path))
+
+
+class WorkerOutcomeTests(Harness):
+    """A blocked worker and a finished one must not look alike."""
+
+    def test_undeclared_outcomes_are_reported(self) -> None:
+        self.write("w.decisions.md", GOOD_DECISIONS)
+        path = self.write(
+            "w.delegation.md",
+            GOOD_DELEGATION.replace(
+                "A report ends in exactly one outcome: completed, failed,\ninput-required (name what is needed), or rejected (say why). Silence is input-required,\nnever completed.",
+                "",
+            ),
+        )
+        report = va.validate_paths([str(path)])
+        self.assertIn("WORKER_OUTCOMES_UNDECLARED", {f.code for f in report.findings})
+        message = next(
+            f.message for f in report.findings
+            if f.code == "WORKER_OUTCOMES_UNDECLARED"
+        )
+        for name in ("input-required", "rejected"):
+            self.assertIn(name, message)
+
+    def test_the_shipped_vocabulary_satisfies_it(self) -> None:
+        self.write("w.decisions.md", GOOD_DECISIONS)
+        path = self.write("w.delegation.md", GOOD_DELEGATION)
+        report = va.validate_paths([str(path)])
+        self.assertTrue(report.ok, report.findings)
 
 
 if __name__ == "__main__":

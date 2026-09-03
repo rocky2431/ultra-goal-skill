@@ -20,7 +20,10 @@ import sys
 import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from goal_hooks import frozen_digest  # noqa: E402
+from goal_hooks import (  # noqa: E402
+    ANCHOR_BUDGET_CEILING,
+    frozen_digest,
+)
 
 
 KNOWN_TARGETS = ("claude", "codex", "hermes", "kimi", "opencode", "zcode")
@@ -44,6 +47,17 @@ GOAL_SECTIONS = (
 # whether the run may abandon it on evidence, and the owner sets the label - that
 # is the whole point of the section, so an unlabelled means is not a means.
 MEANS_LABELS = ("load-bearing", "droppable")
+# An acceptance line is a requirement plus the state the run claims for it. The
+# state is a claim like any other the run writes: the anchor is the evidence.
+CHECKBOX = re.compile(r"(?m)^\s*[-*]\s+\[([ xX])\]\s+(\S.*)$")
+BULLET_ANY = re.compile(r"(?m)^\s*[-*]\s+(\S.*)$")
+ORDERED = re.compile(r"(?m)^\s*\d+[.)]\s+\S")
+# A2A's task lifecycle contributes the two states a text protocol still needs:
+# a worker that cannot proceed without something, and one that declines. The
+# transport it ships with does not transfer; this vocabulary does.
+WORKER_OUTCOMES = ("input-required", "rejected")
+ANCHOR_BUDGET = re.compile(r"budget[^\n]*?(\d+)\s*(second|minute|hour)s?", re.I)
+BUDGET_UNITS = {"second": 1, "minute": 60, "hour": 3600}
 BULLET_LINE = re.compile(r"(?m)^\s*[-*]\s+(.*\S)\s*$")
 # `## Cadence` and `## Carry-over` are conditional: an unattended run needs both,
 # a one-shot goal needs neither.
@@ -64,20 +78,42 @@ ANCHOR_TIMEOUT_SECONDS = 300
 BULLET = re.compile(r"(?m)^\s*[-*]\s+\S")
 # Reflexion (arXiv 2303.11366) bounds its reflection memory at 1-3 entries, because
 # entries the model must actually reason over compete for the same budget as the work.
-# State entries are cheaper to carry, so they get a looser budget.
+# That citation is why exceeding LESSONS_MAX is an error.
 LESSONS_MAX = 3
+# STATE_MAX has no such basis: it is a number this Skill picked. State entries are
+# facts rather than reasoning, so they are cheaper to carry, and how many is too
+# many has not been measured. Exceeding it is therefore advisory, not an error.
 STATE_MAX = 8
 SUBSECTION = re.compile(r"(?m)^###\s+(\w+)\s*$")
 
 
 @dataclass(frozen=True)
 class Finding:
+    """One observed fact about an artifact's shape.
+
+    `severity` exists because two different things were being reported as the
+    same thing. An artifact missing its anchor is broken. An artifact carrying
+    nine state entries against a budget nobody has measured is worth a sentence
+    - and failing the build over a number this Skill invented would be the
+    Skill enforcing its own guess as if it were a fact.
+
+    The rule for choosing: **error** when the artifact cannot do its job as
+    written, **advisory** when the finding is this Skill's judgement about how
+    well it will work. Only errors move the exit code.
+    """
+
     path: str
     code: str
     message: str
+    severity: str = "error"
 
     def as_dict(self) -> dict[str, str]:
-        return {"path": self.path, "code": self.code, "message": self.message}
+        return {
+            "path": self.path,
+            "code": self.code,
+            "message": self.message,
+            "severity": self.severity,
+        }
 
 
 @dataclass
@@ -85,8 +121,16 @@ class Report:
     findings: list[Finding]
 
     @property
+    def errors(self) -> list[Finding]:
+        return [f for f in self.findings if f.severity == "error"]
+
+    @property
+    def advisories(self) -> list[Finding]:
+        return [f for f in self.findings if f.severity != "error"]
+
+    @property
     def ok(self) -> bool:
-        return not self.findings
+        return not self.errors
 
     def as_dict(self) -> dict[str, object]:
         return {"ok": self.ok, "findings": [f.as_dict() for f in self.findings]}
@@ -474,6 +518,71 @@ def check_goal(path: Path, text: str, out: list[Finding]) -> None:
                     "it before finishing, or it stays empty forever",
                 )
             )
+    # A goal that spans sessions needs its stop condition enumerable. One
+    # sentence plus one anchor answers "is the whole thing done"; it cannot
+    # answer "which parts are", which is the granularity at which a long run
+    # declares victory early. Anthropic's long-running harness reached for the
+    # same thing (a feature list, all failing at first) for the same reason.
+    acceptance = found.get("acceptance")
+    if cadence is not None and acceptance is None:
+        out.append(
+            Finding(
+                str(path),
+                "ACCEPTANCE_MISSING",
+                "a goal that gets started more than once needs an `## Acceptance` "
+                "section: one line per requirement with the state the run claims for "
+                "it, so `passing` can be checked against the anchor rather than "
+                "asserted about the whole goal at once",
+            )
+        )
+    if acceptance is not None:
+        if ORDERED.search(acceptance):
+            out.append(
+                Finding(
+                    str(path),
+                    "ACCEPTANCE_ORDERED",
+                    "`## Acceptance` is a numbered list, which makes it a plan: ordered "
+                    "steps are an author-time decomposition and belong in a graph. An "
+                    "acceptance list is unordered - each line stands alone and the run "
+                    "picks which to attempt",
+                )
+            )
+        unstated = [
+            line
+            for line in BULLET_ANY.findall(acceptance)
+            if not line.startswith("[")
+        ]
+        if unstated:
+            out.append(
+                Finding(
+                    str(path),
+                    "ACCEPTANCE_UNSTATED",
+                    f"{len(unstated)} acceptance line(s) carry no `[ ]` or `[x]` state, "
+                    f"starting with {unstated[0][:60]!r}: a requirement with no state "
+                    "cannot tell the next turn what is left",
+                )
+            )
+
+    # How long the anchor may run is the owner's call, but the host kills the
+    # hook first, so a budget above that ceiling is a number with no effect.
+    budget_match = ANCHOR_BUDGET.search(anchor)
+    if budget_match is not None:
+        seconds = int(budget_match.group(1)) * BUDGET_UNITS[
+            budget_match.group(2).lower()
+        ]
+        if seconds > ANCHOR_BUDGET_CEILING:
+            out.append(
+                Finding(
+                    str(path),
+                    "ANCHOR_BUDGET_UNREACHABLE",
+                    f"the declared budget of {seconds}s is above the {ANCHOR_BUDGET_CEILING}s "
+                    "the host's hook timeout allows, so the gate will clamp it. An anchor "
+                    "that genuinely needs longer should be split, or run outside the gate "
+                    "and its result reported",
+                    "advisory",
+                )
+            )
+
     # The handoff is the line the owner pastes into their CLI. Without it the
     # artifact describes a run nobody can start.
     handoff = found.get("handoff")
@@ -528,9 +637,9 @@ def check_goal(path: Path, text: str, out: list[Finding]) -> None:
                         "plan is a graph that should have been authored as one",
                     )
                 )
-        for name, cap, code in (
-            ("state", STATE_MAX, "STATE_UNPRUNED"),
-            ("lessons", LESSONS_MAX, "LESSONS_UNPRUNED"),
+        for name, cap, code, severity in (
+            ("state", STATE_MAX, "STATE_UNPRUNED", "advisory"),
+            ("lessons", LESSONS_MAX, "LESSONS_UNPRUNED", "error"),
         ):
             body = parts.get(name)
             if body is None:
@@ -543,6 +652,7 @@ def check_goal(path: Path, text: str, out: list[Finding]) -> None:
                         code,
                         f"{count} {name} entries exceeds {cap}: prune what is no longer "
                         "true instead of appending - Git holds the history",
+                        severity,
                     )
                 )
 
@@ -633,6 +743,20 @@ def check_delegation(path: Path, text: str, out: list[Finding]) -> None:
                 "convergence must cap the inner loop, e.g. `at most 5 inner rounds`",
             )
         )
+    if convergence is not None:
+        lowered = convergence.lower()
+        missing = [name for name in WORKER_OUTCOMES if name not in lowered]
+        if missing:
+            out.append(
+                Finding(
+                    str(path),
+                    "WORKER_OUTCOMES_UNDECLARED",
+                    "convergence must say what a worker does when it cannot proceed. "
+                    f"Name these outcomes explicitly: {', '.join(missing)}. Without "
+                    "them a blocked worker and a finished one look the same to the "
+                    "orchestrator, and silence gets read as agreement",
+                )
+            )
 
 
 CHECKS = {
@@ -1238,11 +1362,12 @@ def main() -> int:
         return 2
     if args.json:
         print(json.dumps(report.as_dict(), ensure_ascii=False, indent=2))
-    elif report.ok:
-        print("ok")
     else:
         for finding in report.findings:
-            print(f"{finding.path}: {finding.code}: {finding.message}")
+            label = "" if finding.severity == "error" else " [advisory]"
+            print(f"{finding.path}: {finding.code}{label}: {finding.message}")
+        if report.ok:
+            print("ok" if not report.advisories else "ok (advisories above)")
     return 0 if report.ok else 1
 
 

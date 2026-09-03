@@ -364,7 +364,7 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("do not claim completion from reasoning about the code", handoff)
         self.assertIn("Stop after 6 turns even if unmet", handoff)
         # A1: the turn must be said out loud, or the ceiling is estimated by feel.
-        self.assertIn("State which turn you are on at the start of each turn", handoff)
+        self.assertIn("which `## Acceptance` lines this turn is for", handoff)
         # A3: all three refusals reach the pasted text, not just the document.
         self.assertIn("never application source or CI config", handoff)
         self.assertIn("do not call an upgrade safe without that output", handoff)
@@ -845,6 +845,94 @@ class ChallengeChannelTests(unittest.TestCase):
         ):
             self.assertIn(column, record)
         self.assertIn("an empty section should be deleted, not filled.", record)
+
+
+class SweepFindingsTests(unittest.TestCase):
+    """The five changes the theory sweep argued for, pinned.
+
+    Each is here because an external source said the design was missing it, so
+    each assertion doubles as the record of why the text says what it says.
+    """
+
+    def test_the_anchor_must_cross_the_whole_path(self) -> None:
+        skill = skill_text()
+        self.assertIn("**And it has to cross the whole path.**", skill)
+        self.assertIn("| **An anchor that only tests the code** |", skill)
+        anti = (SKILL_ROOT / "references" / "anti-patterns.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("## An anchor that only tests the code", anti)
+        self.assertIn("drives the running thing", anti)
+
+    def test_context_anxiety_is_named_not_merely_survived(self) -> None:
+        skill = skill_text()
+        self.assertIn("**Wrapping up because the context feels full**", skill)
+        self.assertIn("Named *context anxiety*", skill)
+        anti = (SKILL_ROOT / "references" / "anti-patterns.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("## Context anxiety", anti)
+        # The honest half: if the model no longer does this, delete the defence.
+        self.assertIn("exactly the kind of mechanism to delete rather than keep", anti)
+
+    def test_acceptance_is_required_only_where_it_earns_its_keep(self) -> None:
+        skill = skill_text()
+        self.assertIn("**If it will be started more than once, enumerate it.**", skill)
+        self.assertIn("**Unordered, never numbered**", skill)
+        self.assertIn(
+            "| The stop condition, enumerated | `## Acceptance` |", skill
+        )
+
+    def test_the_ledger_boundary_is_written_hard(self) -> None:
+        """The section most easily mistaken for the thing this Skill refuses."""
+        doc = (SKILL_ROOT / "references" / "document-system.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("## `## Acceptance` is not a task ledger, and here is the line", doc)
+        self.assertIn(
+            "**`plan.md` and a dependency-ordered\n`tasks.json` are still refused.**", doc
+        )
+        self.assertIn("the stop condition written out longhand", doc)
+
+    def test_the_anchor_budget_belongs_to_the_artifact(self) -> None:
+        skill = skill_text()
+        self.assertIn("write `budget: N minutes` under `## Anchor`", skill)
+        goal = (SKILL_ROOT / "assets" / "goal-package.md").read_text(encoding="utf-8")
+        self.assertIn("budget: 2 minutes", goal)
+
+    def test_worker_outcomes_include_the_two_blocked_states(self) -> None:
+        ar = (SKILL_ROOT / "references" / "adversarial-review.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("## When a worker cannot proceed", ar)
+        for outcome in ("completed", "failed", "input-required", "rejected"):
+            self.assertIn(f"**{outcome}**", ar)
+        self.assertIn(
+            "**Silence is `input-required`, never `completed`.**", ar
+        )
+        delegation = (SKILL_ROOT / "assets" / "delegation-package.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("Silence is none of these.", delegation)
+
+    def test_the_hook_timeout_coupling_is_stated_once(self) -> None:
+        """Two numbers with no stated relationship is how a gate acquires a
+        ceiling nobody chose: the manifest's timeout bounds every budget in the
+        gate, so the constant is pinned against the manifest here."""
+        import json as _json
+        manifest = _json.loads(
+            (PLUGIN_ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8")
+        )
+        declared = manifest["hooks"]["Stop"][0]["hooks"][0]["timeout"]
+        hooks = (SKILL_ROOT / "scripts" / "goal_hooks.py").read_text(encoding="utf-8")
+        self.assertIn(f"HOOK_TIMEOUT_SECONDS = {declared}", hooks)
+        sys.path.insert(0, str(SKILL_ROOT / "scripts"))
+        import goal_hooks
+        self.assertLess(
+            goal_hooks.ANCHOR_BUDGET_CEILING,
+            goal_hooks.HOOK_TIMEOUT_SECONDS,
+            "the anchor must finish before the host kills the hook",
+        )
 
 
 if __name__ == "__main__":

@@ -31,7 +31,20 @@ agree - which is the false consensus this protocol exists to break.
 
 The artifact stays frozen for the whole inner loop - neither role edits it. The reviewer
 answers a disagreement with evidence, never with a rebuttal. At most 5 inner rounds; if round
-1 converges with no findings, accept and stop. Only after the review is consistent does the
+1 converges with no findings, accept and stop.
+
+A worker's report ends in exactly one named outcome, so that a blocked worker and a finished
+one cannot look alike:
+
+- **completed** - the mission was carried out and the anchor's output is attached.
+- **failed** - it was attempted and did not work; say what was tried.
+- **input-required** - it cannot proceed without something specific; name that thing. This
+  is not a failure and must not be scored as one.
+- **rejected** - the mission is outside what this worker should do; say why. A worker that
+  declines loudly is worth more than one that improvises.
+
+Silence is none of these. A worker that returns nothing is `input-required` until it says
+otherwise, never `completed`. Only after the review is consistent does the
 orchestrator edit, and then a new outer round begins.
 
 ## Handoff

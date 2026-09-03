@@ -120,6 +120,24 @@ Within a single agent, R and C are two subagents with fresh contexts. That costs
 magnitude less and still keeps the third role, which is the part that works. Reach for
 separate vendors when the review's independence is the thing at stake.
 
+## When a worker cannot proceed
+
+A text protocol still needs the two states that a blocked worker and a finished one differ
+by. Google's A2A task lifecycle names them, and they transfer even though its transport
+does not:
+
+| Outcome | Means | The orchestrator's obligation |
+|---|---|---|
+| **completed** | the mission was carried out | run the anchor yourself; the report is a claim |
+| **failed** | attempted, did not work | read what was tried before re-dispatching |
+| **input-required** | cannot proceed without something specific | supply that thing, or drop the mission. **Not a failure, and never scored as one** |
+| **rejected** | the mission is outside what this worker should do | take the objection seriously; a worker that declines loudly beats one that improvises |
+
+**Silence is `input-required`, never `completed`.** This is the whole reason to name the
+states: without them, a worker that returned nothing and a worker that found nothing look
+identical, and the orchestrator reads the second one as agreement — which is the false
+consensus this protocol exists to break, arriving through a different door.
+
 ## Cost
 
 Each inner round is two calls, one for R and one for C, capped at five rounds. First-pass

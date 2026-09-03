@@ -33,8 +33,15 @@ Stop when `pnpm audit --audit-level=high` reports 0 findings, or after 6 turns.
 pnpm test -- --run && pnpm build
 ```
 
+budget: 2 minutes
+
 Green here is the only evidence an upgrade is safe. A passing audit with a failing build
 is a failed iteration, not a partial success.
+
+This anchor crosses the whole path on purpose: `pnpm test` alone can be green while the
+application does not start, because a unit suite exercises the code and not the product.
+Where a build is not enough - a UI, an API contract, a payment path - the anchor has to
+drive the running thing.
 
 ## Means
 
@@ -66,6 +73,17 @@ findings, accept.
 The critic receives the review and the diff, and not the main agent's opinion of the
 review. The diff stays frozen for that exchange. Only after the review is consistent does
 the main agent edit again.
+
+## Acceptance
+
+Unordered: each line stands alone and the run picks which to attempt. `[x]` is the run's
+claim; the anchor's output is the evidence, so a line moves to `[x]` only after that output
+showed it. Never a numbered list - ordered steps are a plan, and a plan belongs in a graph.
+
+- [x] `packages/core` on current versions with a green anchor
+- [x] `packages/cli` on current versions with a green anchor
+- [ ] `packages/api` on current versions with a green anchor
+- [ ] `pnpm audit --audit-level=high` reports 0 findings across the workspace
 
 ## Cadence
 
@@ -126,7 +144,9 @@ argument into .goals/weekly-dep-upgrade.decisions.md; never drop a load-bearing 
 never edit Intent, Boundary or Anchor. If one of those turns out to be wrong, stop and
 write a row under `## Challenges from the run` in that same file naming the term, what you
 hit, and what would settle it - then say you stopped for that reason.
-State which turn you are on at the start of each turn.
+At the start of each turn, state which turn you are on,
+which `## Acceptance` lines this turn is for, and what output would prove them,
+before changing anything.
 Rewrite the Carry-over section before you finish - State gets where the work stands,
 Lessons gets at most 3 causal findings, Next gets the single objective for the following
 round, and delete what is no longer true.

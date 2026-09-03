@@ -254,11 +254,40 @@
 
 ---
 
-## 七、刻意还没做
+## 七、本次已落地(v1.3.0)
+
+第三节"缺的"六条,业主 2026-09-04 全部批准,全部已做:
+
+1. **`## Acceptance`** —— 只在带 `## Cadence` 的目标上要求(与 `## Carry-over` 同一条
+   判据线,不引入新概念)。无序、每行带 `[ ]`/`[x]` 状态;**编号列表直接拒绝**
+   (`ACCEPTANCE_ORDERED`),因为那就是 plan。与台账的边界写死在
+   `references/document-system.md` 的专门一节里。
+   每轮的验收(sprint contract)折进了 goal 文本原有的"报轮次"那条从句:开工前先说这一轮
+   针对哪几行 Acceptance、什么输出能证明它们。
+2. **anchor 必须端到端** —— 第 2 问加了要求,`anti-patterns.md` 加了专节。
+3. **context anxiety** 进 refusal 表 + 失效对照表 + `anti-patterns.md` 专节,并写明:
+   如果模型不再有这个毛病,那两个恢复 hook 就是"防一个已被修掉的缺陷",该删。
+4. **anchor 时长由制品声明** —— `## Anchor` 里写 `budget: N minutes`;两处不一致已统一;
+   并且发现了一个**此前没被说明的耦合**:`hooks.json` 的 Stop timeout(200s)是所有预算
+   的上限,现在 `HOOK_TIMEOUT_SECONDS` 单点声明、有测试钉住它与 manifest 一致,超出上限
+   的预算报 advisory。
+5. **`STATE_MAX` 降级** —— 为此给 `Finding` 加了 `severity`。判据:**error = 制品按字面
+   做不成事;advisory = 这个 skill 对它能做多好的判断。**只有 error 影响退出码。
+   `LESSONS_MAX` 留在 error(它有 Reflexion 的来源),`STATE_MAX` 转 advisory(它没有)。
+   这个不对称本身也是一个判断,记在这里。
+6. **A2A 的两个状态** —— `input-required` 与 `rejected` 进 delegation 契约
+   (`WORKER_OUTCOMES_UNDECLARED`),并写明**沉默等于 input-required,永远不等于
+   completed**。
+
+## 八、刻意还没做
 
 - **74 道 eval 仍然只有题目没有成绩,连执行器都没有。**这是唯一还没有任何证据的一半:
   所有依赖"我照着做"的东西 —— 访谈顺序、9 条 refusal、means 标签、真教训 vs 事件、
   挑战条款而不是改条款、不在粘贴的 goal 行上激活 —— 全部零测量。
 - **一次真实运行也没跑过。**这台机器上真实 `.goals/` 制品为零,hook 从未安装
   (`doctor: hooks=missing`)。
-- 上面第三节"缺的"里的 6 条,一条都还没做。
+- 第三节"缺的"第 5 条(`init.sh` 一类"怎么把项目跑起来")仍未做:对熟悉的仓库无所谓,
+  优先级低于前四条。
+- 第三节"冲突 3"仍未裁决:我们的两个恢复 hook 走的是 context reset 那一路,而 Anthropic
+  在更强的模型上**把 reset 整个删掉了**。这两个 hook 可能是在防一个已经不存在的缺陷。
+  判据已写进 `anti-patterns.md`,但没有实测。

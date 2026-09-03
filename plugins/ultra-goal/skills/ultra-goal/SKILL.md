@@ -4,7 +4,7 @@ description: "Turn \"make an agent keep doing this\" into a goal a host will hol
 license: MIT
 metadata:
   author: rocky2431
-  version: "1.2.1"
+  version: "1.3.0"
 ---
 
 # UltraGoal
@@ -151,9 +151,25 @@ lost, read it and resume from the first unanswered question instead of starting 
    cannot be argued with: a test exit code, a build result, a query count, an on-chain
    receipt. A dashboard, a self-report, or another agent's opinion is not an anchor.
    **No anchor, no artifact** — say so plainly and go back to this question.
+   **And it has to cross the whole path.** A unit suite exercises the code, not the
+   product, so it can be green while the thing does not start — the failure Anthropic
+   names as an agent that "would fail to recognize that the feature didn't work end to
+   end", with unit-tests-only listed as the anti-pattern. Where a build is not enough — a
+   UI, an API contract, a payment path — the anchor drives the running thing. Ask how long
+   it takes, too, and write `budget: N minutes` under `## Anchor`: the gate's default is
+   its own guess, and an anchor that overruns is reported *unknown*, never failed.
 3. **Stop condition** — when does it stop? Express it with the anchor plus a ceiling
    (`0 high-severity advisories, or 6 turns`). The owner defines "good enough"; the moment
    the agent decides that for itself, the loop optimizes its own comfort.
+   **If it will be started more than once, enumerate it.** One sentence plus one anchor
+   answers *is the whole thing done*; it cannot answer *which parts are*, and that second
+   granularity is where a long run declares victory early. So a goal with a `## Cadence`
+   also gets `## Acceptance`: one unordered line per requirement, each carrying the state
+   the run claims for it. `[x]` is a claim; the anchor's output is the evidence.
+   **Unordered, never numbered** — ordered steps are an author-time decomposition, which
+   is a plan, which is a graph. See
+   [references/document-system.md](references/document-system.md) for where that line
+   sits, because a list of requirements is the thing most easily mistaken for a ledger.
 4. **Means** — what do you believe it takes to get there, and **which of those would you
    give up if it turned out not to serve the intent?** Label each one `[load-bearing]` or
    `[droppable]`. This is the question that decides how much latitude the run actually has:
@@ -242,6 +258,8 @@ Name the refusal, name the cheap alternative, and go back to the relevant questi
 | One optimized metric, alone | Optimized hard enough, it stops measuring what it once did | Pair it with a counter-metric that catches the cheap way to win |
 | Nodes added for sophistication | Every extra agent is another failure point and 3-10x the tokens | Ship the loop; promote to a graph when it provably breaks |
 | **False consensus** — two agents both say "looks fine" | That is one opinion reported twice, and a loop cannot tell it from verification | A critic that audits the *review*, sorting each point into agreement / evidence-backed disagreement / concern-based disagreement |
+| **Wrapping up because the context feels full** | Named *context anxiety*: a model begins closing out as it nears what it *believes* is its limit, so the run ends on a feeling rather than on the anchor. Compaction does not fix it — continuity is preserved, the sense of pressure is not | The gate is the mechanical answer: it refuses the stop while the anchor is red. State the turn out loud, and treat "running low" as a reason to write carry-over, never as a reason to declare done |
+| **An anchor that only tests the code** | A unit suite is green when the code compiles and the product is still broken; this is the single most common way a loop finishes proud and wrong | Make the anchor drive the running thing — build plus start plus one real interaction |
 | **A verdict with no receipt** — "tests pass", "the anchor is green" | The log the gate writes is the evidence; a sentence is a claim, and after a compaction the run cannot tell its own claims from its evidence either | Report the turn and the exit code seen, and let `--audit` compare them |
 | **The reviewer gets the author's argument** | Handed an explanation of why the work is right, a reviewer reviews the explanation; this is context contagion, and it survives changing vendors | Give the reviewer the frozen artifact, the criteria, and the anchor's output — nothing about the author's confidence |
 | **Reviewers split by domain** — one per concern, reports merged | Nobody audits either report, and the orchestrator has no independent evidence to arbitrate; measured as unreliable | Domains become one reviewer's checklist; add a critic instead of a second reviewer |
@@ -285,9 +303,11 @@ designer: the terms were already agreed, so do not reopen them as an interview. 
 labelled droppable turns out not to serve the intent, drop it and write the argument into
 <slug>.decisions.md; never drop a load-bearing one, and never edit Intent, Boundary or
 Anchor - if one of those is wrong, stop and write a row under `## Challenges from the run`
-naming the term, what you hit, and what would settle it. State which turn you are on at the
-start of each turn. Rewrite the Carry-over section before you finish, including the single
-objective under `### Next`. Stop after <N> turns even if unmet, and say so.
+naming the term, what you hit, and what would settle it. At the start of each turn, state
+which turn you are on, which `## Acceptance` lines this turn is for, and what output would
+prove them - before changing anything. Rewrite the Carry-over section before you finish,
+including the single objective under `### Next`. Stop after <N> turns even if unmet, and
+say so.
 ```
 
 Nine clauses, each closing one hole:
@@ -301,7 +321,7 @@ Nine clauses, each closing one hole:
 | no conclusion from documents alone | inference beyond the data |
 | the run is the run, not the designer | this Skill re-activating inside its own output and interviewing nobody |
 | droppable means droppable; a wrong term gets challenged, not edited | silent scope drift, stopping at every surprise, and an objection that dies in the session |
-| state the turn at the start of each turn | losing count of the ceiling |
+| the turn, its acceptance lines, and their evidence stated up front | losing count of the ceiling, and a turn whose "done" was decided after the work |
 | rewrite carry-over, `### Next` included | the run never learning, and never re-aiming |
 
 The turn clause matters more than it looks. A host may hand the model a live iteration count
@@ -325,7 +345,8 @@ fail:
 | North Star | `## Intent` | **frozen** — the run may never edit it |
 | Scope / confidence / inference limits | `## Boundary` | frozen |
 | What may be given up, and what may not | `## Means` | labels frozen; dropping a droppable one costs a `decisions.md` row |
-| Mechanical gate | `## Anchor` | executed, exit code only |
+| Mechanical gate | `## Anchor` | executed, exit code only, on the artifact's own budget |
+| The stop condition, enumerated | `## Acceptance` | required once there is a cadence; unordered, each line's state a claim the anchor settles |
 | Adversarial review — reviewer | `## Verification` | fresh context, verdict advisory |
 | Adversarial review — critic | `## Verification` | audits the review, not the artifact |
 | Reflection | `### Lessons` | writes the next turn's input |
@@ -344,6 +365,7 @@ Checked against the four ways a single loop fails, plus the way a graph of loops
 | Blindness upward — the loop cannot question its target | `## Intent` is frozen; question 9 sends target-level divergence back to the owner |
 | Conflict — independent loops undermine each other | one operating loop per artifact, so there is no collision surface |
 | Measurement decay — nobody watches the watcher | the anchor runs for real every turn, and reports *unknown* when it cannot |
+| **Context anxiety — the run closes out on a feeling** | the gate refuses the stop while the anchor is red, so ending the turn early is not available; `## Acceptance` makes what is left explicit rather than a memory |
 | Circularity — everything confirms everything, nothing touches reality | the anchor is the one node whose verdict passes through no model at all |
 
 ## Compile one artifact
@@ -354,7 +376,7 @@ whichever agent a teammate runs, so they do not go inside any one tool's private
 
 | Answer | Artifact | Template |
 |---|---|---|
-| Loop | `<slug>.goal.md` — objective, boundary, stop condition, anchor, verifier, and `## Handoff` holding the goal line to paste; add `## Cadence` + `## Carry-over` if it will be started more than once | [assets/goal-package.md](assets/goal-package.md) |
+| Loop | `<slug>.goal.md` — objective, boundary, stop condition, anchor, verifier, and `## Handoff` holding the goal line to paste; add `## Cadence` + `## Acceptance` + `## Carry-over` if it will be started more than once | [assets/goal-package.md](assets/goal-package.md) |
 | Graph, one vendor **(requires a workflow runtime)** | `<slug>.workflow.js` — topology in code, `meta` first and a pure literal, anchor on the top line as `` // anchor: `<command>` `` | [assets/workflow-script.js](assets/workflow-script.js) |
 | Graph, several vendors | `<slug>.delegation.md` — one adversarial-review triad: reviewer, critic, convergence rule | [assets/delegation-package.md](assets/delegation-package.md) |
 | Always | `<slug>.decisions.md` — Decision / Rejected / Why, three columns | [assets/decisions-record.md](assets/decisions-record.md) |

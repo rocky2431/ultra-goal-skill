@@ -30,11 +30,18 @@ INJECT_ORDER = (
     "boundary",
     "anchor",
     "stop condition",
+    # What is left, before why it is left: `## Acceptance` is the only section
+    # that answers "which parts are done" without the run having to remember.
+    # It went missing from this list once, because the section was added to the
+    # template and the injector was not updated - which is what
+    # test_every_goal_section_is_either_injected_or_deliberately_skipped is for.
+    "acceptance",
     "means",
     "carry-over",
     "verification",
     "cadence",
 )
+# `## Handoff` holds the command that starts the run, and the run has started.
 SKIP = ("handoff",)
 
 

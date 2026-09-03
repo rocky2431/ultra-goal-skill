@@ -36,6 +36,8 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from goal_hooks import (  # noqa: E402
+    ANCHOR_BUDGET_CEILING,
+    DEFAULT_ANCHOR_BUDGET,
     ActiveGoal,
     append_event,
     frozen_digest,
@@ -45,7 +47,15 @@ from goal_hooks import (  # noqa: E402
 )
 
 
-ANCHOR_TIMEOUT_SECONDS = 180
+# How long to wait is the owner's call, not a constant in this file: an anchor
+# that legitimately takes four minutes was previously unknowable to the gate,
+# which is the same mistake as judging success by elapsed time. The artifact
+# declares it in `## Anchor` as e.g. `budget: 4 minutes`; the constant is only
+# the fallback, and the ceiling is what the host's own hook timeout allows.
+UNITS = {"second": 1, "minute": 60, "hour": 3600}
+BUDGET = re.compile(
+    rf"budget[^\n]*?(\d+)\s*({'|'.join(UNITS)})s?", re.I
+)
 # Used only when the artifact's stop condition names no ceiling. Deliberately
 # generous: guessing low is the failure mode that cuts off real work.
 DEFAULT_CEILING = 12
@@ -99,6 +109,21 @@ def _first_command(text: str) -> str | None:
     return inline.group(1).strip() if inline is not None else None
 
 
+def _budget(anchor_section: str) -> tuple[int, bool]:
+    """Seconds to allow the anchor, and whether the artifact declared it.
+
+    Clamped to what the host's hook timeout permits. Exceeding the budget is
+    still *unknown* and never *failed* - a clock cannot see whether work
+    landed, so raising this number changes what the gate can know, never what
+    it is allowed to claim.
+    """
+    match = BUDGET.search(anchor_section or "")
+    if match is None:
+        return min(DEFAULT_ANCHOR_BUDGET, ANCHOR_BUDGET_CEILING), False
+    seconds = int(match.group(1)) * UNITS[match.group(2).lower()]
+    return min(max(seconds, 1), ANCHOR_BUDGET_CEILING), True
+
+
 def _resolvable(command: str) -> bool:
     """Can this command's executable actually be found?
 
@@ -149,7 +174,9 @@ def _signature(outcome: str, exit_code: int | None, digest: str) -> str:
 def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
     spec = goal.goal_path.read_text(encoding="utf-8")
     found = sections(spec)
-    anchor = _first_command(found.get("anchor") or "")
+    anchor_section = found.get("anchor") or ""
+    anchor = _first_command(anchor_section)
+    budget, budget_declared = _budget(anchor_section)
     if not anchor:
         return _allow(
             f"{goal.slug}: no runnable anchor in `## Anchor`, so nothing can be "
@@ -241,7 +268,7 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
             cwd=str(goal.goals_dir.parent),
             capture_output=True,
             text=True,
-            timeout=ANCHOR_TIMEOUT_SECONDS,
+            timeout=budget,
         )
         exit_code: int | None = completed.returncode
         output = (completed.stdout + completed.stderr).strip()
@@ -270,12 +297,21 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
             "output_digest": output_digest,
             "signature": signature,
             "spec_digest": digest,
+            "budget_seconds": budget,
+            "budget_source": "declared" if budget_declared else "default",
             "tail": output.splitlines()[-1][:200] if output else "",
         },
     )
 
     if outcome == "unknown":
-        detail = "timed out" if exit_code is None else f"exit {exit_code}"
+        if exit_code is None:
+            detail = (
+                f"ran past its {budget}s budget"
+                + ("" if budget_declared else ", which is this gate's default - declare "
+                   "one in `## Anchor` as `budget: N minutes` if the anchor needs longer")
+            )
+        else:
+            detail = f"exit {exit_code}"
         return _allow(
             f"{goal.slug}: the anchor could not run ({detail}), so whether the work "
             "landed is unknown - not failed. Stopping. Say it is unverified rather "

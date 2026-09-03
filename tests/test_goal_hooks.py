@@ -669,3 +669,39 @@ class InjectionBudgetTests(Harness):
 
     def test_the_injection_tells_the_run_it_is_the_run(self) -> None:
         self.assertIn("You are the run, not its designer", self.context())
+
+    def test_every_goal_section_is_either_injected_or_deliberately_skipped(self) -> None:
+        """Adding a section must not silently bypass recovery.
+
+        `## Acceptance` was added to the template and left out of INJECT_ORDER,
+        so a resuming session could not see what was left - the one thing that
+        section exists to answer. This test is the reason that cannot recur:
+        every `##` heading the shipped template carries has to be named in
+        INJECT_ORDER or in SKIP, on purpose, one or the other.
+        """
+        import goal_session_start as ss
+
+        template = (
+            SCRIPTS.parent / "assets" / "goal-package.md"
+        ).read_text(encoding="utf-8")
+        headings = [
+            line[3:].strip().lower()
+            for line in template.splitlines()
+            if line.startswith("## ")
+        ]
+        accounted = set(ss.INJECT_ORDER) | set(ss.SKIP)
+        unaccounted = [h for h in headings if h not in accounted]
+        self.assertEqual(
+            [], unaccounted,
+            "name these in INJECT_ORDER or SKIP: a section in neither is invisible "
+            "to a resuming session",
+        )
+
+    def test_acceptance_reaches_a_resuming_session(self) -> None:
+        goal = GOAL.replace(
+            "## Carry-over",
+            "## Acceptance\n\n- [x] one done\n- [ ] two left\n\n## Carry-over",
+        )
+        context = self.context(goal)
+        self.assertIn("## Acceptance", context)
+        self.assertIn("- [ ] two left", context)

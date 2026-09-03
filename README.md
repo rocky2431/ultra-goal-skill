@@ -95,6 +95,16 @@ without `--status`.
    | How it became true | `git log -p <slug>.goal.md` — the diffs *are* the evolution |
    | What each iteration did | the commit message — one line per iteration |
 
+   A goal with a cadence also gets **`## Acceptance`**: one unordered line per
+   requirement, each carrying the state the run claims for it. One sentence plus one anchor
+   answers *is the whole thing done* and cannot answer *which parts are* — and the second
+   question is where a long run declares victory on the strength of the part it finished.
+   Unordered, never numbered: ordered steps are a plan, a plan is an author-time
+   decomposition, and that is a graph. `plan.md` and a dependency-ordered `tasks.json` stay
+   refused; see
+   [references/document-system.md](plugins/ultra-goal/skills/ultra-goal/references/document-system.md)
+   for the line between them.
+
    Because the history is in Git, the document never has to hold it. Carry-over has three
    parts with different budgets: `### State` (where the work stands, at most 8),
    `### Lessons` (**why** something failed and what to do instead, at most 3), and
@@ -239,6 +249,23 @@ and the model, not to a template engine.
 
 Its silence is not evidence that the design is right.
 
+## Two severities, because two different things were being reported alike
+
+An artifact missing its anchor is broken. An artifact carrying nine `### State` entries
+against a budget this Skill *invented* is worth a sentence — and failing over that number
+would be the Skill enforcing its own guess as if it were a fact. So findings carry a
+severity, and only errors move the exit code:
+
+- **error** — the artifact cannot do its job as written (no anchor, no handoff, a reviewer
+  with no critic, an acceptance line with no state);
+- **advisory** — this Skill's judgement about how well it will work (`STATE_UNPRUNED`,
+  whose budget has no cited basis; `ANCHOR_BUDGET_UNREACHABLE`, where the number is simply
+  above what the host's hook timeout permits).
+
+`LESSONS_UNPRUNED` stays an error because it has a basis: Reflexion bounds its reflection
+memory at 1-3 entries, since entries the model must reason over compete with the work.
+`STATE_MAX = 8` has no such source, and now says so.
+
 ## Claims, measurements, and the audit
 
 The run authors the artifact, its carried state, its commit messages and its reviews. All of
@@ -357,7 +384,8 @@ designed with its owner in the room has no validation set.
 python3 -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-187 tests: the validator's rules, the status projection, the claim-versus-measurement audit
+215 tests: the validator's rules at two severities, the status projection, the
+claim-versus-measurement audit
 against a real Git repository, the gate's eight outcomes, the package surface, version
 consistency across three files, every relative link in `SKILL.md` resolving, and the shipped
 templates passing the shipped validator. Three are safety tests — that an anchor is never
