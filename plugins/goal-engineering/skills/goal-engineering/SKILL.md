@@ -1,10 +1,10 @@
 ---
 name: goal-engineering
-description: "Turn \"make an agent keep doing this\" into a goal the host will actually hold to: interview for intent, anchor, quantified stop condition, boundary, and an independent verifier, refuse the shapes that fail, then emit the runnable artifact — a goal line to paste, a workflow script, or a cross-vendor delegation package. Use when the deliverable is runnable, not a design note."
+description: "Turn \"make an agent keep doing this\" into a goal a host will hold to: interview for intent, anchor, stop condition, boundary, droppable means and an adversarial verifier, refuse the shapes that fail, then emit the artifact - a goal line to paste, a workflow script, or a cross-vendor delegation package. Runnable, not a design note. Not for carrying out a goal already running."
 license: MIT
 metadata:
   author: rocky2431
-  version: "1.1.0"
+  version: "1.1.1"
 ---
 
 # Goal Engineering
@@ -50,10 +50,35 @@ wrong either wastes an interview or silently overwrites a loop that is already r
 | **Modify** | "change the stop condition", "it keeps doing X", or the request names an existing slug | Jump to *Modify an existing loop* |
 | **Inspect** | "what loops do we have", "is it still running", "why did it stop" | Report status and change nothing |
 | **Not a loop** | a one-shot task, an ordinary code change, a question that wants an answer | Say so and do the work directly |
+| **Executing** | a pasted goal line, or a request from inside a run that is already underway | **Do not activate.** Do the work the goal asks for |
 
 Derive it from the request plus what is on disk rather than asking. Whenever the project's
 workflows directory is non-empty, **run the status command before the first question**: an
 existing artifact covering the same subject means the intent is Modify, not Create.
+
+### The one intent that is not a request for this Skill
+
+A pasted goal line is dense with this Skill's own vocabulary — intent, anchor, boundary,
+carry-over, turns, stop condition — because this Skill wrote it. That makes **executing a
+goal** the intent most likely to pull the Skill in wrongly, and the damage is specific:
+interviewing an owner who is not in the room, about a goal that was already agreed, while a
+run burns its turn ceiling on the conversation.
+
+Two signals, either of which is enough to stay out:
+
+- The request **is** a goal line — it opens with a host's goal command, or it reads as
+  instructions addressed to the agent rather than a request addressed to you.
+- `.goals/active` names an existing artifact and the request is a step of that work rather
+  than a change to its terms.
+
+The second signal is worth reading twice, because the same project state means opposite
+things depending on the request. "Make it stop after three turns" while a goal is active is
+**Modify**. "Upgrade the next package" while a goal is active is **Executing** — the run
+doing its job, and no business of this Skill's.
+
+When you are unsure, do the work rather than the interview. A missed activation costs one
+sentence offering to design the goal properly; a wrong activation costs a turn of the
+ceiling and replaces the run with a conversation.
 
 ## Interview protocol
 

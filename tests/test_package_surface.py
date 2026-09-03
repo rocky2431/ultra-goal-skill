@@ -746,5 +746,52 @@ class ZeroTrustTests(unittest.TestCase):
         )
 
 
+class ActivationScopeTests(unittest.TestCase):
+    """The intent most likely to pull this Skill in wrongly is a goal being run.
+
+    A pasted goal line is dense with the Skill's own vocabulary because the Skill
+    wrote it, so the exclusion has to be in the description - which is what the
+    host matches on - and not only in the body, which is read after the Skill has
+    already loaded.
+    """
+
+    def test_the_description_excludes_executing_a_running_goal(self) -> None:
+        front = skill_text().split("---")[1]
+        self.assertIn("Not for carrying out a goal already running", front)
+
+    def test_the_intent_table_has_the_executing_row(self) -> None:
+        skill = skill_text()
+        self.assertIn("| **Executing** |", skill)
+        self.assertIn("**Do not activate.** Do the work the goal asks for", skill)
+
+    def test_the_ambiguous_case_is_resolved_on_the_request_not_the_state(self) -> None:
+        skill = skill_text()
+        self.assertIn("### The one intent that is not a request for this Skill", skill)
+        # Same project state, opposite answers - so the tie-break has to be stated.
+        self.assertIn('"Make it stop after three turns" while a goal is active is', skill)
+        self.assertIn("**Executing** — the run", skill)
+        # And the asymmetry that decides which way to err.
+        self.assertIn("A missed activation costs one", skill)
+
+    def test_trigger_evals_cover_the_execution_collision_both_ways(self) -> None:
+        evals = json.loads(
+            (SKILL_ROOT / "evals" / "trigger-evals.json").read_text(encoding="utf-8")
+        )["evals"]
+        by_name = {case["name"]: case for case in evals}
+        pasted = by_name["negative_pasted_goal_line_is_execution_not_design"]
+        self.assertEqual([], pasted["expected_skills"])
+        self.assertIn("/goal ", pasted["prompt"])
+        self.assertEqual(
+            [], by_name["negative_in_run_work_request_with_a_goal_active"][
+                "expected_skills"
+            ]
+        )
+        # The mirror case must stay positive, or the guard would silence Modify too.
+        self.assertEqual(
+            ["goal-engineering"],
+            by_name["positive_modify_while_a_goal_is_active"]["expected_skills"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

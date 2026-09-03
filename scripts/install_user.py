@@ -15,7 +15,7 @@ import tempfile
 from typing import Any
 
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 PACKAGE = "goal-engineering"
 MARKER_NAME = ".goal-engineering-managed.json"
 REPO_ROOT = Path(__file__).resolve().parents[1]

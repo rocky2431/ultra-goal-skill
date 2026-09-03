@@ -246,6 +246,32 @@
         "goal-engineering"
       ],
       "note": "Same interview and same artifact; only the goal command's prefix changes. Kimi has /goal, so no wrapper is needed."
+    },
+    {
+      "id": 22,
+      "name": "negative_pasted_goal_line_is_execution_not_design",
+      "kind": "negative",
+      "prompt": "/goal Read the Carry-over section of .goals/weekly-dep-upgrade.goal.md first. Then upgrade dependencies until `pnpm audit --audit-level=high` reports 0 findings, touching only package.json and the lockfile. You have not met this goal until you have actually run `pnpm test -- --run && pnpm build` in this session and seen it exit 0. State which turn you are on at the start of each turn. Stop after 6 turns even if unmet, and say so.",
+      "expected_skills": [],
+      "why": "This is the artifact's own handoff line, so it is dense with this Skill's vocabulary - which is exactly why it is the likeliest wrong activation. The owner is starting a run, not asking for one to be designed. Activating here interviews an absent owner about terms already agreed, and spends a turn of the ceiling doing it."
+    },
+    {
+      "id": 23,
+      "name": "negative_in_run_work_request_with_a_goal_active",
+      "kind": "negative",
+      "prompt": "Carry on with the next package in the list and rewrite the Carry-over section before you finish.",
+      "expected_skills": [],
+      "why": "A run doing its job. The same project state (.goals/active present) means Modify for a request that changes the goal's terms and Executing for a request that is a step of the work - the request decides, not the state."
+    },
+    {
+      "id": 24,
+      "name": "positive_modify_while_a_goal_is_active",
+      "kind": "positive",
+      "prompt": "The weekly upgrade goal is running but six turns is too many - make it stop after three, and record why.",
+      "expected_skills": [
+        "goal-engineering"
+      ],
+      "why": "The mirror of the case above, and the reason the distinction has to be drawn on the request rather than on whether a goal is active: this one changes the terms, so it is Modify."
     }
   ],
   "standalone_assumption": "This Skill must behave correctly when no neighbouring Skill is installed. `expected_skills` therefore names only this Skill; `optional_skills` records where a neighbour would take over if the host happened to have it."
