@@ -39,7 +39,14 @@ HOOK_EVENTS = {
     "PreCompact": "goal_pre_compact.py",
 }
 HOOK_MATCHERS = {"SessionStart": "^(startup|resume|clear|compact)$"}
-HOOK_TIMEOUTS = {"Stop": 200}
+# 600 is the hooks reference's documented default for a command hook; 200 was
+# a number picked in isolation and it capped every anchor under four minutes -
+# a 540s anchor would be permanently `unknown`, held by a limit nobody chose.
+HOOK_TIMEOUTS = {"Stop": 600}
+# The Stop registration names its host so the gate spends the right
+# continuation budget; this installer only ever writes Claude Code's
+# settings.json, so the tag is fixed.
+HOOK_ARGS = {"Stop": "--host claude"}
 HOOK_HOSTS = ("claude",)
 # Matched against a normalised command string: a registration written on
 # Windows carries backslashes, and comparing them raw made every identity check
@@ -190,7 +197,9 @@ def _hook_command(home: Path, host: str, script: str) -> str:
     fails silently - the exact outcome this Skill refuses elsewhere.
     """
     target = _skill_destination(home, host) / "scripts" / script
-    return f'"{sys.executable}" "{target}"'
+    args = HOOK_ARGS.get(script, "")
+    suffix = f" {args}" if args else ""
+    return f'"{sys.executable}" "{target}"{suffix}'
 
 
 def _load_settings(path: Path) -> dict[str, Any]:

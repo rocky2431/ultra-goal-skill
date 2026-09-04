@@ -1271,6 +1271,72 @@ class CompactNoticeTests(Harness):
         self.assertNotIn("just compacted", self.context("resume"))
 
 
+class PromptSubmitTests(Harness):
+    """Kimi's recovery channel: a pointer, not a body.
+
+    Kimi's SessionStart output is fire-and-forget (its reference: only
+    PreToolUse, Stop and UserPromptSubmit affect the main flow), so the
+    spec injection other hosts get on a session boundary cannot be delivered
+    there. The documented alternative is UserPromptSubmit, whose returned
+    text is appended to the context - one fixed-size line per prompt.
+    """
+
+    def run_script(self, payload: dict) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_prompt_submit.py")],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    def test_an_active_goal_gets_one_plain_line(self) -> None:
+        self.make_loop()
+        result = self.run_script(
+            {"hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        # Plain text, not JSON: that is what Kimi documents for this event.
+        self.assertIn("An active goal is running", result.stdout)
+        self.assertIn("demo.goal.md", result.stdout)
+        self.assertIn("You are the run, not its designer", result.stdout)
+        self.assertEqual(1, len(result.stdout.strip().splitlines()))
+
+    def test_without_a_loop_it_is_silent(self) -> None:
+        result = self.run_script(
+            {"hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
+        )
+        self.assertEqual(0, result.returncode)
+        self.assertEqual("", result.stdout.strip())
+
+    def test_the_line_is_the_same_size_whatever_the_artifact(self) -> None:
+        """The rule a hook inlines by: only what it alone possesses. This
+        hook possesses one fact - that a goal is active - so the payload
+        cannot grow with the artifact."""
+        self.make_loop()
+        first = self.run_script(
+            {"hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
+        )
+        big = GOAL.replace("## Carry-over", "## Acceptance\n\n"
+                           + "\n".join(f"- [ ] line {i}" for i in range(80))
+                           + "\n\n## Carry-over")
+        self.make_loop(goal=big)
+        second = self.run_script(
+            {"hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
+        )
+        self.assertEqual(len(first.stdout), len(second.stdout))
+
+    def test_garbage_stdin_exits_zero(self) -> None:
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_prompt_submit.py")],
+            input="}{ not json",
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+
+
 class UnknownSectionTests(Harness):
     """An artifact may grow a heading INJECT_ORDER has never heard of.
 

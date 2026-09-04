@@ -1,0 +1,44 @@
+{
+  "description": "Codex's hook set. The .codex-plugin manifest's hooks field replaces the default hooks/hooks.json location, so this file is the whole registration: Stop (tagged for the gate's per-host continuation budget), SessionStart and PreCompact. Codex documents no PostToolUseFailure event, so the delegation-failure recording this plugin does elsewhere is absent here and the run's report is the only record of a degraded round.",
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/skills/ultra-goal/scripts/goal_stop.py\" --host codex || python \"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/skills/ultra-goal/scripts/goal_stop.py\" --host codex",
+            "timeout": 600,
+            "statusMessage": "Checking the loop's anchor"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "^(startup|resume|clear|compact|fork)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/skills/ultra-goal/scripts/goal_session_start.py\" || python \"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/skills/ultra-goal/scripts/goal_session_start.py\"",
+            "timeout": 10,
+            "statusMessage": "Restoring the active loop"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/skills/ultra-goal/scripts/goal_pre_compact.py\" || python \"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/skills/ultra-goal/scripts/goal_pre_compact.py\"",
+            "timeout": 10,
+            "statusMessage": "Recording the loop's carried state"
+          }
+        ]
+      }
+    ]
+  }
+}

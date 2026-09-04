@@ -653,8 +653,8 @@ class HygieneTests(unittest.TestCase):
         scripts = SKILL_ROOT / "scripts"
         hook_scripts = sorted(p.name for p in scripts.glob("goal_*.py"))
         self.assertEqual(
-            ["goal_hooks.py", "goal_pre_compact.py", "goal_session_start.py",
-             "goal_stop.py", "goal_tool_failure.py"],
+            ["goal_hooks.py", "goal_pre_compact.py", "goal_prompt_submit.py",
+             "goal_session_start.py", "goal_stop.py", "goal_tool_failure.py"],
             hook_scripts,
         )
         for name in hook_scripts:
@@ -666,8 +666,10 @@ class HygieneTests(unittest.TestCase):
         manifest = json.loads(
             (PLUGIN_ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8")
         )
+        # The shared file is auto-discovered by Claude Code and zCode alike,
+        # so it carries only the events both document.
         self.assertEqual(
-            ["Stop", "SessionStart", "PreCompact", "PostToolUseFailure"],
+            ["Stop", "SessionStart", "PostToolUseFailure"],
             list(manifest["hooks"]),
         )
         # PostToolUseFailure earns its place: it fires only on a *failed* tool
@@ -1037,15 +1039,19 @@ class HostManifestTests(unittest.TestCase):
             "plugins/ultra-goal/kimi.plugin.json")["skills"])
 
     def test_kimi_hooks_name_the_same_events_as_the_claude_manifest(self) -> None:
+        """Rewritten for the per-host contract: hosts no longer register
+        identical event sets - each registers what it documents. What must
+        still hold is that Kimi's set contains the shared file's core, so the
+        two files cannot drift apart silently."""
         hooks = self.load("plugins/ultra-goal/kimi.plugin.json")["hooks"]
-        self.assertEqual(
-            ["Stop", "SessionStart", "PreCompact", "PostToolUseFailure"],
-            [h["event"] for h in hooks],
-        )
         manifest = json.loads(
             (PLUGIN_ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8")
         )
-        self.assertEqual(list(manifest["hooks"]), [h["event"] for h in hooks])
+        self.assertLessEqual(
+            set(manifest["hooks"]), {h["event"] for h in hooks},
+            "the shared core must reach every host that documents it",
+        )
+
 
     def test_claude_code_hooks_use_the_variable_claude_code_substitutes(self) -> None:
         """`$PLUGIN_ROOT` is not the name Claude Code expands, so a plugin
@@ -1055,6 +1061,158 @@ class HostManifestTests(unittest.TestCase):
         self.assertNotIn('"$PLUGIN_ROOT/', text)
         self.assertIn("%CLAUDE_PLUGIN_ROOT%", text)
 
+
+class PerHostHookRegistrationTests(unittest.TestCase):
+    """Every manifest registers only events its host documents.
+
+    Verified 2026-09-04 against each vendor's reference, not against a working
+    example:
+
+    - Claude Code (code.claude.com/docs/en/hooks) documents Stop, SessionStart,
+      PreCompact and PostToolUseFailure, and its manifest `hooks` field holds
+      ADDITIONAL files on top of the auto-discovered hooks/hooks.json ("The
+      standard hooks.json is loaded automatically, so manifest.hooks should
+      only reference additional hook files" - read from the 2.1.260 binary).
+    - zCode (zcode.z.ai/en/docs/hooks) documents exactly seven events:
+      SessionStart, UserPromptSubmit, PreToolUse, PermissionRequest,
+      PostToolUse, PostToolUseFailure, Stop - no PreCompact - and discovers
+      hooks/hooks.json automatically regardless of the manifest.
+    - Codex (learn.chatgpt.com/docs/hooks) documents twelve events including
+      SessionStart, PreCompact and Stop - but no PostToolUseFailure - and its
+      manifest `hooks` field REPLACES the default file location.
+    - Kimi (moonshotai.github.io/kimi-code/en/customization/hooks) documents
+      all four of our events plus UserPromptSubmit, and only PreToolUse, Stop
+      and UserPromptSubmit can affect the flow - SessionStart output is
+      fire-and-forget there, which is why the prompt-submit hook exists.
+
+    So the shared hooks/hooks.json - which Claude Code and zCode both
+    auto-discover - may only carry events BOTH document: Stop, SessionStart,
+    PostToolUseFailure.
+    """
+
+    DOCUMENTED = {
+        "claude": {
+            "SessionStart", "UserPromptSubmit", "PreToolUse", "PermissionRequest",
+            "PostToolUse", "PostToolUseFailure", "Stop", "PreCompact",
+        },
+        "zcode": {
+            "SessionStart", "UserPromptSubmit", "PreToolUse", "PermissionRequest",
+            "PostToolUse", "PostToolUseFailure", "Stop",
+        },
+        "codex": {
+            "PreToolUse", "PermissionRequest", "PostToolUse", "PreCompact",
+            "PostCompact", "UserPromptSubmit", "SubagentStop", "Stop", "Interrupt",
+            "SessionStart", "SubagentStart", "SessionEnd",
+        },
+        "kimi": {
+            "UserPromptSubmit", "PreToolUse", "Stop", "PostToolUse",
+            "PostToolUseFailure", "PermissionRequest", "SessionStart", "SessionEnd",
+            "SubagentStart", "SubagentStop", "Interrupt", "PreCompact",
+            "PostCompact", "Notification",
+        },
+    }
+
+    def load(self, relative: str) -> dict:
+        return json.loads((REPO_ROOT / relative).read_text(encoding="utf-8"))
+
+    def hook_file(self, relative: str) -> dict:
+        return json.loads((PLUGIN_ROOT / relative).read_text(encoding="utf-8"))
+
+    def events_of(self, manifest: dict) -> set[str]:
+        if "hooks" in manifest and isinstance(manifest["hooks"], list):
+            return {h["event"] for h in manifest["hooks"]}  # Kimi's flat array
+        return set(manifest["hooks"])
+
+    def test_the_shared_hook_file_carries_only_events_claude_and_zcode_document(self):
+        shared = self.hook_file("hooks/hooks.json")
+        events = self.events_of(shared)
+        self.assertEqual(
+            {"Stop", "SessionStart", "PostToolUseFailure"}, events,
+            "Claude Code and zCode both auto-discover this file; an event either "
+            "does not document is an error or a dead gate",
+        )
+        for host in ("claude", "zcode"):
+            self.assertLessEqual(events, self.DOCUMENTED[host], host)
+
+    def test_precompact_lives_in_claude_and_codex_files_only(self):
+        """zCode has no PreCompact event at all, so it cannot be in the shared
+        file; Claude Code reaches it through its manifest's ADDITIONAL hook
+        files, Codex through its manifest's replaced hook list."""
+        claude_extra = self.hook_file("hooks/claude.json")
+        self.assertEqual({"PreCompact"}, self.events_of(claude_extra))
+        self.assertLessEqual(
+            self.events_of(claude_extra), self.DOCUMENTED["claude"]
+        )
+        codex = self.hook_file("hooks/codex.json")
+        self.assertEqual(
+            {"Stop", "SessionStart", "PreCompact"}, self.events_of(codex)
+        )
+        self.assertLessEqual(self.events_of(codex), self.DOCUMENTED["codex"])
+
+    def test_codex_manifest_replaces_discovery_with_its_own_file(self):
+        """Codex's manifest hooks field overrides the default location, so it
+        must name the file it wants - otherwise it would auto-discover the
+        shared file and inherit PostToolUseFailure, which it does not
+        document."""
+        manifest = json.loads(
+            (PLUGIN_ROOT / ".codex-plugin" / "plugin.json").read_text("utf-8")
+        )
+        self.assertEqual(["./hooks/codex.json"], manifest["hooks"])
+
+    def test_claude_manifest_adds_its_extra_file_to_discovery(self):
+        """Claude Code's manifest hooks are ADDITIONAL files, so naming only
+        the PreCompact file is correct: the shared file is still
+        auto-discovered."""
+        manifest = json.loads(
+            (PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text("utf-8")
+        )
+        self.assertEqual(["./hooks/claude.json"], manifest["hooks"])
+
+    def test_kimi_registers_five_events_all_documented(self):
+        hooks = self.load("plugins/ultra-goal/kimi.plugin.json")["hooks"]
+        self.assertEqual(
+            {"Stop", "SessionStart", "PreCompact", "PostToolUseFailure",
+             "UserPromptSubmit"},
+            {h["event"] for h in hooks},
+        )
+        self.assertLessEqual(
+            {h["event"] for h in hooks}, self.DOCUMENTED["kimi"]
+        )
+
+    def test_the_shared_stop_entry_tags_zcode_through_its_documented_env_var(self):
+        """One file serves two hosts, so the Stop entry must tell the gate
+        which budget to spend. zCode documents ${ZCODE_PLUGIN_ROOT} for its
+        hook commands and Claude Code does not set it, so the expansion adds
+        `--host zcode` only under zCode; everywhere else the default host
+        (claude) applies."""
+        text = (PLUGIN_ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8")
+        self.assertIn("${ZCODE_PLUGIN_ROOT:+--host zcode}", text)
+
+    def test_codex_and_kimi_tag_their_own_stop_entries(self):
+        codex = (PLUGIN_ROOT / "hooks" / "codex.json").read_text(encoding="utf-8")
+        self.assertIn("--host codex", codex)
+        kimi = (PLUGIN_ROOT / "kimi.plugin.json").read_text(encoding="utf-8")
+        self.assertIn("--host kimi", kimi)
+
+    def test_kimi_stop_timeout_matches_the_gate_it_runs(self):
+        """200s would kill a hook whose anchor budget ceiling is 570s: every
+        long anchor permanently `unknown`, held by a limit nobody chose - the
+        clock-cap defect the shared manifest already fixed for itself."""
+        hooks = self.load("plugins/ultra-goal/kimi.plugin.json")["hooks"]
+        stop = next(h for h in hooks if h["event"] == "Stop")
+        self.assertEqual(600, stop["timeout"])
+
+    def test_the_prompt_submit_hook_is_kimi_only(self):
+        """Kimi's SessionStart output is fire-and-forget, so the documented
+        injection alternative is UserPromptSubmit. No other host needs it:
+        theirs inject from SessionStart."""
+        script = PLUGIN_ROOT / "skills" / "ultra-goal" / "scripts" / "goal_prompt_submit.py"
+        self.assertTrue(script.is_file())
+        for relative in ("hooks/hooks.json", "hooks/claude.json", "hooks/codex.json"):
+            text = (PLUGIN_ROOT / relative).read_text(encoding="utf-8")
+            self.assertNotIn("goal_prompt_submit", text, relative)
+        kimi = (PLUGIN_ROOT / "kimi.plugin.json").read_text(encoding="utf-8")
+        self.assertIn("goal_prompt_submit.py", kimi)
 
 class RolesByStageTests(unittest.TestCase):
     """Roles are settled per stage, and most stages are not a choice.
@@ -1594,8 +1752,26 @@ class AuditFixTests(unittest.TestCase):
         self.assertIn("status --porcelain", critic)
 
     def test_the_gate_table_counts_the_hooks_that_ship(self) -> None:
+        """Five hooks ship; which ones register is a per-host fact, because an
+        event a host does not document is an error or a dead gate. The union
+        of the three hook files plus Kimi's inline list is the full set."""
         skill = skill_text()
-        shipped = len(self._hooks())
-        self.assertEqual(4, shipped)
-        self.assertIn("four hooks ship with this Skill", skill)
+        events: set[str] = set()
+        for relative in ("hooks/hooks.json", "hooks/claude.json", "hooks/codex.json"):
+            events |= set(json.loads((PLUGIN_ROOT / relative).read_text("utf-8"))["hooks"])
+        events |= {
+            h["event"]
+            for h in json.loads(
+                (PLUGIN_ROOT / "kimi.plugin.json").read_text("utf-8")
+            )["hooks"]
+        }
+        self.assertEqual(
+            {"Stop", "SessionStart", "PreCompact", "PostToolUseFailure",
+             "UserPromptSubmit"},
+            events,
+        )
+        self.assertIn("five hooks ship with this Skill", skill)
         self.assertIn("| `PostToolUseFailure` |", skill)
+        self.assertIn("| `UserPromptSubmit` |", skill)
+        # And the table says which host each extra registration is for.
+        self.assertIn("Kimi only", skill)

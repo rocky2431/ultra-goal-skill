@@ -630,15 +630,32 @@ those boundaries is drawn where it is.
 
 ## The gate: what the hooks do, and what they cost
 
-On a host that exposes the events, four hooks ship with this Skill and register on install.
-They turn the anchor from a sentence in a prompt into a gate that actually runs.
+On a host that exposes the events, five hooks ship with this Skill and register on install.
+They turn the anchor from a sentence in a prompt into a gate that actually runs. Which of
+them register is a per-host fact, not a constant: **each manifest registers only events its
+host documents**, because an event a host does not support is either an error or silence,
+and silence here means a dead gate. zCode documents no `PreCompact` (its compaction
+recovery rides `SessionStart`'s compact source), Codex documents no `PostToolUseFailure`,
+and Kimi's `SessionStart` output is fire-and-forget — which is why the last row exists.
 
 | Hook | Does | Can it block? |
 |---|---|---|
-| `Stop` | Digests the frozen spec, runs the anchor, and re-states the mutable surface. Eight steps, seven of which let the turn end | **Yes, in exactly one case**: the anchor ran and was red |
+| `Stop` | Digests the frozen spec, runs the anchor, and re-states the mutable surface. Eight steps, seven of which let the turn end | **Yes, while the anchor is red** — up to the host's continuation budget |
 | `SessionStart` | Re-injects the frozen spec and the carried state after a restart or resume | No |
 | `PreCompact` | Records the carried state and the fact of the compaction into the event log | No |
 | `PostToolUseFailure` | Records `role_unavailable` when a delegated role's call fails, so a degraded round cannot read as a clean one | No |
+| `UserPromptSubmit` | Kimi only: a one-line pointer to the artifact and carry-over on every prompt, because that host's `SessionStart` cannot inject | No |
+
+**The loop is the continuation budget, and the budget is a per-host fact with a citation.**
+A host keeps a Stop-blocked turn alive only so many times in a row: Claude Code forces
+the turn to end after 8 consecutive blocks (`CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`), zCode after
+3, Kimi triggers a blocking Stop at most once per turn, and Codex documents no cap. The gate
+counts its own blocks in the event log and releases one *before* the host's cap, so the last
+word is its own reason rather than the host's force-end warning — the host cap is the
+backstop, not the budget. When the budget is spent the turn ends **loudly**: red anchor
+named, a `continuation_budget_spent` event written for `--audit`, and the commit subject
+carrying the gate's turn number. A run may therefore end a turn with a red anchor in
+exactly three ways — budget spent, not progressing, ceiling — and each one says so.
 
 **Three outcomes, not two.** An anchor that cannot run — command missing, not executable,
 timed out — is **unknown**, not failed. Folding unknown into either verdict is how a
@@ -647,8 +664,13 @@ and reports it as success or failure, two things it has no access to. Unknown le
 end and says the result is unverified.
 
 **Seven of the eight steps allow.** The gate refuses only when it is certain. Frozen spec
-changed, ceiling reached, run not progressing, anchor unrunnable, anchor green, no anchor at
-all, no active goal — all let the turn end and say why.
+changed, ceiling reached, run not progressing, continuation budget spent, anchor unrunnable,
+anchor green, no anchor at all, no active goal — all let the turn end and say why.
+
+**One anchor check is one turn.** A host turn that the gate keeps alive can hold several
+anchor checks; the gate's turn counter counts checks, so the commit subject cites the
+number from the gate's most recent message rather than a number the run counts itself.
+`--audit` joins claims to measurements on that number.
 
 **What it reminds you of is exactly what you may change.** Every turn that ends carries
 `additionalContext` naming `### Next`, `### Lessons`, `### State` and counting the
@@ -683,7 +705,7 @@ artifact that exists? Without one, nothing is read, nothing is written, no comma
 | No `.goals/` at all | One process start and one `stat` per registered hook |
 | `.goals/` with no `active` marker | Same |
 | `active` naming a missing artifact | Same, plus one line saying so |
-| A re-entered Stop (`stop_hook_active`) | Hard early exit — this is the guard against a gate that denies forever |
+| A re-entered Stop (`stop_hook_active`) | The anchor runs again and the block counts against the host's continuation budget — a continuation is a gated turn, not a reason to go quiet |
 | Anything raising an exception | Exit 0. A hook that cannot decide must let the host continue |
 | **Escape** | `rm .goals/active`, or `ULTRA_GOAL_HOOKS_DISABLED=1`. Neither needs the agent's cooperation |
 

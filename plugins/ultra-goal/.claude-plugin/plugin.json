@@ -20,5 +20,8 @@
   ],
   "commands": [
     "./commands/goal-run.md"
+  ],
+  "hooks": [
+    "./hooks/claude.json"
   ]
 }
