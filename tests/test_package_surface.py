@@ -1723,11 +1723,42 @@ class AuditFixTests(unittest.TestCase):
         """The reviewer used to be handed `git diff HEAD` - uncommitted work
         only - while the run commits once per turn, so at proposed completion
         the reviewer saw almost nothing and could honestly report 'no
-        findings', which the run then treated as coverage. Arming now records
-        the starting revision; the review reads the diff from there."""
+        findings', which the run then treated as coverage. Arming records the
+        starting revision - and Codex round-1 F4 made it write-once: the line
+        is guarded by `-s`, so re-running the arming command on an active run
+        cannot move the range to HEAD and shrink a whole change into an
+        empty diff."""
         command = (PLUGIN_ROOT / "commands" / "goal-run.md").read_text(encoding="utf-8")
-        self.assertIn("git rev-parse HEAD > .goals/$1.baseline", command)
+        self.assertIn("[ -s .goals/$ARGUMENTS.baseline ] ||", command)
+        self.assertIn("git rev-parse HEAD > .goals/$ARGUMENTS.baseline", command)
         self.assertIn("baseline", command)
+
+    def test_the_command_binds_the_slug_through_the_documented_placeholder(self) -> None:
+        """Codex round-1 F1: Kimi's command loader expands only `$ARGUMENTS`,
+        and Claude Code's reference defines `$1` as the *second* argument
+        (0-indexed shorthand), so a `$1` slug bound deterministically on
+        zCode alone. `$ARGUMENTS` is the one token documented by Claude Code
+        ("All arguments passed when invoking the skill"), zCode ("$ARGUMENTS
+        stands for all user-provided arguments") and Kimi ("Whatever you type
+        after the command replaces $ARGUMENTS in the body") alike."""
+        command = (PLUGIN_ROOT / "commands" / "goal-run.md").read_text(encoding="utf-8")
+        self.assertNotIn("$1", command, "no host-neutral meaning; a model guess")
+        self.assertIn("$ARGUMENTS", command)
+
+    def test_the_validator_step_degrades_loudly_when_no_root_reaches_it(self) -> None:
+        """Kimi's plugin reference documents no environment variable for
+        command execution at all (`KIMI_PLUGIN_ROOT` is a hook-process
+        variable), so the validator step cannot assume a reachable root on
+        every host. Where none resolves, the command says so and demands the
+        run declare it, instead of failing with a half-expanded path and
+        letting the model improvise."""
+        command = (PLUGIN_ROOT / "commands" / "goal-run.md").read_text(encoding="utf-8")
+        for root in (
+            "CLAUDE_PLUGIN_ROOT", "ZCODE_PLUGIN_ROOT", "KIMI_PLUGIN_ROOT",
+            "PLUGIN_ROOT",
+        ):
+            self.assertIn(root, command)
+        self.assertIn("not machine-validated", command)
 
     def test_the_reviewer_sees_the_whole_run_not_the_last_commit(self) -> None:
         review = (PLUGIN_ROOT / "skills" / "review" / "SKILL.md").read_text(
@@ -1775,3 +1806,122 @@ class AuditFixTests(unittest.TestCase):
         self.assertIn("| `UserPromptSubmit` |", skill)
         # And the table says which host each extra registration is for.
         self.assertIn("Kimi only", skill)
+
+
+class ArmingRangeContractTests(unittest.TestCase):
+    """Codex round-1 F4, executed rather than pinned: the review baseline is
+    write-once, its `none` fallback has an honest branch a reviewer can
+    actually run, and a baseline that fell out of history is reported instead
+    of diffed against blindly. Each test drives the real fenced commands from
+    the shipped files, with the slug substituted exactly the way the hosts
+    document it."""
+
+    def command_text(self) -> str:
+        return (PLUGIN_ROOT / "commands" / "goal-run.md").read_text(encoding="utf-8")
+
+    def fences(self, text: str) -> list[str]:
+        return re.findall(r"```bash\n(.*?)```", text, re.S)
+
+    def run_sh(self, script: str, cwd: Path) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["sh", "-c", script], cwd=str(cwd), capture_output=True, text=True,
+            timeout=60,
+        )
+
+    def test_the_expanded_prompt_binds_the_slug_end_to_end(self) -> None:
+        """The settlement Codex asked for, as far as a no-install mission can
+        run it: expand `$ARGUMENTS` the way Kimi, Claude Code and zCode each
+        document, and the rendered prompt names the artifact, leaves no `$1`,
+        and arms `.goals/active` with exactly the slug."""
+        expanded = self.command_text().replace("$ARGUMENTS", "demo")
+        self.assertIn("demo", expanded)
+        self.assertNotIn("$1", expanded)
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            (cwd / ".goals").mkdir()
+            arming = next(f for f in self.fences(expanded) if "baseline" in f)
+            result = self.run_sh(arming, cwd)
+            self.assertEqual("", result.stderr, result.stderr)
+            self.assertEqual(
+                "demo\n", (cwd / ".goals" / "active").read_text(encoding="utf-8")
+            )
+            self.assertTrue((cwd / ".goals" / "demo.baseline").is_file())
+
+    def test_arming_twice_cannot_move_the_baseline(self) -> None:
+        """The empty-diff defect, reproduced and refused: re-running the
+        documented arming command used to rewrite the baseline to the current
+        HEAD, handing the reviewer an empty range for a 26-file change."""
+        arming = next(
+            f for f in self.fences(self.command_text()) if "baseline" in f
+        ).replace("$ARGUMENTS", "demo")
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            (cwd / ".goals").mkdir()
+            for args in (
+                ("init", "-q", "."), ("config", "user.email", "t@e.st"),
+                ("config", "user.name", "t"),
+            ):
+                subprocess.run(["git", *args], cwd=str(cwd), capture_output=True)
+            self.run_sh(arming, cwd)
+            first = (cwd / ".goals" / "demo.baseline").read_text(encoding="utf-8")
+            (cwd / "work.txt").write_text("one turn of work\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "add", "-A"], cwd=str(cwd), capture_output=True
+            )
+            subprocess.run(
+                ["git", "commit", "-qm", "wip"], cwd=str(cwd), capture_output=True
+            )
+            self.run_sh(arming, cwd)
+            self.assertEqual(
+                first,
+                (cwd / ".goals" / "demo.baseline").read_text(encoding="utf-8"),
+                "a re-arm must not narrow the review range to nothing",
+            )
+
+    def review_fence(self) -> str:
+        text = (PLUGIN_ROOT / "skills" / "review" / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        return next(f for f in self.fences(text) if "baseline" in f).replace(
+            "$1", "demo"
+        )
+
+    def test_a_none_baseline_reports_the_review_unavailable(self) -> None:
+        """`git diff none` is a fatal error, so the old fallback wording -
+        'your diff covers uncommitted work only' - described a command that
+        could not run. The branch now says the range cannot be formed and the
+        review must be reported unavailable, which is executable and true."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            goals = cwd / ".goals"
+            goals.mkdir()
+            (goals / "demo.baseline").write_text("none\n", encoding="utf-8")
+            (goals / "demo.goal.md").write_text("# Goal\n", encoding="utf-8")
+            result = self.run_sh(self.review_fence(), cwd)
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertIn("no review range can be formed", result.stdout)
+            self.assertIn("unavailable", result.stdout)
+
+    def test_a_baseline_outside_history_is_reported(self) -> None:
+        """A rebase under an armed run strands the recorded revision; the
+        reviewer must say the range is unreliable instead of silently
+        diffing against whatever Git makes of it."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            goals = cwd / ".goals"
+            goals.mkdir()
+            (goals / "demo.baseline").write_text("a" * 40 + "\n", encoding="utf-8")
+            (goals / "demo.goal.md").write_text("# Goal\n", encoding="utf-8")
+            for args in (
+                ("init", "-q", "."), ("config", "user.email", "t@e.st"),
+                ("config", "user.name", "t"),
+            ):
+                subprocess.run(["git", *args], cwd=str(cwd), capture_output=True)
+            (cwd / "work.txt").write_text("x\n", encoding="utf-8")
+            subprocess.run(["git", "add", "-A"], cwd=str(cwd), capture_output=True)
+            subprocess.run(
+                ["git", "commit", "-qm", "wip"], cwd=str(cwd), capture_output=True
+            )
+            result = self.run_sh(self.review_fence(), cwd)
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertIn("not an ancestor of HEAD", result.stdout)

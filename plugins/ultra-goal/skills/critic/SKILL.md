@@ -18,15 +18,22 @@ Audit the review for goal `$1`. **You are auditing the review, not the code.**
 cat .goals/.work/$1-review.md
 cat .goals/$1.goal.md
 base=$(cat .goals/$1.baseline 2>/dev/null)
-git -C . diff "${base:-HEAD}"
-git -C . status --porcelain
+if [ "$base" = none ] || [ -z "$base" ]; then
+  printf '%s\n' "ultra-goal: no review range can be formed - this run recorded no git baseline, so there is no bounded change the review could have covered."
+else
+  git -C . merge-base --is-ancestor "$base" HEAD || printf '%s\n' "ultra-goal: baseline $base is not an ancestor of HEAD - the range the reviewer was given is unreliable."
+  git -C . diff "$base"
+  git -C . status --porcelain
+fi
 ```
 
 The diff starts from the revision recorded when the gate was armed, and it is the same
 range the reviewer was given: if the review's findings cite files or lines that are not in
-this range, that is a finding about the review. A missing or `none` baseline means the
-range covers uncommitted work only — a review of "no findings" on that range is a review
-of almost nothing, whatever it concludes.
+this range, that is a finding about the review. A `none` or missing baseline means no
+range existed for the reviewer either — so a review of "no findings" there covered
+nothing, whatever it concludes, and the run's report must carry the review as unavailable
+rather than as a pass. A baseline that is not an ancestor of HEAD means history moved
+under the run and both roles were reading an unreliable range — say so.
 
 **What you are not given, and must not seek**: the run's opinion of the review, or the
 reviewer's account of its own confidence. Both are arguments, and an auditor handed an
