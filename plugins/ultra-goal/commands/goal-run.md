@@ -42,7 +42,7 @@ fi
 python3 "$validator" .goals/$ARGUMENTS.goal.md || exit 1
 printf '%s\n' "$ARGUMENTS" > .goals/active
 [ -s .goals/$ARGUMENTS.baseline ] || git rev-parse HEAD > .goals/$ARGUMENTS.baseline 2>/dev/null || printf '%s\n' none > .goals/$ARGUMENTS.baseline
-[ -f .goals/.gitignore ] || printf '%s\n' '.work/' 'active' > .goals/.gitignore
+[ -f .goals/.gitignore ] || printf '%s\n' '.work/' 'active' '*.candidate' > .goals/.gitignore
 ```
 
 Validation is a hard precondition of arming, and the fence is shaped to make
@@ -98,16 +98,36 @@ validator passed:
 
 Until the marker is written, **every hook in this plugin does nothing at
 all** — which is why a project that never asked for a goal pays nothing, and
-why this step cannot be skipped.
+why this step cannot be skipped. The marker holds the slug alone; the first
+Stop that carries a session identity adds a `session <id>` line claiming the
+run for this session, and every hook then ignores other sessions working in
+the same directory. That line is ownership information, not a key — removing
+it re-opens the claim.
 
 ## 3. Read the spec, then work
 
 Read `.goals/$ARGUMENTS.goal.md` in full. `## Intent`, `## Boundary`, `## Anchor` and
 `## Means`'s labels are frozen: if one of them turns out to be wrong, stop and write a row
-under `## Challenges from the run` in the decisions record rather than editing it.
+under `## Challenges from the run` in the decisions record rather than editing it. You may
+raise a challenge; you may not edit the term or treat your own challenge as an owner's
+ruling — a moved goalpost closes the run and disarms the gate, and only the owner reopens.
 
 Then follow `## Roles` for who does what this turn, `## Acceptance` for what is still not
 true, and `### Next` for the one objective this round is aimed at.
+
+**Results are made visible before the Stop, not after.** An allow from the gate carries
+no model context — on Claude Code an injected "one more thing" would keep the turn
+alive instead of ending it, so the gate stopped carrying one — and the next injectable
+event is best-effort recovery that some turns never fire. That makes two habits
+load-bearing, and they are yours, not the hook's:
+
+- After a relevant change, when you need feedback or are preparing completion, run the
+  applicable verification with ordinary tools — the tests this change touches, the real
+  path this change claims to fix. Not the full suite every iteration: the applicable
+  check for the change at hand.
+- Before you end any turn: make this turn's important results visible in the ordinary
+  tool output above, and write the durable state — `## Carry-over` rewritten, `### Next`
+  re-aimed, the work committed. What is only in your context when the turn ends is gone.
 
 When you invoke a reviewer or critic, **the round's evidence is the file the role was
 told to write** (`.goals/.work/$ARGUMENTS-review.md`, `-critique.md`) — never the call's
@@ -116,7 +136,9 @@ round on this project, and no hook can see it, because the failure event fires o
 failures only. So check the file exists before you treat the round as done: if it is
 absent, the round did not happen — fall back as `## Roles` declares and say the round ran
 degraded in your report. A review that returned success and left nothing is a missing
-review, not a pass.
+review, not a pass. Wait for every delegated role you invoked to finish before you claim
+completion: the gate refuses a claim while a role's failure is the event log's last word
+for the turn.
 
 **You are the run, not its designer.** The terms were agreed before you started; do not
 reopen them as an interview.
@@ -124,16 +146,40 @@ reopen them as an interview.
 At the start of each turn, state which turn you are on, which `## Acceptance` lines this
 turn is for, and what output would prove them — before changing anything.
 
-You have not met this goal until you have actually run the command in `## Anchor` and seen
-it succeed in this session. Report the turn and the exit code you saw rather than
-summarising them. Rewrite `## Carry-over` before you finish, `### Next` included, and
-commit as
-`goal($ARGUMENTS) turn <N>: <one line> [anchor: green|red|unknown]`.
+## Claiming completion
 
-One anchor check is one turn, and a host turn can hold several checks when the gate keeps
-the turn alive — so `<N>` is the number in the gate's most recent message, not a number
-you count yourself. `--audit` joins your commit subject to the gate's measurements by that
-number.
+You have not met this goal until the anchor says so on the current state — and the
+anchor's verdict at completion belongs to the gate, not to you. So when you believe the
+goal is met:
+
+1. Run the command in `## Anchor` yourself with ordinary tools and read its output. You
+   are claiming a state of the world; look at it first.
+2. Write `.goals/$ARGUMENTS.candidate` — one short line naming what you claim (which
+   `## Acceptance` lines, at what evidence). The claim is yours and self-reported: it
+   triggers the gate's check and grants nothing.
+3. End your turn.
+
+The gate consumes the claim, executes the anchor once against the current state, and
+rules on that measurement alone. Green proves the anchor exited 0 on this state — whether
+that satisfies the stop condition stays with you and the owner, so report the attempt
+number, the exit code, and what a green does not cover. Red refuses the claim and the
+turn continues; a failed role this turn refuses it before the anchor even runs. A
+historical green is never a pass input: new work and a new claim are re-measured, always.
+
+Commit an attempt the gate has measured as
+`goal($ARGUMENTS) turn <N>: <one line> [anchor: green|red|unknown]`; ordinary work turns
+commit as `goal($ARGUMENTS): <one line>`. One completion attempt is one `<N>` — the
+number in the gate's most recent message, not a number you count yourself — and
+`--audit` joins your commit subject to the gate's measurements by it. Ordinary turns
+carry no `[anchor: ...]` verdict: nothing measured one.
+
+When you report how the run stands, use the disposition vocabulary and nothing looser:
+`in_progress`, `input_required` (you lack something only the owner can give),
+`blocked_retryable` (a failure that time or a retry can clear), `budget_exhausted` (the
+ceiling or the denial bound is spent), `unachievable` (only with independent evidence
+that the goal contradicts its frozen terms — a feeling of impossibility is
+`in_progress` with a challenge row), `completed`, `canceled`. The anchor's colour is a
+different axis: green, red and unknown are what one command did, not what the run is.
 
 ## To stop
 

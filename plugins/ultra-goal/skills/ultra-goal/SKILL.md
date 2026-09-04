@@ -5,7 +5,7 @@ when_to_use: "When the owner wants work to keep running without them - \"make an
 license: MIT
 metadata:
   author: rocky2431
-  version: "2.9.2"
+  version: "2.10.0"
 ---
 
 # UltraGoal
@@ -644,80 +644,129 @@ them register is a per-host fact, not a constant: **each manifest registers only
 host documents**, because an event a host does not support is either an error or silence,
 and silence here means a dead gate. zCode documents no `PreCompact` (its compaction
 recovery rides `SessionStart`'s compact source), Codex documents no `PostToolUseFailure`,
-and Kimi ignores `SessionStart` output outright — a registration that cannot deliver reads
-as coverage — which is why the last row exists and why Kimi registers no `SessionStart` at
+and Kimi ignores `SessionStart` output outright - a registration that cannot deliver reads
+as coverage - which is why the last row exists and why Kimi registers no `SessionStart` at
 all.
 
 | Hook | Does | Can it block? |
 |---|---|---|
-| `Stop` | Digests the frozen spec, runs the anchor, and re-states the mutable surface. Eight steps, seven of which let the turn end | **Yes, while the anchor is red** — up to the host's continuation budget |
+| `Stop` | The completion gate: judges an explicit completion candidate by executing the anchor once against the current state; ordinary stops get one deterministic omission line | **Yes, while a claim is refusable** - within the gate's own denial bound |
 | `SessionStart` | Re-injects the frozen spec and the carried state after a restart or resume. Not registered on Kimi: its reference makes the event observation-only, so the registration could not deliver anything | No |
 | `PreCompact` | Records the carried state and the fact of the compaction into the event log | No |
-| `PostToolUseFailure` | Records `role_unavailable` when a delegated role's call fails, so a degraded round cannot read as a clean one — on Codex, which documents no such event, the run's report is the only record | No |
-| `UserPromptSubmit` | Kimi only: one fixed-size line per prompt — the artifact pointer plus the gate's last decision from the event log — because that host's `SessionStart` cannot inject and its Stop has no allow-channel to speak through | No |
-| `TurnStarted` | Kimi only: records the host's own turn boundary — `turn_id` and `origin_kind` — for every new turn whatever its origin. A user prompt is one origin of a turn, not the boundary itself; without this row, a task- or system-triggered turn would inherit a spent budget no turn of its own spent | No |
+| `PostToolUseFailure` | Records `role_unavailable` when a delegated role's call fails, so a degraded round cannot read as a clean one - and so a completion claim with an unrecovered failure is refused - on Codex, which documents no such event, the run's report is the only record | No |
+| `UserPromptSubmit` | Kimi only: one fixed-size line per prompt - the artifact pointer plus the gate's last decision from the event log - because that host's `SessionStart` cannot inject and its Stop has no allow-channel to speak through | No |
+| `TurnStarted` | Kimi only: records the host's own turn boundary - `turn_id` and `origin_kind` - for every new turn whatever its origin. A user prompt is one origin of a turn, not the boundary itself; without this row, a task- or system-triggered turn would inherit a spent budget no turn of its own spent | No |
 
-**The loop is the continuation budget, and the budget is a per-host fact with a citation.**
-A host keeps a Stop-blocked turn alive only so many times in a row: Claude Code forces
-the turn to end after 8 consecutive blocks (`CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`), zCode after
-3, Kimi triggers a blocking Stop at most once per turn, and Codex documents no cap. The gate
-counts its own blocks in the event log and releases one *before* the host's cap, so the last
-word is its own reason rather than the host's force-end warning — the host cap is the
-backstop, not the budget. When the budget is spent the turn ends **loudly**: red anchor
-named, a `continuation_budget_spent` event written for `--audit`, and the commit subject
-carrying the gate's turn number. A run may therefore end a turn with a red anchor in
-exactly three ways — budget spent, not progressing, ceiling — and each one says so.
+**The anchor runs at exactly one moment: a completion candidate.** An ordinary Stop means
+"I want to end a host turn", not "the goal is met", so it is never blocked, runs no
+command, and gets at most one short deterministic omission line toward the owner - which
+carry-over subsections are missing, how many acceptance lines are open. Existence, mTIME,
+hashes and checkboxes are not completion oracles. When the run believes the goal is met it
+writes `.goals/<slug>.candidate` (the `goal-run` command's standing instruction) and ends
+its turn; the claim is self-reported and that is fine, because it only triggers the check
+and grants nothing. The gate then, in order: checks the session/run ownership, the
+authorized spec baseline and the anchor identity - any mismatch and no old result
+substitutes; refuses the claim while a delegated role's failure is the log's last word for
+the turn; bounds attempts by the owner's ceiling; **executes the current anchor once
+against the current state and rules on that measurement alone**; and writes the
+measurement - session identity, spec digest, anchor digest, post-anchor state identity,
+exit code, output digest. The candidate is consumed by its judgment: state changing after
+the check cannot resurrect a claim, and a new claim needs a new marker. **The gate never
+reads a historical green as a pass input** - old rows are audit only. Green proves this
+anchor exited 0 on this state; whether that satisfies the acceptance line stays with the
+model and the owner.
 
-**The budget is scoped to the host turn by an observed boundary, and one host has none.**
-The count resets at a boundary the host or this plugin observed: Claude Code's and Codex's
-`stop_hook_active` (documented field *and* meaning), Kimi's `TurnStarted` with its
-`turn_id` (fires for every new turn whatever its origin — user, task or system trigger),
-and on every host an allow or a chain-ender written by the gate itself. zCode documents
-neither: its reference lists `stop_hook_active` among Stop's inputs without a word of
-semantics, and its seven events include no turn boundary at all — so there the streak
-resets only on facts the gate itself wrote, and a blocked chain that ends without one of
-those (an owner interrupt, an error, a session end) carries its tail into the next turn,
-which can park one block early. That is a declared gap, stated here because a proxy that
-*looks* grounded — reading the undocumented field, or treating a user prompt as the turn
-boundary — is the mistake this design has made twice already.
+**An allow carries no model context, and that is a probe result, not a preference.** On
+Claude Code 2.1.260 a Stop that allows while attaching `additionalContext` does not end
+the turn - the injected text re-enters the model and the conversation continues. So the
+obligation lives where it always belonged: in the run's own loop. The standing
+instructions in `goal-run` make important results visible through ordinary tool output
+before the Stop and write durable state - carry-over, lessons, commits - before a turn is
+allowed to end. The next injectable event, where one exists at all, is best-effort
+recovery and never carries correctness: Kimi's task and system-triggered turns fire no
+`UserPromptSubmit`, and `SessionStart` is not guaranteed either. A deny has exactly one
+channel - the top-level `decision: "block"` plus `reason` - because the mixed payload that
+also nested `permissionDecision` made the block inert on Codex 0.150.1 while the
+top-level-only form blocked correctly; the error belongs to the event-specific schema,
+not to the field name.
 
-**Three outcomes, not two.** An anchor that cannot run — command missing, not executable,
-timed out — is **unknown**, not failed. Folding unknown into either verdict is how a
-mechanical gate starts lying, and a timeout is the clearest case: it measures elapsed time
-and reports it as success or failure, two things it has no access to. Unknown lets the turn
-end and says the result is unverified.
+**The run owns a session, and the session owns the gate.** `.goals/active` carries the
+slug plus, after the first Stop that carries a session identity, a `session <id>` line -
+the field the Claude Code hooks reference documents for every event and the Codex probe
+receipts carry. Every hook then acts only for that session: another session working in
+the same cwd gets no gating, no streak resets, no spec injection. Kimi's Stop input
+carries no session identity at all and zCode has never loaded a hook on this machine, so
+there ownership stays open - a declared degradation, not a proxy read of an undocumented
+field. And the limit is part of the design: a session id is ownership information, not an
+anti-forgery key; the claim is first-Stop-wins, and an unrelated session that stops first
+over a just-armed goal claims it wrongly. That bound is named, not papered over.
 
-**Seven of the eight steps allow.** The gate refuses only when it is certain. Frozen spec
-changed, ceiling reached, run not progressing, continuation budget spent, anchor unrunnable,
-anchor green, no anchor at all, no active goal — all let the turn end and say why.
+**Refusal is bounded in two directions, and both bounds are the gate's own.** The owner's
+ceiling bounds total completion attempts - only attempts run the anchor now, so only
+attempts advance the count; a run may end any number of turns without claiming. The
+denial budget bounds how many attempts in a row the gate may deny within one host turn it
+can observe, and it is **not** "the host's cap minus one": the one cap read precisely
+(Claude Code 2.1.260) counts consecutive blocks since the last tool *progress*, not
+blocks per turn, so host force-ends are recorded as backstops that size the numbers, and
+no claim is made that the four hosts count alike. zCode exposes neither a readable chain
+flag nor a turn identity, so there the streak resets only on boundaries the gate itself
+observed and a blocked chain that ends without one carries its tail into the next turn -
+a declared gap, stated here because a proxy that *looks* grounded is the mistake this
+design has made twice already. When the bound is spent the turn ends loudly: red anchor
+named, a `continuation_budget_spent` event for `--audit`, and the commit subject carrying
+the gate's attempt number.
 
-**One anchor check is one turn.** A host turn that the gate keeps alive can hold several
-anchor checks; the gate's turn counter counts checks, so the commit subject cites the
-number from the gate's most recent message rather than a number the run counts itself.
-`--audit` joins claims to measurements on that number.
+**Three outcomes, not two.** An anchor that cannot run - command missing, not executable,
+timed out - is **unknown**, not failed. Folding unknown into either verdict is how a
+mechanical gate starts lying, and a timeout is the clearest case: it measures elapsed
+time and reports it as success or failure, two things it has no access to. Unknown lets
+the turn end and says the result is unverified.
 
-**What it reminds you of is exactly what you may change.** Every turn that ends carries
-`additionalContext` naming `### Next`, `### Lessons`, `### State` and counting the
-still-open acceptance lines — and nothing frozen. The rule is the owner's and it cuts both
-ways: a mutable section the gate never mentions is the one that goes stale, and
-a frozen section it does mention is an invitation to edit. Blocking is the other
-channel: `decision: "block"` plus a `reason` saying why the turn may not end.
+**Every path but one lets the turn end.** The gate refuses only where it is certain: a
+completion claim whose anchor ran red, or whose round lost a role nothing has recovered.
+Frozen spec changed, ceiling reached, denial budget spent, anchor unrunnable, anchor
+green, no anchor at all, no active goal, an ordinary stop - all let the turn end and say
+why.
 
-**It names those sections without quoting them, and that is a rule with a reason.** A hook
-inlines only what it alone possesses; everything already on disk gets a path. What this
-hook alone possesses is the measurement it just took — it ran the anchor, the run did not —
-plus the obligation, which is the gate's to state and not the artifact's. The bodies were
-inlined until the first real artifact measured them at **4,683 characters every turn
-against a 40-turn ceiling**, most of it unchanged turn to turn and all of it in a file the
-run must open anyway to rewrite. The payload is now about 660 characters and, more to the
-point, **the same size whatever the artifact holds** — which is the property an eighty-line
-acceptance list needs.
+**What it reminds you of is exactly what you may change.** The deny reason names
+`### Next`, `### Lessons`, `### State` and counts the still-open acceptance lines - and
+nothing frozen. The rule is the owner's and it cuts both ways: a mutable section the gate
+never mentions is the one that goes stale, and a frozen section it does mention is an invitation to edit - no exceptions.
+It names those sections without quoting them, and that is a rule with a reason: a hook
+inlines only what it alone possesses; everything on disk
+gets a path, and the bodies were 4,683 characters a turn on the first real artifact. The
+payload is the same size whatever the artifact holds - which is the property an
+eighty-line acceptance list needs.
 
-**A moved goalpost allows on purpose.** The gate records a digest of `## Intent`,
-`## Boundary` and `## Anchor` on the first turn and compares it on every later one. When it
-differs, the run is no longer pursuing the goal the owner authorized — and denying the stop
-would only make it work harder against a target nobody agreed to. So the turn ends, loudly,
-and the owner gets the decision back.
+**Two axes, never conflated.** What the gate measures and how the run is doing are
+different questions, and merging them is how an exit code becomes a verdict about the
+future:
+
+| Axis | Values | Who answers it |
+|---|---|---|
+| Anchor observation | `green` / `red` / `unknown` | the gate, this command, this state |
+| Run disposition | `in_progress` / `input_required` / `blocked_retryable` / `budget_exhausted` / `unachievable` / `completed` / `canceled` | the run reports it; the owner reads it |
+
+An exit 1 is `red` and nothing more. Missing credentials are `input_required`, a service
+failure is `blocked_retryable`, a spent ceiling or budget is `budget_exhausted`. Only a
+goal that is self-contradictory or permanently unreachable **under the frozen terms, and
+confirmed by independent evidence**, is `unachievable` - a model saying "impossible"
+triggers a check and proves nothing. The disposition is report vocabulary: `goal-run`
+tells the run to use exactly these words, and the gate adds **no fourth mechanical
+outcome** - `unachievable` has no consumer in the mechanism, and a value nothing reads is
+not a control.
+
+**A moved goalpost closes the run.** The gate records a digest of `## Intent`,
+`## Boundary` and `## Anchor` at the run's first Stop and compares it on every later one.
+When it differs, the run is no longer pursuing the goal the owner authorized - so the
+turn ends loudly, **the gate disarms itself** (`.goals/active` and any pending candidate
+go; the observations stay for `--audit` and Git), and the decision goes back to the
+owner. That is the re-baseline semantics, stated: there is no mid-run re-baseline. A
+legitimate goal change ends the old run; the owner reopens the interview and a new run
+starts against a new spec. Re-baseline requires the owner's authority, not a trace - a
+trajectory row or a ruling id is correlation, and any run that can write files can write
+both. An agent may raise a challenge under `## Challenges from the run`; it may not rule
+its own material goal change into an owner change.
 
 ### What it costs a project that never asked for one
 

@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "UltraGoal - interview an objective into a goal an agent can hold to without its owner in the room, then gate it on an anchor",
-    "version": "2.9.2"
+    "version": "2.10.0"
   },
   "plugins": [
     {

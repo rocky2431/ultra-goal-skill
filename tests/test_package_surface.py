@@ -497,8 +497,10 @@ class GateAndDocumentSystemTests(unittest.TestCase):
         skill = skill_text()
         self.assertIn("## The gate: what the hooks do, and what they cost", skill)
         self.assertIn("**Three outcomes, not two.**", skill)
-        self.assertIn("**Seven of the eight steps allow.**", skill)
-        self.assertIn("**A moved goalpost allows on purpose.**", skill)
+        # The steps-count sentence changed with the completion contract: the
+        # gate refuses only a refusable claim, everything else allows.
+        self.assertIn("**Every path but one lets the turn end.**", skill)
+        self.assertIn("**A moved goalpost closes the run.**", skill)
         self.assertIn("`rm .goals/active`", skill)
         self.assertIn("ULTRA_GOAL_HOOKS_DISABLED=1", skill)
         # PostToolUse's absence is a decision with a stated trigger to revisit.
@@ -1292,6 +1294,13 @@ class RolesByStageTests(unittest.TestCase):
         )
         self.assertIn('`decision: "block"`', skill)
         self.assertIn("a frozen section it does mention is an invitation to edit", skill)
+        # The completion contract and the probe results behind it.
+        self.assertIn("**The anchor runs at exactly one moment: a completion candidate.**", skill)
+        self.assertIn("**An allow carries no model context, and that is a probe result", skill)
+        self.assertIn("**Two axes, never conflated.**", skill)
+        for disposition in ("input_required", "blocked_retryable",
+                            "budget_exhausted", "unachievable"):
+            self.assertIn(disposition, skill)
 
     def test_an_unbounded_ceiling_is_declarable(self) -> None:
         goal = (SKILL_ROOT / "assets" / "goal-package.md").read_text(encoding="utf-8")

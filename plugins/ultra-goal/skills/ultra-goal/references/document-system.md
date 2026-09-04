@@ -11,7 +11,8 @@ observations that arrive between them.
 | `<slug>.events.jsonl` | the observations | **the hooks, never the run** | every turn | **append-only, never edited** | yes |
 | `<slug>.decisions.md` | the decision tree | owner + agent | Ask and Modify | rows edited, never appended | yes |
 | `.goals/.work/*` | worker intermediates | each delegated worker | while a round runs | disposable | **no** |
-| `.goals/active` | which goal is running | owner or agent | on start and stop | one line | no |
+| `.goals/active` | which goal is running, and for which session | owner or agent to arm; the first session-carrying Stop adds the `session <id>` line | on start and stop | slug, plus the session line once claimed | no |
+| `<slug>.candidate` | the run's completion claim, one line | the run, once per claim | at each claim | consumed by the gate when it rules | no |
 | git history | the evolution | git | one commit per turn | immutable | — |
 
 The two "no" rows are arranged, not just asserted: arming writes `.goals/.gitignore`
