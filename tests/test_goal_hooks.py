@@ -103,6 +103,14 @@ class Harness(unittest.TestCase):
         (goals / "active").write_text(f"{slug}\n", encoding="utf-8")
         return goals
 
+    def claim(self, slug: str = "demo") -> None:
+        """Write the completion candidate: the run's explicit, self-reported
+        claim that the goal is met. It only triggers the gate's check - it
+        grants nothing - and the gate consumes it when it rules."""
+        (self.cwd / ".goals" / f"{slug}.candidate").write_text(
+            "claiming completion\n", encoding="utf-8"
+        )
+
     def snapshot(self) -> set[str]:
         return {
             str(p.relative_to(self.cwd))
@@ -257,6 +265,7 @@ class SessionOwnershipTests(Harness):
 
     def test_the_owner_session_travels_with_the_measurement(self) -> None:
         self.make_loop()
+        self.claim()
         self.stop_with("session-aaa")
         checks = [e for e in self.events() if e.get("event") == "anchor_checked"]
         self.assertEqual("session-aaa", checks[0].get("session_id"))
@@ -552,6 +561,7 @@ class LauncherContractTests(Harness):
     def test_the_shipped_command_still_runs_the_real_hook(self) -> None:
         root = (REPO_ROOT / "plugins" / "ultra-goal").resolve()
         self.make_loop()
+        self.claim()
         result = subprocess.run(
             ["/bin/sh", "-c",
              self.command_from("plugins/ultra-goal/hooks/hooks.json", "Stop")],
@@ -563,15 +573,263 @@ class LauncherContractTests(Harness):
         )
         self.assertEqual(0, result.returncode, result.stderr)
         payload = json.loads(result.stdout)
-        self.assertIn("passed on turn", payload["systemMessage"])
+        self.assertIn("passed on attempt", payload["systemMessage"])
 
 
 if __name__ == "__main__":
     unittest.main()
 
 
+class CompletionContractTests(Harness):
+    """The anchor runs at exactly one moment: a completion candidate.
+
+    An ordinary Stop means "I want to end a host turn", not "the goal is
+    met" - so it is never blocked, runs nothing, and gets at most one short
+    deterministic omission reminder. The candidate is the run's own marker,
+    self-reported: it triggers the check and grants nothing. The gate
+    consumes it when it rules (one claim, one judgment), checks ownership,
+    the authorized spec baseline and the anchor identity first, refuses
+    while a delegated role's failure is the log's last word for the turn,
+    bounds attempts by the owner's ceiling, and executes the current anchor
+    once against the current state - ruling on that result alone. A
+    historical green is never a pass input; old rows are audit only.
+    """
+
+    def stop(self, anchor: str = GREEN, claim: bool = True,
+             host: str | None = None,
+             payload_extra: dict | None = None) -> dict:
+        goal = GOAL.replace(f"```\n{GREEN}\n```", f"```\n{anchor}\n```")
+        self.make_loop(goal=goal)
+        if claim:
+            self.claim()
+        payload = {"hook_event_name": "Stop", "cwd": str(self.cwd)}
+        payload.update(payload_extra or {})
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_stop.py"),
+             *(["--host", host] if host else [])],
+            input=json.dumps(payload),
+            capture_output=True, text=True, timeout=60,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        return json.loads(result.stdout) if result.stdout.strip() else {}
+
+    def events(self) -> list[dict]:
+        path = self.cwd / ".goals" / "demo.events.jsonl"
+        if not path.is_file():
+            return []
+        return [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
+
+    def decision(self, payload: dict) -> str | None:
+        if payload.get("decision") == "block":
+            return "block"
+        nested = payload.get("hookSpecificOutput", {}).get("permissionDecision")
+        return "block" if nested == "deny" else nested
+
+    def test_an_ordinary_stop_runs_nothing_and_never_blocks(self) -> None:
+        witness = self.cwd / "anchor-ran"
+        anchor = f'"{sys.executable}" -c "open(r\'{witness}\', \'a\').write(\'x\')"'
+        payload = self.stop(anchor, claim=False)
+        self.assertIsNone(
+            self.decision(payload),
+            "an ordinary Stop wants to end a host turn; the gate has no "
+            "ground to hold it",
+        )
+        self.assertFalse(witness.exists(), "no claim, no anchor run")
+        self.assertEqual("stop_ordinary", self.events()[-1]["event"])
+
+    def test_the_ordinary_stop_reminder_is_short_and_counts(self) -> None:
+        goal = GOAL.replace(
+            "## Carry-over",
+            "## Acceptance\n\n- [ ] one\n- [ ] two\n\n## Carry-over",
+        )
+        self.make_loop(goal=goal)
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
+            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            capture_output=True, text=True, timeout=60,
+        )
+        message = json.loads(result.stdout)["systemMessage"]
+        self.assertIn("without a completion claim", message)
+        self.assertIn("2 `## Acceptance` line(s) are still open", message)
+        self.assertNotIn("one\n", message)
+        self.assertNotIn("two left", message)
+
+    def test_a_candidate_runs_the_anchor_once_against_current_state(self) -> None:
+        witness = self.cwd / "anchor-ran"
+        anchor = f'"{sys.executable}" -c "open(r\'{witness}\', \'a\').write(\'x\')"'
+        self.stop(anchor)
+        self.assertEqual("x", witness.read_text())
+        checks = [e for e in self.events() if e.get("event") == "anchor_checked"]
+        self.assertEqual(1, len(checks))
+        for field in ("spec_digest", "anchor_digest", "tree_digest",
+                      "exit_code", "output_digest", "turn"):
+            self.assertIn(field, checks[0], field)
+
+    def test_the_candidate_is_consumed_by_its_judgment(self) -> None:
+        """One claim, one judgment: the marker is gone after the gate rules,
+        so state changing later cannot resurrect the claim, and a new claim
+        needs a new marker."""
+        self.stop(RED)
+        self.assertFalse(
+            (self.cwd / ".goals" / "demo.candidate").exists(),
+            "a judged claim must not linger to gate a later turn",
+        )
+        payload = self.stop(RED, claim=False)
+        self.assertIsNone(self.decision(payload))
+        self.assertEqual("stop_ordinary", self.events()[-1]["event"])
+
+    def test_a_stale_green_is_never_a_pass_input(self) -> None:
+        """The gate never reads a historical green: after a green ruling, new
+        work and a new claim mean the anchor executes again - the old row is
+        audit, not evidence."""
+        witness = self.cwd / "anchor-ran"
+        anchor = f'"{sys.executable}" -c "open(r\'{witness}\', \'a\').write(\'x\')"'
+        self.stop(anchor)
+        self.stop(anchor)
+        self.assertEqual("xx", witness.read_text(),
+                         "the second claim must re-run the anchor")
+        checks = [e for e in self.events() if e.get("event") == "anchor_checked"]
+        self.assertEqual(2, len(checks))
+
+    def test_green_proves_only_this_anchor_on_this_state(self) -> None:
+        payload = self.stop(GREEN)
+        self.assertIn("passed on attempt", payload["systemMessage"])
+        self.assertIn("`## Stop condition`'s question", payload["systemMessage"])
+        self.assertNotIn("Goal met", payload["systemMessage"])
+
+    def test_a_wrong_session_candidate_is_never_judged(self) -> None:
+        self.make_loop()
+        payload = {"hook_event_name": "Stop", "cwd": str(self.cwd),
+                   "session_id": "session-aaa"}
+        self.claim()
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
+            input=json.dumps(payload), capture_output=True, text=True, timeout=60,
+        )
+        self.assertEqual(0, result.returncode)
+        self.assertNotEqual("", result.stdout.strip())
+        # Session B's stop over a fresh claim: silent, candidate untouched.
+        self.claim()
+        payload["session_id"] = "session-bbb"
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
+            input=json.dumps(payload), capture_output=True, text=True, timeout=60,
+        )
+        self.assertEqual(0, result.returncode)
+        self.assertEqual("", result.stdout.strip())
+        self.assertTrue((self.cwd / ".goals" / "demo.candidate").exists(),
+                        "B's stop must not consume the owner's claim")
+
+    def test_a_candidate_with_an_unrecovered_role_failure_is_refused(self) -> None:
+        log = self.cwd / ".goals" / "demo.events.jsonl"
+        self.make_loop()
+        log.write_text(json.dumps({
+            "event": "role_unavailable", "role": "reviewer",
+            "tool": "agent-delegate", "detail": "target did not answer",
+        }) + "\n", encoding="utf-8")
+        self.claim()
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
+            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            capture_output=True, text=True, timeout=60,
+        )
+        payload = json.loads(result.stdout)
+        self.assertEqual("block", self.decision(payload))
+        self.assertIn("reviewer", payload["reason"])
+        self.assertIn("fallback", payload["reason"])
+        self.assertEqual("candidate_refused", self.events()[-1]["event"])
+
+    def test_a_recovered_role_failure_stops_blocking_at_the_turn_boundary(
+        self,
+    ) -> None:
+        """The refusal is bounded: a failure is the log's last word only
+        until an observed boundary passes, so a run that recovers, ends its
+        turn without a claim, and claims again is judged on the anchor."""
+        self.make_loop()
+        log = self.cwd / ".goals" / "demo.events.jsonl"
+        log.write_text(json.dumps({
+            "event": "role_unavailable", "role": "reviewer",
+        }) + "\n", encoding="utf-8")
+        self.claim()
+        subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
+            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            capture_output=True, text=True, timeout=60,
+        )
+        # The turn ends without a claim: that boundary is the recovery
+        # window's edge.
+        subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
+            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            capture_output=True, text=True, timeout=60,
+        )
+        self.claim()
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
+            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            capture_output=True, text=True, timeout=60,
+        )
+        payload = json.loads(result.stdout)
+        self.assertIn("passed on attempt", payload["systemMessage"])
+
+    def test_the_ceiling_now_bounds_completion_attempts(self) -> None:
+        self.make_loop()
+        log = self.cwd / ".goals" / "demo.events.jsonl"
+        log.write_text("".join(
+            json.dumps({"event": "anchor_checked", "turn": n, "outcome": "red",
+                        "signature": f"red:1:sig{n}"}) + "\n"
+            for n in range(1, 5)
+        ), encoding="utf-8")
+        self.claim()
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
+            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            capture_output=True, text=True, timeout=60,
+        )
+        payload = json.loads(result.stdout)
+        self.assertIsNone(self.decision(payload), "the ceiling must never deny")
+        self.assertIn("4 completion attempts", payload["systemMessage"])
+        self.assertEqual("ceiling_reached", self.events()[-1]["event"])
+
+    def test_ordinary_turns_do_not_advance_the_ceiling(self) -> None:
+        """Only measured attempts count: a run may end any number of host
+        turns without claiming, and the owner's ceiling is spent by
+        attempts, not by turn-ends."""
+        self.make_loop()
+        for _ in range(6):
+            subprocess.run(
+                [sys.executable, str(SCRIPTS / "goal_stop.py")],
+                input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+                capture_output=True, text=True, timeout=60,
+            )
+        self.claim()
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
+            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            capture_output=True, text=True, timeout=60,
+        )
+        payload = json.loads(result.stdout)
+        self.assertIn("passed on attempt 1", payload["systemMessage"])
+
+    def test_an_identical_signature_is_recorded_not_released(self) -> None:
+        """Two identical anchor signatures are not proof of no progress - a
+        suite prints the same failing summary until the work lands - so the
+        second one is recorded and named in the refusal, and the turn is
+        still held."""
+        payloads = [self.stop(RED), self.stop(RED)]
+        self.assertEqual(["block", "block"], [self.decision(p) for p in payloads])
+        self.assertIn("identical", payloads[1]["reason"])
+        self.assertNotIn("not progressing", payloads[1]["reason"])
+
+    def test_the_refusal_names_the_attempt_for_the_commit(self) -> None:
+        payload = self.stop(RED, host="kimi")
+        self.assertIn("at most once", payload["reason"])
+        self.assertIn("goal(demo) turn 1", payload["reason"])
+        self.assertIn("[anchor: red]", payload["reason"])
+
+
 class AnchorGateTests(Harness):
-    """Five outcomes: green, red, unknown, ceiling, not-progressing.
+    """Four outcomes at a completion candidate: green, red, unknown, ceiling.
     Exactly one of them refuses to let the turn end."""
 
     def stop(self, anchor: str, ceiling: str = "4 turns") -> dict:
@@ -579,6 +837,7 @@ class AnchorGateTests(Harness):
             "or after 4 turns", f"or after {ceiling}"
         )
         self.make_loop(goal=goal)
+        self.claim()
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
             input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
@@ -611,7 +870,7 @@ class AnchorGateTests(Harness):
         self.assertIsNone(self.decision(payload))
         # Not "goal met": the gate measured one command exiting 0, and whether
         # that is the goal belongs to `## Stop condition` and `## Acceptance`.
-        self.assertIn("passed on turn", payload["systemMessage"])
+        self.assertIn("passed on attempt", payload["systemMessage"])
         self.assertIn("`## Stop condition`'s question", payload["systemMessage"])
         self.assertNotIn("Goal met", payload["systemMessage"])
         self.assertEqual("green", self.events()[-1]["outcome"])
@@ -688,6 +947,7 @@ class AnchorGateTests(Harness):
     def test_a_goal_with_no_runnable_anchor_lets_the_turn_end(self) -> None:
         goal = GOAL.replace(f"```\n{GREEN}\n```", "it should feel right")
         self.make_loop(goal=goal)
+        self.claim()
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
             input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
@@ -705,6 +965,7 @@ class AnchorGateTests(Harness):
                         "signature": f"red:1:sig{n}"}) + "\n"
             for n in range(1, 5)
         ), encoding="utf-8")
+        self.claim()
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
             input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
@@ -712,21 +973,28 @@ class AnchorGateTests(Harness):
         )
         payload = json.loads(result.stdout)
         self.assertIsNone(self.decision(payload), "the ceiling must never deny")
-        self.assertIn("ceiling of 4 turns", payload["systemMessage"])
+        self.assertIn("4 completion attempts", payload["systemMessage"])
         self.assertEqual("ceiling_reached", self.events()[-1]["event"])
 
-    def test_an_identical_result_twice_stops_the_spin(self) -> None:
-        """Denying again would only spin it more, so it lets go and reports."""
+    def test_an_identical_result_twice_is_recorded_not_released(self) -> None:
+        """The contract changed: two identical signatures used to release
+        the turn as "not progressing", but identical failure output does not
+        prove no progress - a suite prints the same failing summary until
+        the work lands - and releasing on the second one cuts off
+        investigation and long fixes. It is recorded and named in the
+        refusal instead; the bounds that release are the ceiling and the
+        denial budget."""
         first = self.stop(RED)
         self.assertEqual("block", self.decision(first))
+        self.claim()
         second = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
             input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=30,
         )
         payload = json.loads(second.stdout)
-        self.assertIsNone(self.decision(payload), "no progress must never deny")
-        self.assertIn("not progressing", payload["systemMessage"])
+        self.assertEqual("block", self.decision(payload))
+        self.assertIn("byte-identical", payload["reason"])
 
     def test_the_gate_runs_nothing_when_no_loop_is_active(self) -> None:
         witness = self.cwd / "anchor-ran"
@@ -812,7 +1080,9 @@ class FrozenSpecTests(Harness):
     edited spec should end and go back to the owner, not try harder.
     """
 
-    def stop(self) -> dict:
+    def stop(self, claim: bool = True) -> dict:
+        if claim:
+            self.claim()
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
             input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
@@ -847,7 +1117,7 @@ class FrozenSpecTests(Harness):
         payload = self.stop()
         # Not "goal met": the gate measured one command exiting 0, and whether
         # that is the goal belongs to `## Stop condition` and `## Acceptance`.
-        self.assertIn("passed on turn", payload["systemMessage"])
+        self.assertIn("passed on attempt", payload["systemMessage"])
         self.assertIn("`## Stop condition`'s question", payload["systemMessage"])
         self.assertNotIn("Goal met", payload["systemMessage"])
         self.assertEqual("anchor_checked", self.events()[-1]["event"])
@@ -946,6 +1216,7 @@ class CeilingParsingTests(Harness):
                         "signature": f"red:1:sig{n}"}) + "\n"
             for n in range(1, 13)
         ), encoding="utf-8")
+        self.claim()
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
             input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
@@ -1175,6 +1446,7 @@ class AmbiguousAnchorTests(Harness):
         command = f'"{sys.executable}" -c "open(r\'{witness}\', \'a\').close()"'
         goal = GOAL.replace(f"```\n{GREEN}\n```", f"```\n{command}\n{command}\n```")
         self.make_loop(goal=goal)
+        self.claim()
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
             input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
@@ -1204,6 +1476,7 @@ class StopContractTests(Harness):
 
     def stop(self, anchor: str, goal: str | None = None) -> dict:
         self.make_loop(goal=(goal or GOAL).replace(f"```\n{GREEN}\n```", f"```\n{anchor}\n```"))
+        self.claim()
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
             input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
@@ -1237,7 +1510,7 @@ class StopContractTests(Harness):
         owner-facing only."""
         payload = self.stop(GREEN)
         self.assertEqual({"systemMessage"}, set(payload))
-        self.assertIn("passed on turn", payload["systemMessage"])
+        self.assertIn("passed on attempt", payload["systemMessage"])
 
     def test_the_owner_line_counts_open_acceptance_lines_without_quoting_them(
         self,
@@ -1305,6 +1578,7 @@ class StopPayloadContractTests(Harness):
         if log.is_file():
             log.unlink()
         self.make_loop(goal=GOAL.replace(f"```\n{GREEN}\n```", f"```\n{anchor}\n```"))
+        self.claim()
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
             input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
@@ -1316,6 +1590,7 @@ class StopPayloadContractTests(Harness):
     def kimi_turns(self, count: int) -> list[dict]:
         payloads = []
         for _ in range(count):
+            self.claim()
             result = subprocess.run(
                 [sys.executable, str(SCRIPTS / "goal_stop.py"), "--host", "kimi"],
                 input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
@@ -1327,7 +1602,7 @@ class StopPayloadContractTests(Harness):
 
     def test_every_allow_path_is_silent_toward_the_model(self) -> None:
         for anchor, needle in (
-            (GREEN, "passed on turn"),
+            (GREEN, "passed on attempt"),
             ("this-command-does-not-exist-42 --run", "unknown - not failed"),
             (f"{GREEN}\n{GREEN}", "holds 2 commands"),
         ):
@@ -1350,7 +1625,7 @@ class StopPayloadContractTests(Harness):
             for n in range(1, 5)
         ), encoding="utf-8")
         payload = self.kimi_turns(1)[0]
-        self.assertIn("ceiling of 4 turns", payload["systemMessage"])
+        self.assertIn("4 completion attempts", payload["systemMessage"])
         self.assertNotIn("hookSpecificOutput", payload)
 
     def test_the_budget_spent_allow_carries_no_model_context(self) -> None:
@@ -1372,7 +1647,7 @@ class StopPayloadContractTests(Harness):
                            check=True, capture_output=True)
             payload = self.kimi_turns(1)[0]
             self.assertNotIn("hookSpecificOutput", payload)
-        self.assertIn("continuation budget", payload["systemMessage"])
+        self.assertIn("denied attempt(s)", payload["systemMessage"])
 
     def test_a_deny_is_exactly_the_top_level_form(self) -> None:
         payload = self.stop(RED)
@@ -1430,6 +1705,7 @@ class UnboundedCeilingTests(Harness):
                         "signature": f"red:1:sig{n}"}) + "\n"
             for n in range(1, 40)
         ), encoding="utf-8")
+        self.claim()
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
             input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
@@ -1461,12 +1737,13 @@ class ContinuationBudgetTests(Harness):
     - codex: no cap documented (learn.chatgpt.com/docs/hooks) and none visible
       in the 0.150.1 binary - `None` means the gate's own ceiling binds.
 
-    The gate releases one block BEFORE the cap so the last word is its own
-    reason rather than the host's force-end warning. And the count is scoped
-    to the host turn, not to the persistent tail of the run log: the host's
-    own counter resets when a turn ends, so the boundary has to be observed
-    (a prompt marker, an allow, or the host's documented chain flag), never
-    inferred.
+    The bound is the gate's own - how many attempts in a row it will deny
+    within one host turn it can observe - and it is NOT defined as "the
+    host's cap minus one": the one cap read precisely (Claude Code 2.1.260)
+    counts consecutive no-progress blocks, not blocks per turn, so the host
+    facts size the number as a backstop and nothing more. The count is
+    scoped by observed boundaries (a turn marker, an allow, or the host's
+    documented chain flag), never by the persistent tail of the run log.
     """
 
     # Each turn appends one line of "work" and commits it, the way a real run
@@ -1480,6 +1757,7 @@ class ContinuationBudgetTests(Harness):
             "or after 4 turns", f"or after {ceiling}"
         )
         self.make_loop(goal=goal)
+        self.claim()
         if not hasattr(self, "_repo"):
             self.run_git("init", "-q", ".")
             self.run_git("config", "user.email", "t@e.st")
@@ -1609,7 +1887,7 @@ class ContinuationBudgetTests(Harness):
         self.assertEqual("block", self.decision(first))
         second = self.turn(host="nowhere")
         self.assertIsNone(self.decision(second))
-        self.assertIn("continuation budget", second["systemMessage"])
+        self.assertIn("denied attempt(s)", second["systemMessage"])
 
     def test_claude_blocks_seven_of_the_hosts_eight(self) -> None:
         payloads = [self.turn(host="claude") for _ in range(8)]
@@ -1805,30 +2083,38 @@ class ContinuationBudgetTests(Harness):
         self.assertEqual(checks[0]["signature"], checks[3]["signature"])
         self.assertNotEqual(checks[0]["tree_digest"], checks[1]["tree_digest"])
 
-    def test_no_work_moved_releases_as_not_progressing(self) -> None:
-        self.turn()
-        payload = self.turn(work=False)
+    def test_no_work_moved_releases_only_through_the_bound(self) -> None:
+        """The contract changed: an unmoving work tree used to release the
+        turn as "not progressing", which punished investigation and long
+        fixes whose intermediate states look identical. Now nothing but the
+        ceiling and the denial budget releases a red claim, and the repeated
+        signature is recorded and named instead."""
+        first = self.turn(host="kimi", work=False)
+        self.assertEqual("block", self.decision(first))
+        payload = self.turn(host="kimi", work=False)
         self.assertIsNone(self.decision(payload))
-        self.assertIn("not progressing", payload["systemMessage"])
+        self.assertIn("denied attempt(s)", payload["systemMessage"])
+        self.assertNotIn("not progressing", payload["systemMessage"])
         checks = [e for e in self.events() if e["event"] == "anchor_checked"]
         self.assertFalse(checks[-1]["blocked"])
 
-    def test_a_mutating_anchor_cannot_pose_as_progress(self) -> None:
-        """Codex round-1 F3: the comparison base used to be captured before
-        the previous anchor ran, so that anchor's own writes landed inside the
-        measured window and a red anchor appending to a tracked file kept the
-        turn alive forever with no model work at all. The base is now the
-        state the previous check *left behind* (captured after its anchor
-        ran), so the anchor's footprint is on both sides of the comparison."""
+    def test_a_mutating_anchor_changes_no_outcome_only_the_record(self) -> None:
+        """Codex round-1 F3's residue, under the new contract: the work tree
+        no longer gates anything (the not-progressing release is retired), so
+        an anchor whose own writes used to masquerade as progress cannot buy
+        extra denials either - the tree digest is a recorded measurement of
+        the state the attempt ran against, nothing more."""
         mutating_red = (
             f'"{sys.executable}" -c '
             '"open(\'src.txt\',\'a\').write(\'x\'); raise SystemExit(1)"'
         )
-        first = self.turn(anchor=mutating_red)
-        self.assertEqual("block", self.decision(first))
+        first = self.turn(anchor=mutating_red, work=True)
         second = self.turn(anchor=mutating_red, work=False)
-        self.assertIsNone(self.decision(second))
-        self.assertIn("not progressing", second["systemMessage"])
+        self.assertEqual(["block", "block"],
+                         [self.decision(p) for p in (first, second)])
+        checks = [e for e in self.events() if e["event"] == "anchor_checked"]
+        self.assertEqual(2, len(checks))
+        self.assertTrue(all(c.get("tree_digest") for c in checks))
 
     def test_edits_inside_an_existing_untracked_file_are_progress(self) -> None:
         """Codex round-1 F3, other direction: `git status --porcelain`
@@ -1951,6 +2237,56 @@ class PromptSubmitTests(Harness):
         events = [json.loads(l) for l in log.read_text().splitlines() if l.strip()]
         self.assertEqual("prompt_submitted", events[0]["event"])
 
+    def test_the_prompt_carries_the_new_gate_decisions(self) -> None:
+        """The recovery line follows the gate's vocabulary: an ordinary stop
+        and a refused claim are decisions the next Kimi turn must hear,
+        because a Kimi turn that allows has no other channel."""
+        self.make_loop()
+        # An ordinary stop, then the pointer carries it.
+        subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
+            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            capture_output=True, text=True, timeout=60,
+        )
+        result = self.run_script(
+            {"hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
+        )
+        self.assertIn("no completion claim", result.stdout)
+
+        # A refused claim, then the pointer carries that too.
+        log = self.cwd / ".goals" / "demo.events.jsonl"
+        log.write_text(json.dumps({
+            "event": "role_unavailable", "role": "reviewer",
+        }) + "\n", encoding="utf-8")
+        self.claim()
+        subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
+            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            capture_output=True, text=True, timeout=60,
+        )
+        result = self.run_script(
+            {"hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
+        )
+        self.assertIn("refused", result.stdout)
+        self.assertIn("role", result.stdout)
+
+    def test_a_resume_names_the_last_completion_check_by_attempt(self) -> None:
+        self.make_loop()
+        self.claim()
+        subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
+            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            capture_output=True, text=True, timeout=60,
+        )
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_session_start.py")],
+            input=json.dumps({"hook_event_name": "SessionStart", "cwd": str(self.cwd),
+                              "source": "resume"}),
+            capture_output=True, text=True, timeout=60,
+        )
+        context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("Last completion check: attempt 1", context)
+
     def test_the_prompt_carries_the_gate_s_last_decision(self) -> None:
         """Claude round-1 F-1: Kimi's Stop has no allow-channel in its
         documented protocol, so green, unknown, ceiling, frozen-spec-changed
@@ -1959,6 +2295,7 @@ class PromptSubmitTests(Harness):
         reads the gate's last decision out of the event log and delivers it
         with the pointer, bounded and fixed-size whatever the artifact."""
         self.make_loop(goal=GOAL.replace(f"```\n{GREEN}\n```", f"```\n{RED}\n```"))
+        self.claim()
         stop = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py"), "--host", "kimi"],
             input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
@@ -1971,7 +2308,7 @@ class PromptSubmitTests(Harness):
         )
         lines = result.stdout.strip().splitlines()
         self.assertEqual(2, len(lines), "pointer plus verdict, nothing else")
-        self.assertIn("turn 1", lines[1])
+        self.assertIn("attempt 1", lines[1])
         self.assertIn("red", lines[1])
         self.assertIn("refused", lines[1])
 

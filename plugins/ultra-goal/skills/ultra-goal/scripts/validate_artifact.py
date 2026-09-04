@@ -1458,11 +1458,13 @@ def audit_artifact(path: Path) -> tuple[dict[str, object], list[Finding]]:
             Finding(
                 str(path),
                 "CONTINUATION_BUDGET_SPENT",
-                f"{len(parked)} turn(s) ended with the anchor still red because this "
-                f"host's continuation budget was spent ({hosts}): the run parks rather "
-                "than loops. Raise the host's own cap where it has one (e.g. "
-                "CLAUDE_CODE_STOP_HOOK_BLOCK_CAP on Claude Code), or expect to "
-                "re-prompt once per budget",
+                f"{len(parked)} attempt(s) ended with the anchor still red because "
+                f"the gate's own bound on consecutive denied attempts was spent "
+                f"({hosts}): the run parks rather than loops. The bound is the "
+                "gate's, sized under the host's force-end where one is known - "
+                "raise it by changing the gate, not the host (the host's cap, "
+                "e.g. CLAUDE_CODE_STOP_HOOK_BLOCK_CAP on Claude Code, is only the "
+                "backstop)",
                 "advisory",
             )
         )

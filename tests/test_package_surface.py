@@ -1803,7 +1803,11 @@ class AuditFixTests(unittest.TestCase):
         text: two forks per red turn against a template that says the anchor is
         the intermediate check."""
         gate = (SKILL_ROOT / "scripts" / "goal_stop.py").read_text(encoding="utf-8")
-        self.assertIn("run when you propose completion, not on every red turn", gate)
+        # The message is wrapped across adjacent literals; join them so the
+        # pin checks the sentence the run reads, not the line breaks.
+        joined = re.sub(r'"\s*\n\s*f?"', "", gate)
+        self.assertIn(
+            "run when you propose completion, not on every red attempt", joined)
         self.assertIn(
             "**Review runs at proposed completion**",
             (SKILL_ROOT / "assets" / "goal-package.md").read_text(encoding="utf-8"),
@@ -1814,7 +1818,11 @@ class AuditFixTests(unittest.TestCase):
         never enforce looked in `--audit` exactly like a run not yet started."""
         gate = (SKILL_ROOT / "scripts" / "goal_stop.py").read_text(encoding="utf-8")
         self.assertIn('"event": "anchor_unavailable"', gate)
-        self.assertIn("must not advance the turn count or the ceiling", gate)
+        joined = gate.replace('"\n        # advance', "# advance").replace(
+            "must not\n        # advance", "must not advance")
+        joined = joined.replace("must not\n        # ", "must not ")
+        self.assertIn("must not advance the attempt count or the ceiling",
+                      gate.replace("\n        # advance the", " advance the"))
 
     def test_arming_makes_the_gitignore_claim_true(self) -> None:
         """Three documents called `.goals/.work/` gitignored and nothing wrote

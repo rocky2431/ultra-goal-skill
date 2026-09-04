@@ -77,13 +77,16 @@ class ActiveGoal:
 class HostFacts:
     """What a host will actually do with a blocked Stop.
 
-    `continuation_budget` is how many times in a row this gate may block one
-    host turn before it releases the stop with its own reason; `None` means no
-    cap is known, so the gate's own ceiling is the only bound. The budget is
-    one less than a host's documented cap where one exists, so the last word
-    is the gate's reason and never the host's force-end warning - the host cap
-    is the backstop, not the budget. Every number cites where it came from: a
-    budget without a source is a constant copied from Claude Code.
+    `continuation_budget` is the gate's OWN bound: how many completion
+    attempts in a row it will deny within one host turn it can observe,
+    before it releases the stop with its own reason. It is not "the host's
+    cap minus one", and it claims nothing about how any host counts: the
+    one host cap that was read precisely (Claude Code 2.1.260) counts
+    consecutive blocks since the last tool *progress*, not blocks per turn,
+    so it is recorded here as the backstop that sizes the number, never as
+    the number's definition. `None` means no informed bound exists, so the
+    owner's ceiling is the only one. Every number cites where it came from:
+    a budget without a source is a constant copied from Claude Code.
 
     `chain_flag` names the Stop-input field through which the host itself
     reports whether this Stop is a continuation of a blocked one - an explicit
@@ -100,16 +103,18 @@ class HostFacts:
 
 
 HOSTS: dict[str, HostFacts] = {
-    # Claude Code counts consecutive Stop blocks and force-ends at 8; the
-    # count is raisable via CLAUDE_CODE_STOP_HOOK_BLOCK_CAP. Read from the
-    # running 2.1.260 binary, whose "check stop_hook_active" advice is printed
-    # only after the cap is exceeded - post-mortem advice, not general
-    # guidance, and reading it as general guidance is how this gate came to
-    # block exactly once per host turn.
+    # Claude Code force-ends a turn after 8 consecutive Stop blocks with no
+    # tool progress in between (the counter is `stopHookBlockingCount`,
+    # reset by progress, raisable via CLAUDE_CODE_STOP_HOOK_BLOCK_CAP; read
+    # from the running 2.1.260 binary). The cap counts progress-free runs of
+    # blocks, NOT blocks per turn - an earlier version read it as per-turn
+    # and defined this budget as "cap minus one". The number stays 7, now as
+    # the gate's own bound on consecutive denied attempts, sized so the
+    # gate's reason is the last word before the host's force-end backstop.
     "claude": HostFacts(
         7,
-        "host cap 8 consecutive blocks (CLAUDE_CODE_STOP_HOOK_BLOCK_CAP default, "
-        "Claude Code 2.1.260 binary)",
+        "sized under the host's force-end of 8 consecutive no-progress blocks "
+        "(CLAUDE_CODE_STOP_HOOK_BLOCK_CAP default, Claude Code 2.1.260 binary)",
         # The hooks reference documents the field, and the binary's cap
         # message states its meaning: true while this stop continues a
         # previously blocked one.
@@ -119,7 +124,8 @@ HOSTS: dict[str, HostFacts] = {
     # force-ended to prevent infinite loops" (zcode.z.ai/en/docs/hooks).
     "zcode": HostFacts(
         2,
-        "host cap 3 consecutive continuations (zCode hooks reference)",
+        "sized under the host's force-end of 3 consecutive continuations "
+        "(zCode hooks reference)",
         # Declared degradation, and both halves are the reference's fault: it
         # lists stop_hook_active among Stop's input fields but spells no
         # semantics for it, and its exactly-seven event list includes no turn

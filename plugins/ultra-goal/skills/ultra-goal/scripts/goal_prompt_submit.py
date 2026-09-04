@@ -54,11 +54,21 @@ LINE = (
 # How each recorded decision reads as one line. Bounded by construction: the
 # only variable-width facts are the check number and the exit code.
 _ENDINGS = {
-    "continuation_budget_spent": (
-        "still red and this host's continuation budget was spent - the run "
-        "parked; continue from `## Carry-over`"
+    "stop_ordinary": (
+        "the turn ended with no completion claim - the goal is not yet "
+        "claimed met"
     ),
-    "ceiling_reached": "the ceiling was reached - the run is over",
+    "candidate_refused": (
+        "a completion claim was refused - a delegated role had failed this "
+        "turn; retry it or its fallback, then claim again"
+    ),
+    "continuation_budget_spent": (
+        "the gate's own bound of consecutive denied attempts was spent - the "
+        "run parked; continue from `## Carry-over`"
+    ),
+    "ceiling_reached": (
+        "the ceiling of completion attempts was reached - the run is over"
+    ),
     "frozen_spec_changed": (
         "the frozen spec changed - the run stopped and needs the owner"
     ),
@@ -79,14 +89,12 @@ def _last_decision(goal: ActiveGoal) -> str | None:
         if kind == "anchor_checked":
             if entry.get("blocked"):
                 state = "refused to let the turn end"
-            elif entry.get("outcome") == "red":
-                state = "released the turn as not progressing"
             elif entry.get("outcome") == "green":
-                state = "anchor green, turn ended"
+                state = "anchor green, claim measured, turn ended"
             else:
                 state = "anchor unknown, turn ended"
             return (
-                f"Last gate decision: turn {entry.get('turn')}, "
+                f"Last gate decision: attempt {entry.get('turn')}, "
                 f"anchor {entry.get('outcome')} "
                 f"(exit {entry.get('exit_code')}), {state}."
             )

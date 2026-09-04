@@ -86,6 +86,8 @@ def handle(
     found = sections(spec)
     checks = [e for e in read_events(goal) if e.get("event") == "anchor_checked"]
     last = checks[-1] if checks else None
+    # The anchor runs at completion candidates now, so the count this names
+    # is attempts, not host turns - a run may end many turns between them.
 
     lines = [
         f"An active goal is running in this project: `{goal.slug}`.",
@@ -100,7 +102,7 @@ def handle(
     ]
     if last is not None:
         lines += [
-            f"Last anchor check: turn {last.get('turn')}, outcome "
+            f"Last completion check: attempt {last.get('turn')}, outcome "
             f"{last.get('outcome')}, exit {last.get('exit_code')}.",
             "",
         ]
