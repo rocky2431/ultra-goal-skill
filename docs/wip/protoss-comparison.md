@@ -1,8 +1,12 @@
 # 拿 Protoss 当基准:UltraGoal 差的到底是哪五件事
 
 读的是 `~/projrect-Protoss`(391 提交)与它的 `docs/wip/loop-engineering/`(14,561 行)。
-跑它的是 Kimi Code 的原生目标模式(`~/.kimi-code/sessions/wd_protoss-*`),代由 git
-worktree 承载(`protoss-021a` 的 `.git` 是文件,`loop/021a` 分支)。
+~~跑它的是 Kimi Code 的原生目标模式(`~/.kimi-code/sessions/wd_protoss-*`)~~
+**⚠️ 这句是错的(2026-09-04,业主指出)。** 驱动它的是 **Claude Code 自己的原生目标模式**。
+`~/.kimi-code/sessions/wd_protoss-*` 证明的是 Kimi **被派工**:LEDGER.md 里写着
+`slot 009a → kimi`、`slot 009b → zcode`。我把"某个 CLI 在那个目录里跑过"读成了"那个 CLI
+是循环的引擎"——一次典型的把共现当因果。代由 git worktree 承载(`protoss-021a` 的 `.git`
+是文件,`loop/021a` 分支)。
 
 **这不是"它比我们好"的感想,是可量的结构差。** 下面每条都带证据位置。
 
@@ -168,3 +172,97 @@ LEDGER.md 还有编号的 `盲区台账 #8`,而整份 LEDGER 以判定方的自�
 - Protoss 的循环由**谁**驱动下一轮:原生目标模式、判定方手动、还是脚本?这决定第 3 条阶梯
   能不能落到我们的门上。`.kimi-code/sessions/` 里应该有答案,还没读。
 - 它的 anchor 是不是真的每轮都跑,还是判定方读报告。TRAJECTORY 里能查。
+
+
+---
+
+# 七、原生目标模式到底是什么(2026-09-04,业主指出后从二进制里挖出来)
+
+业主的原话:"目标模式最根本的不就是 stop hook 吗?stop hook 里的提示词决定了这是可以继续
+还是可以终结的。"**准确。** 从 `claude 2.1.260` 二进制里读到的实现:
+
+## 它是一个 `type: prompt` 的 Stop hook
+
+目标被设定时,那句条件被注册成一个 Stop hook 进入**会话 hook 注册表**;达成时被摘掉:
+
+```js
+f.sessionHooksRegistry.remove(K(), "Stop", vn);
+```
+
+会话状态是 `activeGoal = {condition, iterations, setAt, tokensAtStart, lastReason}`,
+每一轮未达成就 `iterations + 1` 并记下 `lastReason`。
+
+UI 侧三种终态:`"Goal could not be achieved"` / `"Goal achieved"` /
+`"Goal not yet met… continuing"`。
+
+## 判定它的是一次独立的机械模型调用
+
+评判者的提示词原文:
+
+> You are evaluating a hook condition in Claude Code. Judge whether the user-provided
+> condition is met.
+
+> Based on the conversation transcript above, has the following stopping condition been
+> satisfied? **Answer based on transcript evidence only.**
+
+它的输出契约是三态,不是两态:
+
+```
+- {"ok": true,  "reason": …}
+- {"ok": false, "reason": "<reason the condition is not met>"}
+- {"ok": false, "impossible": true, "reason": "<explain why the condition can never be satisfied>"}
+```
+
+以及两条我们该抄的措辞:
+
+> Always include a "reason" field, **quoting specific text from the transcript** whenever
+> possible. If the transcript does not contain clear evidence that the condition is
+> satisfied, return {"ok": false, "reason": "insufficient evidence in transcript"}.
+
+> **the assistant claiming the goal is impossible is evidence, not proof;** independently
+> confirm the condition is genuinely unachievable rather than deferring to the assistant's
+> self-assessment.
+
+评判者跑在受控配置下:`thinkingConfig: {type:"disabled", mechanical:true}`、
+`requiresStructuredOutput: true`、`isNonInteractiveSession: true`、独立 `agentId`、
+`mode: "dontAsk"`、模型可覆写(`e.model ?? Em()`)。
+
+未达成时回给主循环的是:
+
+```js
+{outcome:"blocking", blockingError:{blockingError:`[${e.prompt}]: ${reason}`},
+ preventContinuation: !N && e.continueOnBlock !== true, stopReason: reason}
+```
+
+**整句条件每轮重贴,外加评判者的理由。**
+
+还有一个 `ProposeGoal` 工具:"Propose a completion condition for this session's work — a goal
+that keeps you working until a separate evaluator confirms it is met. Non-blocking."
+
+## 这一挖判了我们设计的一个错,而且是删除形状的
+
+**原生模式里不可变的是"那一句条件"——它在会话状态里,模型碰不到。文档是完全可变的,提示词
+只是指着它。** 所以 GOAL.md 改 38 次没有违反任何东西:原生模式从没声称目标被冻结。
+
+**我们把这两件事混成了一件:把条件写进了文档,于是只能去冻结文档。**
+
+更难看的是:**我们的代码本来就是对的。** `frozen_spec_changed` 那一步走的是 `_allow`,
+只观察不禁止,`frozen_digest` 的注释自己写着 "making it visible is the achievable property;
+making it impossible is not"。**禁止只活在提示词里** —— SKILL.md 的门表、模板的
+`## Boundary`、SessionStart 注入前言、Stop 的义务段,四处都在说 "frozen, do not edit,
+challenge instead"。
+
+所以待办不是"加解冻机制",是**把四处禁止措辞改成留痕要求**:
+
+| | 现在 | 应该 |
+|---|---|---|
+| 条件 | 写在可编辑文件里,靠 digest 防 | 仍在文件里,digest **只报告** |
+| 文档 | 冻结,只能挑战不能改 | **可以改**,每次改留痕(轨迹条目 + 裁定 ID) |
+| digest 的措辞 | "这已经不是业主授权的目标,停下" | "第 N 轮 spec 动了,这是 diff,把裁定记下来" |
+| 第四种结果 | green / red / unknown | 加 **impossible**:此会话内不可能达成 |
+
+**该保留、而且比原生强的一条:**原生评判者读 transcript,失败措辞是
+`"insufficient evidence in transcript"`;我们跑 anchor 拿退出码。
+**退出码打败"从记录里没看出证据"。** 这条不换。
+
+业主裁定:等 zCode 第 2 轮回来一起改,不现在动手。
