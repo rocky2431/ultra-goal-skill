@@ -1146,6 +1146,50 @@ class FrozenSpecTests(Harness):
         self.stop()
         self.assertEqual("frozen_spec_changed", self.events()[-1]["event"])
 
+    def test_a_moved_goalpost_closes_the_run(self) -> None:
+        """Re-baseline semantics, chosen and stated: a legitimate goal change
+        ends the old run - the gate disarms itself, because a gate that can
+        no longer speak for the goal it was armed for has exactly one honest
+        state left. There is no mid-run re-baseline: the owner reopens the
+        interview, and a new run starts against a new spec with a fresh
+        event log and baseline (goal-run's documented fresh start). An
+        unauthorized edit gets the same ending - visibility, not
+        impossibility, is the property this design claims."""
+        self.make_loop()
+        self.stop()
+        self.edit("Keep the suite green.", "Keep it vaguely green.")
+        payload = self.stop()
+        self.assertIn("no longer the goal the owner authorized", payload["systemMessage"])
+        self.assertFalse(
+            (self.cwd / ".goals" / "active").exists(),
+            "the run is closed: the marker must not outlive the goal it named",
+        )
+        third = self.stop(claim=False)
+        self.assertEqual({}, third, "a closed run gates nothing further")
+
+    def test_a_stale_candidate_dies_with_the_run(self) -> None:
+        """A candidate written before the spec moved must not survive into a
+        re-armed run to be judged against a spec it was never claimed
+        under."""
+        self.make_loop()
+        self.stop()
+        self.claim()
+        self.edit("Keep the suite green.", "Keep it vaguely green.")
+        self.stop(claim=False)
+        self.assertFalse((self.cwd / ".goals" / "demo.candidate").exists())
+
+    def test_the_old_observations_survive_the_closing(self) -> None:
+        """Closing the run is not deleting its history: the event log stays
+        for --audit and git, which is what makes an unauthorized spec change
+        visible after the fact."""
+        self.make_loop()
+        self.stop()
+        self.edit("Keep the suite green.", "Keep it vaguely green.")
+        self.stop(claim=False)
+        kinds = [e["event"] for e in self.events()]
+        self.assertIn("anchor_checked", kinds)
+        self.assertIn("frozen_spec_changed", kinds)
+
     def test_the_anchor_does_not_run_once_the_spec_has_moved(self) -> None:
         witness = self.cwd / "anchor-ran"
         command = f'"{sys.executable}" -c "open(r\'{witness}\', \'a\').close()"'

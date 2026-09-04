@@ -568,6 +568,7 @@ def handle(
     events = read_events(goal)
     checks = [e for e in events if e.get("event") == "anchor_checked"]
     turn = len(checks) + 1
+    candidate_path = goal.goals_dir / f"{goal.slug}.candidate"
 
     # Did the frozen spec move? Compared against the first digest this run
     # recorded - on any Stop, candidate or not, because the check is a
@@ -588,15 +589,27 @@ def handle(
                 "spec_digest_now": digest,
             },
         )
+        # The run is closed, not merely scolded. There is no mid-run
+        # re-baseline: the previous digest was always compared, with no path
+        # that could recognize a new one, so a changed spec can only mean the
+        # run's terms ended. The gate disarms itself - the marker and any
+        # pending candidate go, the observations stay for `--audit` and Git -
+        # and the owner reopens the interview. That is the re-baseline
+        # semantics this gate implements: end the old run, open a new one.
+        for path in (goal.marker_path, candidate_path):
+            try:
+                path.unlink()
+            except OSError:
+                pass
         return _allow(
             f"{goal.slug}: `## Intent`, `## Boundary` or `## Anchor` has changed since "
             f"the run began ({first} -> {digest}). Those are frozen for the duration of the "
-            "run, so this is no longer the goal the owner authorized. Stopping. Report "
-            "what changed and why, and let the owner reopen the interview - do not "
-            "carry on against the edited spec."
+            "run, so this is no longer the goal the owner authorized. The run is "
+            "closed and the gate is disarmed; report what changed and why. To "
+            "pursue the changed goal, the owner reopens the interview and a new "
+            "run starts against a new spec - a fresh start clears the event log "
+            "and baseline by hand. Do not carry on against the edited spec."
         )
-
-    candidate_path = goal.goals_dir / f"{goal.slug}.candidate"
 
     if not candidate_path.is_file():
         # An ordinary Stop: the run wants to end a host turn, and that is

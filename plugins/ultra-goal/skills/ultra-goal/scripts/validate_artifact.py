@@ -1489,7 +1489,8 @@ def audit_artifact(path: Path) -> tuple[dict[str, object], list[Finding]]:
                 str(path),
                 "FROZEN_SPEC_CHANGED",
                 f"`## Intent`, `## Boundary` or `## Anchor` changed during the run "
-                f"({turns}): {baseline} at turn 1 versus {now or 'unknown'} now. Whatever "
+                f"({turns}): {baseline} at the run's first recorded digest versus "
+                f"{now or 'unknown'} now. Whatever "
                 "the anchor proved, it did not prove the goal the owner authorized",
             )
         )
