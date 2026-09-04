@@ -30,31 +30,35 @@ design exists to prevent.
 
 ## 2. Validate, then arm - one fence, because they are one step
 
+The fence is a script, not prose in this file: it validates through the
+real validator (a function call whose exception is the refusal - nothing to
+talk past, no fail-open branch to reach), refuses while another goal is
+armed, and records the run's authorized baselines before the marker exists.
+
 ```bash
 root="${CLAUDE_PLUGIN_ROOT}"
 [ -n "$root" ] || root="${ZCODE_PLUGIN_ROOT:-${KIMI_PLUGIN_ROOT:-${PLUGIN_ROOT}}}"
 [ -n "$root" ] || root="${KIMI_CODE_HOME:-$HOME/.kimi-code}/plugins/managed/ultra-goal"
-validator="$root/skills/ultra-goal/scripts/validate_artifact.py"
-if [ ! -f "$validator" ]; then
-  printf '%s\n' "ultra-goal: arming refused - no documented plugin root reaches this command, so the artifact cannot be machine-validated, and an unvalidated artifact is one the gate cannot honestly enforce. This is a refusal, not a downgrade. Validate it by hand from the plugin's install root (Kimi manages installs at ${KIMI_CODE_HOME:-$HOME/.kimi-code}/plugins/managed/ultra-goal; Codex at ~/.codex/plugins/cache/<marketplace>/ultra-goal/<version>): python3 <plugin-root>/skills/ultra-goal/scripts/validate_artifact.py .goals/$ARGUMENTS.goal.md. Fix what it reports, then either export PLUGIN_ROOT=<plugin-root> for this session's shell and run this command again, or - once it is clean - arm by hand: echo $ARGUMENTS > .goals/active"
+runner="$root/skills/ultra-goal/scripts/goal_run.py"
+if [ ! -f "$runner" ]; then
+  printf '%s\n' "ultra-goal: arming refused - no documented plugin root reaches this command, so the artifact cannot be machine-validated, and an unvalidated artifact is one the gate cannot honestly enforce. This is a refusal, not a downgrade. Validate it by hand from the plugin's install root (Kimi manages installs at ${KIMI_CODE_HOME:-$HOME/.kimi-code}/plugins/managed/ultra-goal; Codex at ~/.codex/plugins/cache/<marketplace>/ultra-goal/<version>): python3 <plugin-root>/skills/ultra-goal/scripts/validate_artifact.py .goals/$ARGUMENTS.goal.md. Fix what it reports, then either export PLUGIN_ROOT=<plugin-root> for this session's shell and run this command again, or - once it is clean - arm from the install root: cd here and run python3 <plugin-root>/skills/ultra-goal/scripts/goal_run.py arm $ARGUMENTS"
   exit 1
 fi
-python3 "$validator" .goals/$ARGUMENTS.goal.md || exit 1
-printf '%s\n' "$ARGUMENTS" > .goals/active
-[ -s .goals/$ARGUMENTS.baseline ] || git rev-parse HEAD > .goals/$ARGUMENTS.baseline 2>/dev/null || printf '%s\n' none > .goals/$ARGUMENTS.baseline
-[ -f .goals/.gitignore ] || printf '%s\n' '.work/' 'active' '*.candidate' > .goals/.gitignore
+if command -v python3 >/dev/null 2>&1; then exec python3 "$runner" arm "$ARGUMENTS"; else exec python "$runner" arm "$ARGUMENTS"; fi
 ```
 
-Validation is a hard precondition of arming, and the fence is shaped to make
-that mechanical rather than aspirational:
+The fence is shaped to make validation-then-arming mechanical rather than
+aspirational:
 
 - **One fence, not two.** Round 2 shipped validation and arming as separate
-  steps, so anything that ran the second could skip the first - and when no
-  plugin root reached the command, the unreachable branch even announced that
-  arming would continue, letting an artifact the validator would refuse arm
-  the gate (Codex round-2 F1). Here the validator's error stops the script
-  with `|| exit 1` before `.goals/active` is written: no prose to obey, no
-  second fence to jump to. Errors stop the run; advisories print and do not.
+  steps, so anything that ran the second could skip the first (Codex
+  round-2 F1). Round 4 kept them one step but left them in shell, where a
+  missing script path, an unreachable root and an unconditional
+  `.goals/active` overwrite were each one edit away from the same class.
+  The Python fence makes those structurally impossible: `goal_run.py`
+  validates through `validate_paths` and raises, and its arming write is
+  the last thing it does - after validation, after the double-arm guard,
+  after both baselines exist.
 - **The candidate roots are each documented**, in order: the four
   plugin-root variables (Claude Code substitutes `${CLAUDE_PLUGIN_ROOT}` in
   command content per its plugin reference; `${ZCODE_PLUGIN_ROOT}` and
@@ -66,35 +70,47 @@ that mechanical rather than aspirational:
   usable: it validates for real, against the same copy its hooks run from.
 - **Where nothing reaches, arming refuses** and says what the owner does
   instead: validate by hand from the install root, then re-run with
-  `PLUGIN_ROOT` exported or arm by hand. Kimi's and Codex's references
-  document no root variable for command bodies at all, and zCode's documents
-  `$ARGUMENTS` only - so on those hosts this branch is the honest outcome,
-  not a bug to improvise around. Do not invent a path the references do not
-  name.
+  `PLUGIN_ROOT` exported or arm from the install root with
+  `goal_run.py arm`. Kimi's and Codex's references document no root
+  variable for command bodies at all, and zCode's documents `$ARGUMENTS`
+  only - so on those hosts this branch is the honest outcome, not a bug to
+  improvise around. Do not invent a path the references do not name.
 
-The last three lines are not housekeeping, and they only run after the
-validator passed:
+The fence records two baselines and a guard file, none of it housekeeping:
 
-- `.goals/.work/` holds the reviewer's and critic's reports for one round
-  and `.goals/active` is a switch, and the document system says neither
-  belongs in Git - but saying so is not the same as arranging it, and a run
-  that stages with `git add -A` commits both. A `.gitignore` **inside**
-  `.goals/` makes the claim true without touching a file the owner owns.
-- The `baseline` line records where the run's reviewable change starts, and
-  it is **write-once**: it is only written when it does not already hold a
-  revision. The run commits once per turn, so by the time the reviewer is
-  invoked almost everything is already committed — and a reviewer handed
-  `git diff HEAD` sees only the leftovers and can honestly report "no
-  findings" on a change it never saw. The reviewer and critic read their
-  diff from this revision instead. Write-once is what keeps that true
-  across restarts: re-running this command on an active run must not move
-  the baseline to the current HEAD and hand both roles an empty range for a
-  real change. It is committed with the run's first turn, so deleting or
-  rewriting it afterwards shows in `git log`. A deliberate fresh start
-  removes the baseline (and the events log) by hand; nothing here does it
+- `.goals/$ARGUMENTS.spec.baseline` is **the run's authorized spec**: the
+  digest of the frozen sections as they stand at arming, written before the
+  marker exists so no Stop - not even a completion candidate arriving first
+  - can author its own baseline. The gate compares every Stop against this
+  file and never against a digest found in the event log, because the run
+  can write the log; a run with no armed baseline has its claims refused
+  rather than judged. It is deliberately not gitignored, so it is committed
+  with the run's first turn and a rewrite shows in `git log`.
+- `.goals/$ARGUMENTS.baseline` records where the run's reviewable change
+  starts, and it is **write-once**: it is only written when it does not
+  already hold a revision. The run commits once per turn, so by the time
+  the reviewer is invoked almost everything is already committed — and a
+  reviewer handed `git diff HEAD` sees only the leftovers and can honestly
+  report "no findings" on a change it never saw. The reviewer and critic
+  read their diff from this revision instead. Write-once is what keeps that
+  true across restarts: re-running this command on an active run must not
+  move the baseline to the current HEAD and hand both roles an empty range
+  for a real change. It is committed with the run's first turn, so deleting
+  or rewriting it afterwards shows in `git log`. A deliberate fresh start
+  removes both baselines and the events log by hand; nothing here does it
   for you. Work that was already uncommitted when the gate was armed also
   falls inside the range: the reviewer attributes it against `## Boundary`
   rather than guessing.
+- **Another goal armed refuses**: the fence exits 1 rather than overwrite
+  `.goals/active`, because that overwrite silently retargeted every hook in
+  the directory from one owner-authorized run to another. Disarming is an
+  explicit act (`goal_run.py disarm <slug>`), and it compares the marker's
+  slug *line* - not its whole text, which grows a `session <id>` line the
+  first time a Stop claims the run.
+- `.goals/.gitignore` keeps `.work/`, `active` and `*.candidate` out of
+  commits - `.work/` holds the reviewer's and critic's reports for one
+  round, `active` is a switch, and a live completion claim must not ride
+  into a commit.
 
 Until the marker is written, **every hook in this plugin does nothing at
 all** — which is why a project that never asked for a goal pays nothing, and
@@ -137,8 +153,10 @@ failures only. So check the file exists before you treat the round as done: if i
 absent, the round did not happen — fall back as `## Roles` declares and say the round ran
 degraded in your report. A review that returned success and left nothing is a missing
 review, not a pass. Wait for every delegated role you invoked to finish before you claim
-completion: the gate refuses a claim while a role's failure is the event log's last word
-for the turn.
+completion: the gate refuses a claim while a role's failure stands without a
+positively observed recovery - a later successful call naming the same
+target, recorded by the PostToolUse hook. A turn ending proves nothing
+about a worker.
 
 **You are the run, not its designer.** The terms were agreed before you started; do not
 reopen them as an interview.
@@ -184,8 +202,16 @@ different axis: green, red and unknown are what one command did, not what the ru
 ## To stop
 
 ```bash
-rm .goals/active
+root="${CLAUDE_PLUGIN_ROOT}"
+[ -n "$root" ] || root="${ZCODE_PLUGIN_ROOT:-${KIMI_PLUGIN_ROOT:-${PLUGIN_ROOT}}}"
+[ -n "$root" ] || root="${KIMI_CODE_HOME:-$HOME/.kimi-code}/plugins/managed/ultra-goal"
+python3 "$root/skills/ultra-goal/scripts/goal_run.py" disarm $ARGUMENTS
 ```
 
-That disarms the gate without needing the agent's cooperation, and it is the same escape
-hatch `LOOP` never had: nothing in this plugin runs again until the marker returns.
+That disarms the gate without needing the agent's cooperation: the checked
+removal of the marker (and any pending candidate), with the slug verified
+against the marker's slug line - the same escape hatch `LOOP` never had.
+Nothing in this plugin runs again until the marker returns; the events log
+and both baselines stay for audit, and a deliberate fresh start removes them
+by hand before the next `arm`. `rm .goals/active` remains the owner's
+manual hatch when even the fence is out of reach.

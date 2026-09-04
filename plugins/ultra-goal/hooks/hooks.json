@@ -1,5 +1,5 @@
 {
-  "description": "Gate an active goal on its anchor and re-state the sections it may change, restore its frozen spec and carried state after a session or compaction boundary, and record a failed delegation via PostToolUseFailure so a degraded round cannot read as a clean one. Silent in any project without a .goals/active marker. This file is auto-discovered by Claude Code and zCode alike, so it carries only the events both hosts document: zCode has no PreCompact at all (that lives in hooks/claude.json and hooks/codex.json), and Codex, whose manifest replaces discovery with its own file, does not document PostToolUseFailure.",
+  "description": "Gate an active goal on its anchor and re-state the sections it may change, restore its frozen spec and carried state after a session or compaction boundary, record a failed delegation via PostToolUseFailure so a degraded round cannot read as a clean one, and record a recovered delegation via PostToolUse so recovery is a positive observation rather than a turn-boundary inference. Silent in any project without a .goals/active marker. This file is auto-discovered by Claude Code and zCode alike, so it carries only the events both hosts document: zCode has no PreCompact at all (that lives in hooks/claude.json and hooks/codex.json), and Codex, whose manifest replaces discovery with its own file, does not document PostToolUseFailure. The script root resolves zCode's documented ZCODE_PLUGIN_ROOT too - under it alone the old chain turned every path into /skills/... and silently loaded nothing.",
   "hooks": {
     "Stop": [
       {
@@ -7,8 +7,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "P=\"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/skills/ultra-goal/scripts/goal_stop.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\" ${ZCODE_PLUGIN_ROOT:+--host zcode}; else exec python \"$P\" ${ZCODE_PLUGIN_ROOT:+--host zcode}; fi",
-            "commandWindows": "py -3 \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_stop.py\"",
+            "command": "R=\"${CLAUDE_PLUGIN_ROOT}\"; H=\"\"; [ -n \"$R\" ] || { R=\"${ZCODE_PLUGIN_ROOT}\"; H=\"--host zcode\"; }; [ -n \"$R\" ] || R=\"${PLUGIN_ROOT}\"; P=\"$R/skills/ultra-goal/scripts/goal_stop.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\" $H; else exec python \"$P\" $H; fi",
+            "commandWindows": "if not exist \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_stop.py\" exit 0 & where py >nul 2>nul || exit 0 & py -3 \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_stop.py\"",
             "timeout": 600,
             "statusMessage": "Checking the loop's anchor"
           }
@@ -21,8 +21,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "P=\"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/skills/ultra-goal/scripts/goal_session_start.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\"; else exec python \"$P\"; fi",
-            "commandWindows": "py -3 \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_session_start.py\"",
+            "command": "R=\"${CLAUDE_PLUGIN_ROOT}\"; [ -n \"$R\" ] || R=\"${ZCODE_PLUGIN_ROOT}\"; [ -n \"$R\" ] || R=\"${PLUGIN_ROOT}\"; P=\"$R/skills/ultra-goal/scripts/goal_session_start.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\"; else exec python \"$P\"; fi",
+            "commandWindows": "if not exist \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_session_start.py\" exit 0 & where py >nul 2>nul || exit 0 & py -3 \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_session_start.py\"",
             "timeout": 10,
             "statusMessage": "Restoring the active loop"
           }
@@ -35,8 +35,21 @@
         "hooks": [
           {
             "type": "command",
-            "command": "P=\"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/skills/ultra-goal/scripts/goal_tool_failure.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\"; else exec python \"$P\"; fi",
-            "commandWindows": "py -3 \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_tool_failure.py\"",
+            "command": "R=\"${CLAUDE_PLUGIN_ROOT}\"; [ -n \"$R\" ] || R=\"${ZCODE_PLUGIN_ROOT}\"; [ -n \"$R\" ] || R=\"${PLUGIN_ROOT}\"; P=\"$R/skills/ultra-goal/scripts/goal_tool_failure.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\"; else exec python \"$P\"; fi",
+            "commandWindows": "if not exist \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_tool_failure.py\" exit 0 & where py >nul 2>nul || exit 0 & py -3 \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_tool_failure.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "R=\"${CLAUDE_PLUGIN_ROOT}\"; [ -n \"$R\" ] || R=\"${ZCODE_PLUGIN_ROOT}\"; [ -n \"$R\" ] || R=\"${PLUGIN_ROOT}\"; P=\"$R/skills/ultra-goal/scripts/goal_tool_success.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\"; else exec python \"$P\"; fi",
+            "commandWindows": "if not exist \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_tool_success.py\" exit 0 & where py >nul 2>nul || exit 0 & py -3 \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_tool_success.py\"",
             "timeout": 10
           }
         ]

@@ -29,6 +29,9 @@ SCRIPTS = REPO / "plugins" / "ultra-goal" / "skills" / "ultra-goal" / "scripts"
 CLAUDE = "/Users/rocky243/.local/share/claude/versions/2.1.260"
 CODEX = "/Users/rocky243/.local/bin/codex"
 
+sys.path.insert(0, str(SCRIPTS))
+from goal_hooks import frozen_digest  # noqa: E402
+
 WRAPPER = '''#!/usr/bin/env python3
 import json, subprocess, sys
 from pathlib import Path
@@ -108,8 +111,15 @@ def probe_dir(name: str, anchor: str, candidate: bool,
     root = Path(tempfile.mkdtemp(prefix=f"ultra-goal-r4-{name}-"))
     goals = root / ".goals"
     goals.mkdir()
-    (goals / "probe.goal.md").write_text(GOAL.format(anchor=anchor))
+    spec = GOAL.format(anchor=anchor)
+    (goals / "probe.goal.md").write_text(spec)
     (goals / "active").write_text("probe" + marker_extra)
+    # Round 5: the gate compares against the arming-time spec baseline
+    # (`<slug>.spec.baseline`, what goal_run.py arm records) and refuses
+    # claims on a run without one - so the probe arms the way the fence does.
+    (goals / "probe.spec.baseline").write_text(
+        frozen_digest(spec) + "\n", encoding="utf-8"
+    )
     if candidate:
         (goals / "probe.candidate").write_text("probe complete\n")
     for script in ("goal_stop.py", "goal_hooks.py"):

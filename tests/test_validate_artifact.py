@@ -588,6 +588,15 @@ class AuditTests(Harness):
             "\n".join(_json.dumps(e) for e in entries) + "\n", encoding="utf-8"
         )
 
+    def arm(self, digest: str | None = None) -> None:
+        """Write the arming-time spec baseline, exactly as `goal_run.py arm`
+        does: since round 5 the audit derives the run's authorized baseline
+        from this file and never from the first anchor check - a run can
+        write the log, so the first row found there laundered whatever it
+        said (round-4 F3)."""
+        text = digest if digest is not None else self.digest()
+        (self.dir / "demo.spec.baseline").write_text(text + "\n", "utf-8")
+
     def claim(self, turn: int, verdict: str, touch_artifact: bool = False) -> None:
         if touch_artifact:
             self.artifact.write_text(
@@ -610,6 +619,7 @@ class AuditTests(Harness):
         return sorted({f.code for f in findings})
 
     def test_agreeing_claim_and_measurement_report_nothing(self) -> None:
+        self.arm()
         self.log({"event": "anchor_checked", "turn": 1, "outcome": "green",
                   "exit_code": 0, "spec_digest": self.digest()})
         self.claim(1, "green")
@@ -648,6 +658,7 @@ class AuditTests(Harness):
         self.assertEqual("green", rows[1]["measured"])
 
     def test_a_later_commit_for_the_same_turn_wins(self) -> None:
+        self.arm()
         self.log({"event": "anchor_checked", "turn": 1, "outcome": "red",
                   "exit_code": 1, "spec_digest": self.digest()})
         self.claim(1, "green")
@@ -663,10 +674,36 @@ class AuditTests(Harness):
         self.assertNotIn("CLAIM_UNWITNESSED", codes)
 
     def test_a_moved_frozen_spec_is_reported(self) -> None:
+        """The comparison is armed-digest-file versus artifact-on-disk now -
+        never the first digest found in the event log, which the run can
+        write (round-4 F3: a laundered first row made the audit bless it)."""
+        self.arm()
         self.log({"event": "anchor_checked", "turn": 1, "outcome": "green",
                   "exit_code": 0, "spec_digest": "not-the-current-digest"})
         self.claim(1, "green")
+        # The log row's digest is deliberately wrong and must not matter.
+        # Move the artifact for real: edit a frozen section after arming.
+        self.artifact.write_text(
+            self.artifact.read_text(encoding="utf-8").replace(
+                "## Intent", "## Intent (edited)"),
+            encoding="utf-8",
+        )
         self.assertIn("FROZEN_SPEC_CHANGED", self.audit_codes())
+        audit = va.audit_artifact(self.artifact)[0]
+        self.assertEqual(self.digest_of_good_goal_armed(), audit["spec_digest_armed"])
+
+    def digest_of_good_goal_armed(self) -> str:
+        return va.frozen_digest(GOOD_GOAL)
+
+    def test_a_run_with_attempts_and_no_armed_baseline_is_reported(self) -> None:
+        """Round-4 F3, audit half: completion attempts with no arming-time
+        baseline mean the run was never verifiable against the owner's spec -
+        the gate refuses such claims, and the audit names the gap instead of
+        quietly deriving a baseline from the log."""
+        self.log({"event": "anchor_checked", "turn": 1, "outcome": "green",
+                  "exit_code": 0, "spec_digest": self.digest()})
+        self.claim(1, "green")
+        self.assertIn("SPEC_BASELINE_MISSING", self.audit_codes())
 
     def test_a_turn_parked_on_the_continuation_budget_is_reported(self) -> None:
         """A budget-spent release is the gate's own measurement of a run that

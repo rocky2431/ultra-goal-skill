@@ -101,6 +101,14 @@ class Harness(unittest.TestCase):
         goals.mkdir(exist_ok=True)
         (goals / f"{slug}.goal.md").write_text(goal, encoding="utf-8")
         (goals / "active").write_text(f"{slug}\n", encoding="utf-8")
+        # The arming-time spec baseline: since round 5 the gate compares every
+        # Stop against this file (what `goal_run.py arm` records) and never
+        # against a digest in the event log, and a run without one has its
+        # claims refused rather than judged - so a test that wants a judged
+        # run arms it the way the fence does.
+        (goals / f"{slug}.spec.baseline").write_text(
+            lh.frozen_digest(goal) + "\n", encoding="utf-8"
+        )
         return goals
 
     def claim(self, slug: str = "demo") -> None:
@@ -580,6 +588,176 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class ZCodeRootLauncherTests(Harness):
+    """Round-4 F2: the shared launcher resolved
+    `${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}` and used `ZCODE_PLUGIN_ROOT` only
+    to append `--host zcode` - so under zCode's own documented root every
+    path became `/skills/...`, failed the existence guard, and exited 0 with
+    no hook loaded. The root chain must fall through to zCode's variable."""
+
+    def command(self) -> str:
+        manifest = json.loads(
+            (REPO_ROOT / "plugins" / "ultra-goal" / "hooks" / "hooks.json")
+            .read_text(encoding="utf-8")
+        )
+        return manifest["hooks"]["Stop"][0]["hooks"][0]["command"]
+
+    def test_zcode_s_documented_root_actually_loads_the_gate(self) -> None:
+        import os
+
+        self.make_loop(goal=GOAL.replace(f"```\n{GREEN}\n```", f"```\n{RED}\n```"))
+        self.claim()
+        env = {
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "ZCODE_PLUGIN_ROOT": str(REPO_ROOT / "plugins" / "ultra-goal"),
+        }
+        result = subprocess.run(
+            ["/bin/sh", "-c", self.command()],
+            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            capture_output=True, text=True, timeout=60, env=env,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(
+            "block",
+            json.loads(result.stdout)["decision"],
+            "under ZCODE_PLUGIN_ROOT alone the gate must run and tag itself "
+            "zcode - an empty output here is a silently dead gate",
+        )
+
+    def test_the_windows_launch_paths_guard_and_fail_open(self) -> None:
+        """Round-4 F1: `commandWindows` ran `py -3 <script>` with no existence
+        guard and no fail-open, so the pre-handler exit-2 path phase 0 had to
+        eliminate was still open there. Native Windows behaviour cannot be
+        driven on this machine (a named gap in the round-5 report); the
+        regression pins the shipped shape: guard the script's existence,
+        guard the interpreter's, and any failure before the script runs is
+        exit 0 - never the exit 2 every host reads as a deliberate block."""
+        for relative in ("plugins/ultra-goal/hooks/hooks.json",
+                         "plugins/ultra-goal/hooks/claude.json"):
+            manifest = json.loads(
+                (REPO_ROOT / relative).read_text(encoding="utf-8")
+            )
+            for event, groups in manifest["hooks"].items():
+                for group in groups:
+                    for hook in group["hooks"]:
+                        windows = hook.get("commandWindows")
+                        if windows is None:
+                            continue
+                        with self.subTest(entry=f"{relative}:{event}"):
+                            self.assertIn("if not exist", windows,
+                                          "the script's existence is guarded")
+                            self.assertIn("exit 0", windows,
+                                          "a missing script fails open")
+                            self.assertIn("where py", windows,
+                                          "the interpreter is selected, not assumed")
+                            self.assertIn("|| exit 0", windows,
+                                          "a missing interpreter fails open too")
+
+
+class CheckedTransitionTests(Harness):
+    """Round-4 F10: a failed state transition was reported as a success - a
+    green allow announced over a zero-byte log, one surviving candidate
+    judged twice, a disarm announced while the marker survived. Every
+    consume/record/disarm transition is checked now, and the report says
+    what actually happened."""
+
+    def events(self) -> list[dict]:
+        path = self.cwd / ".goals" / "demo.events.jsonl"
+        if not path.is_file():
+            return []
+        return [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
+
+    def stop(self) -> dict:
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
+            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            capture_output=True, text=True, timeout=60,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        return json.loads(result.stdout) if result.stdout.strip() else {}
+
+    def test_an_unwritable_log_is_reported_as_unrecorded_not_passed(self) -> None:
+        import os
+        import stat
+
+        self.make_loop()  # a green anchor
+        self.claim()
+        log = self.cwd / ".goals" / "demo.events.jsonl"
+        log.write_text("", encoding="utf-8")
+        mode = stat.S_IMODE(log.lstat().st_mode)
+        os.chmod(log, mode & ~stat.S_IWUSR)
+        try:
+            payload = self.stop()
+        finally:
+            os.chmod(log, mode)
+        self.assertIn("passed on attempt", payload["systemMessage"])
+        self.assertIn(
+            "unrecorded", payload["systemMessage"],
+            "a green announced over an unwritten log is a false announcement",
+        )
+        self.assertEqual(0, log.stat().st_size)
+
+    def test_an_unconsumable_claim_is_refused_not_judged_twice(self) -> None:
+        import os
+        import stat
+
+        self.make_loop()
+        self.claim()
+        goals = self.cwd / ".goals"
+        mode = stat.S_IMODE(goals.lstat().st_mode)
+        os.chmod(goals, mode & ~stat.S_IWUSR)
+        messages = []
+        try:
+            for _ in range(2):
+                payload = self.stop()
+                messages.append(
+                    payload.get("reason", payload.get("systemMessage", ""))
+                )
+        finally:
+            os.chmod(goals, mode)
+        self.assertTrue(all("could not be removed" in m for m in messages),
+                        messages)
+        self.assertFalse(
+            any(e.get("event") == "anchor_checked" for e in self.events()),
+            "a claim that cannot be consumed must never be judged",
+        )
+        self.assertTrue(
+            (goals / "demo.candidate").exists(),
+            "the claim survives precisely because it could not be consumed",
+        )
+
+    def test_a_failed_disarm_is_not_announced_as_a_disarm(self) -> None:
+        import os
+        import stat
+
+        self.make_loop()
+        spec = (self.cwd / ".goals" / "demo.goal.md").read_text(encoding="utf-8")
+        (self.cwd / ".goals" / "demo.goal.md").write_text(
+            spec.replace("## Intent\n\nKeep the suite green.",
+                         "## Intent\n\nEDITED GOALPOST"),
+            encoding="utf-8",
+        )
+        goals = self.cwd / ".goals"
+        mode = stat.S_IMODE(goals.lstat().st_mode)
+        os.chmod(goals, mode & ~stat.S_IWUSR)
+        try:
+            first = self.stop()
+            second = self.stop()
+        finally:
+            os.chmod(goals, mode)
+        for payload in (first, second):
+            self.assertIn("could not remove", payload["systemMessage"])
+            self.assertNotIn("gate is disarmed", payload["systemMessage"])
+        self.assertTrue((goals / "active").exists())
+        self.assertLessEqual(
+            len([e for e in self.events()
+                 if e.get("event") == "frozen_spec_changed"]),
+            1,
+            "the closing is recorded at most once - and on an unwritable "
+            "log, not at all, which is also not a false announcement",
+        )
+
+
 class CompletionContractTests(Harness):
     """The anchor runs at exactly one moment: a completion candidate.
 
@@ -739,38 +917,74 @@ class CompletionContractTests(Harness):
         self.assertIn("fallback", payload["reason"])
         self.assertEqual("candidate_refused", self.events()[-1]["event"])
 
-    def test_a_recovered_role_failure_stops_blocking_at_the_turn_boundary(
+    def test_a_role_failure_blocks_until_recovery_is_positively_observed(
         self,
     ) -> None:
-        """The refusal is bounded: a failure is the log's last word only
-        until an observed boundary passes, so a run that recovers, ends its
-        turn without a claim, and claims again is judged on the anchor."""
+        """Round-4 F4: a turn boundary proved a turn ended, never that a
+        worker joined - the probe ended an ordinary turn with nothing
+        recovered and the gate judged the next claim anyway. Recovery is a
+        positive observation now: the PostToolUse hook writes
+        `role_recovered` when a later call naming the same target and tool
+        succeeds, and only that lifts the refusal."""
         self.make_loop()
-        log = self.cwd / ".goals" / "demo.events.jsonl"
-        log.write_text(json.dumps({
-            "event": "role_unavailable", "role": "reviewer",
-        }) + "\n", encoding="utf-8")
+        # The failure is recorded by the real failure hook, so role and tool
+        # are derived exactly as the recovery hook will derive them.
+        failed = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_tool_failure.py")],
+            input=json.dumps({
+                "hook_event_name": "PostToolUseFailure", "cwd": str(self.cwd),
+                "tool_name": "agent-delegate",
+                "tool_input": {"command": "agent-delegate --target x review"},
+                "tool_response": "exit 1",
+            }),
+            capture_output=True, text=True, timeout=60,
+        )
+        self.assertEqual(0, failed.returncode, failed.stderr)
+        self.assertEqual("role_unavailable", self.events()[-1]["event"])
         self.claim()
+        first = json.loads(subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
+            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            capture_output=True, text=True, timeout=60,
+        ).stdout)
+        # An ordinary turn passes with NO recovery observation at all.
         subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
             input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=60,
         )
-        # The turn ends without a claim: that boundary is the recovery
-        # window's edge.
-        subprocess.run(
-            [sys.executable, str(SCRIPTS / "goal_stop.py")],
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
-            capture_output=True, text=True, timeout=60,
-        )
         self.claim()
-        result = subprocess.run(
+        second = json.loads(subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
             input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=60,
+        ).stdout)
+        self.assertEqual("block", self.decision(first))
+        self.assertEqual(
+            "block", self.decision(second),
+            "a boundary is not a join: the claim must still be refused",
         )
-        payload = json.loads(result.stdout)
-        self.assertIn("passed on attempt", payload["systemMessage"])
+        self.assertEqual("candidate_refused", self.events()[-1]["event"])
+        # The positive observation: a successful call naming the same target.
+        recovered = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_tool_success.py")],
+            input=json.dumps({
+                "hook_event_name": "PostToolUse", "cwd": str(self.cwd),
+                "tool_name": "agent-delegate",
+                "tool_input": {"command": "agent-delegate --target x review"},
+                "tool_response": "ok",
+            }),
+            capture_output=True, text=True, timeout=60,
+        )
+        self.assertEqual(0, recovered.returncode, recovered.stderr)
+        self.assertEqual("role_recovered", self.events()[-1]["event"])
+        self.claim()
+        third = json.loads(subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
+            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            capture_output=True, text=True, timeout=60,
+        ).stdout)
+        self.assertIn("passed on attempt", third["systemMessage"])
 
     def test_the_ceiling_now_bounds_completion_attempts(self) -> None:
         self.make_loop()
@@ -790,6 +1004,55 @@ class CompletionContractTests(Harness):
         self.assertIsNone(self.decision(payload), "the ceiling must never deny")
         self.assertIn("4 completion attempts", payload["systemMessage"])
         self.assertEqual("ceiling_reached", self.events()[-1]["event"])
+
+    def test_refused_candidates_consume_the_owner_ceiling(self) -> None:
+        """Round-4 F5: attempt number counted only `anchor_checked`, so a
+        candidate refused for an unrecovered worker cost nothing - three
+        explicit candidates under `ceiling: 1` were all called attempt 1.
+        Every consumed candidate is an attempt now, whatever refused it."""
+        self.make_loop(goal=GOAL.replace(
+            "Stop when `true` succeeds, or after 4 turns.",
+            "Stop when `true` succeeds.\n\nceiling: 1",
+        ))
+        # An unrecovered delegation failure: the refusal path that used to
+        # cost no attempt at all.
+        failed = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_tool_failure.py")],
+            input=json.dumps({
+                "hook_event_name": "PostToolUseFailure", "cwd": str(self.cwd),
+                "tool_name": "agent-delegate",
+                "tool_input": {"command": "agent-delegate --target x review"},
+                "tool_response": "exit 1",
+            }),
+            capture_output=True, text=True, timeout=60,
+        )
+        self.assertEqual(0, failed.returncode, failed.stderr)
+        self.claim()
+        first = json.loads(subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
+            input=json.dumps({
+                "hook_event_name": "Stop", "cwd": str(self.cwd),
+                "session_id": "session-a",
+            }),
+            capture_output=True, text=True, timeout=60,
+        ).stdout)
+        self.assertEqual("block", self.decision(first))
+        self.claim()
+        second = json.loads(subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
+            input=json.dumps({
+                "hook_event_name": "Stop", "cwd": str(self.cwd),
+                "session_id": "session-a",
+            }),
+            capture_output=True, text=True, timeout=60,
+        ).stdout)
+        self.assertIsNone(
+            self.decision(second), "the owner's ceiling must never deny"
+        )
+        self.assertIn("ceiling of 1", second["systemMessage"])
+        self.assertEqual("ceiling_reached", self.events()[-1]["event"])
+        self.assertEqual(2, self.events()[-1]["turn"],
+                         "the refused first candidate consumed attempt 1")
 
     def test_ordinary_turns_do_not_advance_the_ceiling(self) -> None:
         """Only measured attempts count: a run may end any number of host
@@ -823,9 +1086,10 @@ class CompletionContractTests(Harness):
 
     def test_the_refusal_names_the_attempt_for_the_commit(self) -> None:
         payload = self.stop(RED, host="kimi")
-        self.assertIn("at most once", payload["reason"])
-        self.assertIn("goal(demo) turn 1", payload["reason"])
-        self.assertIn("[anchor: red]", payload["reason"])
+        reason = payload["hookSpecificOutput"]["permissionDecisionReason"]
+        self.assertIn("at most once", reason)
+        self.assertIn("goal(demo) turn 1", reason)
+        self.assertIn("[anchor: red]", reason)
 
 
 class AnchorGateTests(Harness):
@@ -849,10 +1113,11 @@ class AnchorGateTests(Harness):
         return json.loads(result.stdout) if result.stdout.strip() else {}
 
     def decision(self, payload: dict) -> str | None:
-        """Blocked is blocked: the top-level `decision` is the one form every
-        probe-verified host honours (the nested Stop fields made the block
-        inert on Codex 0.150.1 and were removed). The nested read remains
-        only as a normalizer for historical payloads."""
+        """Blocked is blocked, in whichever allowlisted shape the asking host
+        reads: the top-level pair on Claude Code, Codex and zCode; the nested
+        `permissionDecision: deny` pair on Kimi 0.40.1, whose parser ignores
+        the top-level form (round-4 F8). One Stop output is not shared
+        across vendors; both shapes mean the same refusal."""
         top = payload.get("decision")
         if top == "block":
             return "block"
@@ -1134,7 +1399,7 @@ class FrozenSpecTests(Harness):
         self.assertIn("no longer the goal the owner authorized", payload["systemMessage"])
         entry = self.events()[-1]
         self.assertEqual("frozen_spec_changed", entry["event"])
-        self.assertNotEqual(entry["spec_digest_first"], entry["spec_digest_now"])
+        self.assertNotEqual(entry["spec_digest_armed"], entry["spec_digest_now"])
 
     def test_editing_the_anchor_is_also_a_moved_goalpost(self) -> None:
         self.make_loop()
@@ -1615,7 +1880,7 @@ class StopPayloadContractTests(Harness):
       legitimate on other events.
     """
 
-    def stop(self, anchor: str) -> dict:
+    def stop(self, anchor: str, host: str | None = None) -> dict:
         # A fresh events log per call: subTests share one temp dir, and an
         # anchor that differs across calls would read as a moved goalpost.
         log = self.cwd / ".goals" / "demo.events.jsonl"
@@ -1623,8 +1888,11 @@ class StopPayloadContractTests(Harness):
             log.unlink()
         self.make_loop(goal=GOAL.replace(f"```\n{GREEN}\n```", f"```\n{anchor}\n```"))
         self.claim()
+        argv = [sys.executable, str(SCRIPTS / "goal_stop.py")]
+        if host is not None:
+            argv += ["--host", host]
         result = subprocess.run(
-            [sys.executable, str(SCRIPTS / "goal_stop.py")],
+            argv,
             input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=60,
         )
@@ -1682,15 +1950,29 @@ class StopPayloadContractTests(Harness):
                      ("config", "user.name", "t")):
             subprocess.run(["git", *args], cwd=str(self.cwd), check=True,
                            capture_output=True)
-        for _ in range(2):
-            with open(self.cwd / "src.txt", "a", encoding="utf-8") as handle:
-                handle.write("work\n")
-            subprocess.run(["git", "add", "-A"], cwd=str(self.cwd), check=True,
-                           capture_output=True)
-            subprocess.run(["git", "commit", "-qm", "wip"], cwd=str(self.cwd),
-                           check=True, capture_output=True)
-            payload = self.kimi_turns(1)[0]
-            self.assertNotIn("hookSpecificOutput", payload)
+        # First Kimi stop: the one block the host allows, in Kimi's own
+        # nested shape - the only form its parser blocks on (round-4 F8).
+        with open(self.cwd / "src.txt", "a", encoding="utf-8") as handle:
+            handle.write("work\n")
+        subprocess.run(["git", "add", "-A"], cwd=str(self.cwd), check=True,
+                       capture_output=True)
+        subprocess.run(["git", "commit", "-qm", "wip"], cwd=str(self.cwd),
+                       check=True, capture_output=True)
+        denied = self.kimi_turns(1)[0]
+        self.assertEqual(
+            "deny",
+            denied["hookSpecificOutput"]["permissionDecision"],
+        )
+        # Second stop in a fresh chain: the budget is spent, and the release
+        # is an allow - which must carry no model context on any host.
+        with open(self.cwd / "src.txt", "a", encoding="utf-8") as handle:
+            handle.write("more work\n")
+        subprocess.run(["git", "add", "-A"], cwd=str(self.cwd), check=True,
+                       capture_output=True)
+        subprocess.run(["git", "commit", "-qm", "wip"], cwd=str(self.cwd),
+                       check=True, capture_output=True)
+        payload = self.kimi_turns(1)[0]
+        self.assertNotIn("hookSpecificOutput", payload)
         self.assertIn("denied attempt(s)", payload["systemMessage"])
 
     def test_a_deny_is_exactly_the_top_level_form(self) -> None:
@@ -1698,10 +1980,33 @@ class StopPayloadContractTests(Harness):
         self.assertEqual(
             {"decision", "reason"}, set(payload),
             "the nested Stop fields make the block inert on Codex 0.150.1; "
-            "the top-level form is the one both probe-verified hosts honour",
+            "the top-level form is the one the default host reads",
         )
         self.assertEqual("block", payload["decision"])
         self.assertIn("still failing", payload["reason"])
+
+    def test_the_deny_shape_follows_the_asking_host(self) -> None:
+        """Round-4 F8: deleting the nested form globally fixed Codex and
+        broke Kimi, whose parser (0.40.1 binary) reads only
+        `hookSpecificOutput.permissionDecision` and blocks solely on "deny".
+        One Stop output cannot be shared across vendors: exactly one
+        allowlisted shape per asking host, the reason carrying everything."""
+        for host, keys in (
+            ("claude", {"decision", "reason"}),
+            ("codex", {"decision", "reason"}),
+            ("zcode", {"decision", "reason"}),
+        ):
+            with self.subTest(host=host):
+                payload = self.stop(RED, host=host)
+                self.assertEqual(keys, set(payload), host)
+                self.assertEqual("block", payload["decision"])
+                self.assertIn("still failing", payload["reason"])
+        kimi = self.stop(RED, host="kimi")
+        self.assertEqual({"hookSpecificOutput"}, set(kimi))
+        nested = kimi["hookSpecificOutput"]
+        self.assertEqual("deny", nested["permissionDecision"])
+        self.assertIn("still failing", nested["permissionDecisionReason"])
+        self.assertNotIn("decision", kimi, "the top-level pair is inert on Kimi")
 
     def test_the_obligation_rides_the_deny_reason(self) -> None:
         """The blocked turn is the one that needs the obligation, and a deny
@@ -2106,7 +2411,7 @@ class ContinuationBudgetTests(Harness):
         with the only message the run will get."""
         payload = self.turn(host="kimi")
         self.assertEqual("block", self.decision(payload))
-        reason = payload["reason"]
+        reason = payload["hookSpecificOutput"]["permissionDecisionReason"]
         self.assertIn("at most once", reason)
         self.assertIn("goal(demo) turn 1", reason)
         self.assertIn("[anchor: red]", reason)
@@ -2346,7 +2651,13 @@ class PromptSubmitTests(Harness):
             capture_output=True, text=True, timeout=30,
         )
         self.assertEqual(0, stop.returncode, stop.stderr)
-        self.assertEqual("block", json.loads(stop.stdout).get("decision"))
+        # Kimi's deny is the nested pair - the one shape its parser blocks on.
+        self.assertEqual(
+            "deny",
+            json.loads(stop.stdout)
+            .get("hookSpecificOutput", {})
+            .get("permissionDecision"),
+        )
         result = self.run_script(
             {"hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
         )

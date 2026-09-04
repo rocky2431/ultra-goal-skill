@@ -381,13 +381,15 @@ command, and it is worth knowing which:
 absence — **check your own host rather than trusting this table**, and say so when it is
 wrong.
 
-### The gate is the loop, so a host's goal mode is no longer needed
+### The gate judges completion, so a host's goal mode is no longer needed
 
 A host's goal mode kept the model working by re-prompting it, and asked **the model**
-whether the objective was met. The Stop hook does the first thing better — it refuses to let
-a turn end while the anchor is red — and the anchor does the second. Compared item by item,
+whether the objective was met. The run works in ordinary host turns; the Stop hook judges
+completion claims — refusing a claim while the claimed completion's anchor is still red —
+and the anchor answers the second question. Compared item by item,
 goal mode duplicates four of this Skill's own mechanisms, and **cannot do the one that
-matters**: write `.goals/active`, the marker without which every hook here is inert.
+matters**: arm `.goals/active` through the validating fence, without which every hook here
+is inert.
 
 So where the plugin is installed, start a run with **`/ultra-goal:goal-run <slug>`**: it validates
 the artifact, arms the gate, and hands over the spec in one step. Where it is not, paste
@@ -470,7 +472,7 @@ Checked against the four ways a single loop fails, plus the way a graph of loops
 | **False consensus — the check agrees without evidence** | the critic sorts each point into agreement / evidence-backed / concern-based, and the reviewer must answer with evidence |
 | Blindness upward — the loop cannot question its target | `## Intent` is frozen; question 9 sends target-level divergence back to the owner |
 | Conflict — independent loops undermine each other | one operating loop per artifact, so there is no collision surface |
-| Measurement decay — nobody watches the watcher | the anchor runs for real every turn, and reports *unknown* when it cannot |
+| Measurement decay — nobody watches the watcher | the anchor runs for real at every completion claim, and reports *unknown* when it cannot |
 | **Context anxiety — the run closes out on a feeling** | a completion claim cannot pass while the anchor is red, and an unclaimed turn end leaves the durable state visibly unfinished; `## Acceptance` makes what is left explicit rather than a memory |
 | Circularity — everything confirms everything, nothing touches reality | the anchor is the one node whose verdict passes through no model at all |
 
@@ -615,15 +617,23 @@ jobs:
 | How it became true | `git log -p <slug>.goal.md` — the diffs *are* the evolution |
 | What each iteration did | the commit message — one line per iteration |
 
-Commit once per iteration that changed anything, with a message shaped so the log is the
-trajectory:
+Commit once per iteration that changed anything. Ordinary work turns commit as:
 
 ```
-goal(<slug>) turn <N>: <one line on what changed> [anchor: green|red|unknown]
+goal(<slug>): <one line on what changed>
 ```
 
-`git log --oneline -- .goals/<slug>.goal.md` then reads as the run, one line per turn, with
-each turn's verdict on it. That is what puts the evolution in Git, and why the document never
+A completion attempt the gate has measured commits with the attempt's number and verdict:
+
+```
+goal(<slug>) turn <N>: <one line> [anchor: green|red|unknown]
+```
+
+`<N>` is the number in the gate's message, never a number the run counts itself, and
+ordinary turns carry no `[anchor: ...]` verdict — nothing measured one. One completion
+attempt is one `<N>`; `--audit` joins the commit subject to the gate's measurements by it,
+and `git log --oneline -- .goals/<slug>.goal.md` then reads as the run with its measured
+verdicts on it. That is what puts the evolution in Git, and why the document never
 has to hold history itself.
 
 What a loop learns stays in that project, beside its artifact:
@@ -638,22 +648,23 @@ those boundaries is drawn where it is.
 
 ## The gate: what the hooks do, and what they cost
 
-On a host that exposes the events, six hooks ship with this Skill and register on install.
+On a host that exposes the events, seven hooks ship with this Skill and register on install.
 They turn the anchor from a sentence in a prompt into a gate that actually runs. Which of
 them register is a per-host fact, not a constant: **each manifest registers only events its
 host documents**, because an event a host does not support is either an error or silence,
 and silence here means a dead gate. zCode documents no `PreCompact` (its compaction
-recovery rides `SessionStart`'s compact source), Codex documents no `PostToolUseFailure`,
-and Kimi ignores `SessionStart` output outright - a registration that cannot deliver reads
-as coverage - which is why the last row exists and why Kimi registers no `SessionStart` at
-all.
+recovery rides `SessionStart`'s compact source), Codex documents no `PostToolUseFailure`
+and so also no recovery to record, and Kimi ignores `SessionStart` output outright - a
+registration that cannot deliver reads as coverage - which is why the last row exists and
+why Kimi registers no `SessionStart` at all.
 
 | Hook | Does | Can it block? |
 |---|---|---|
 | `Stop` | The completion gate: judges an explicit completion candidate by executing the anchor once against the current state; ordinary stops get one deterministic omission line | **Yes, while a claim is refusable** - within the gate's own denial bound |
 | `SessionStart` | Re-injects the frozen spec and the carried state after a restart or resume. Not registered on Kimi: its reference makes the event observation-only, so the registration could not deliver anything | No |
 | `PreCompact` | Records the carried state and the fact of the compaction into the event log | No |
-| `PostToolUseFailure` | Records `role_unavailable` when a delegated role's call fails, so a degraded round cannot read as a clean one - and so a completion claim with an unrecovered failure is refused - on Codex, which documents no such event, the run's report is the only record | No |
+| `PostToolUseFailure` | Records `role_unavailable` when a delegated role's call fails, so a degraded round cannot read as a clean one - on Codex, which documents no such event, the run's report is the only record | No |
+| `PostToolUse` | Records `role_recovered` when a later call naming the same delegation target succeeds - the positive observation that lifts a failure's refusal, where a turn boundary proved nothing. Not registered on Codex, which records no failures to recover | No |
 | `UserPromptSubmit` | Kimi only: one fixed-size line per prompt - the artifact pointer plus the gate's last decision from the event log - because that host's `SessionStart` cannot inject and its Stop has no allow-channel to speak through | No |
 | `TurnStarted` | Kimi only: records the host's own turn boundary - `turn_id` and `origin_kind` - for every new turn whatever its origin. A user prompt is one origin of a turn, not the boundary itself; without this row, a task- or system-triggered turn would inherit a spent budget no turn of its own spent | No |
 
@@ -665,16 +676,20 @@ hashes and checkboxes are not completion oracles. When the run believes the goal
 writes `.goals/<slug>.candidate` (the `goal-run` command's standing instruction) and ends
 its turn; the claim is self-reported and that is fine, because it only triggers the check
 and grants nothing. The gate then, in order: checks the session/run ownership, the
-authorized spec baseline and the anchor identity - any mismatch and no old result
-substitutes; refuses the claim while a delegated role's failure is the log's last word for
-the turn; bounds attempts by the owner's ceiling; **executes the current anchor once
-against the current state and rules on that measurement alone**; and writes the
-measurement - session identity, spec digest, anchor digest, post-anchor state identity,
-exit code, output digest. The candidate is consumed by its judgment: state changing after
-the check cannot resurrect a claim, and a new claim needs a new marker. **The gate never
-reads a historical green as a pass input** - old rows are audit only. Green proves this
-anchor exited 0 on this state; whether that satisfies the acceptance line stays with the
-model and the owner.
+authorized spec baseline - recorded by the arming fence into `<slug>.spec.baseline` before
+any Stop ran, never found in the event log - and the anchor identity, so any mismatch
+means no old result substitutes; refuses the claim while a delegated role's failure stands
+without a *positively observed* recovery (`PostToolUse`'s `role_recovered` - a turn
+boundary proves a turn ended, not a worker joined); bounds attempts by the owner's
+ceiling, which counts every candidate - refused ones included; **executes the current
+anchor once against the current state and rules on that measurement alone**; and writes
+the measurement - session identity, spec digest, anchor digest, post-anchor state identity,
+exit code, output digest - checking that the write landed. The candidate is consumed by
+its judgment, and the consumption is checked: a claim whose marker cannot be removed is
+refused rather than judged, because a surviving marker would be judged twice. **The gate
+never reads a historical green as a pass input** - old rows are audit only. Green proves
+this anchor exited 0 on this state; whether that satisfies the acceptance line stays with
+the model and the owner.
 
 **An allow carries no model context, and that is a probe result, not a preference.** On
 Claude Code 2.1.260 a Stop that allows while attaching `additionalContext` does not end
@@ -685,10 +700,12 @@ before the Stop and write durable state - carry-over, lessons, commits - before 
 allowed to end. The next injectable event, where one exists at all, is best-effort
 recovery and never carries correctness: Kimi's task and system-triggered turns fire no
 `UserPromptSubmit`, and `SessionStart` is not guaranteed either. A deny has exactly one
-channel - the top-level `decision: "block"` plus `reason` - because the mixed payload that
-also nested `permissionDecision` made the block inert on Codex 0.150.1 while the
-top-level-only form blocked correctly; the error belongs to the event-specific schema,
-not to the field name.
+channel per host, and the shapes are not shared: Codex 0.150.1 blocks on the top-level
+`decision: "block"` plus `reason` - the mixed payload that also nested `permissionDecision`
+was inert there - while Kimi 0.40.1 reads only `hookSpecificOutput.permissionDecision` and
+ignores the top-level pair. So the gate builds one allowlisted shape per asking host -
+the top-level pair on Claude Code, Codex and zCode; the nested pair on Kimi - and the
+reason always carries everything the blocked turn must hear.
 
 **The run owns a session, and the session owns the gate.** `.goals/active` carries the
 slug plus, after the first Stop that carries a session identity, a `session <id>` line -

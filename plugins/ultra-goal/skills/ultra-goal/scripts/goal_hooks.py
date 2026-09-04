@@ -22,15 +22,19 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import sys
 from typing import Any, Callable
 
 
 GOALS_DIR = ".goals"
-# The sections a run may never edit. Their digest is recorded by the gate on the
-# first turn and compared on every later one.
+# The sections a run may never edit. Their digest is recorded once, by the
+# arming command, into `<slug>.spec.baseline` and compared by the gate on
+# every later Stop against that file - never against a digest found in the
+# event log, because the run can write the log.
 FROZEN_SECTIONS = ("intent", "boundary", "anchor")
 ACTIVE_MARKER = "active"
+SPEC_BASELINE_SUFFIX = ".spec.baseline"
 DISABLE_ENV = "ULTRA_GOAL_HOOKS_DISABLED"
 # A slug names one artifact in `.goals/`. It is never a path.
 SLUG_MAX = 100
@@ -71,6 +75,7 @@ class ActiveGoal:
     decisions_path: Path
     marker_path: Path
     owner_session: str | None = None
+    spec_baseline_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -261,9 +266,29 @@ def active_goal(cwd: Any) -> ActiveGoal | None:
             decisions_path=goals / f"{slug}.decisions.md",
             marker_path=marker,
             owner_session=session,
+            spec_baseline_path=goals / f"{slug}{SPEC_BASELINE_SUFFIX}",
         )
     except (OSError, UnicodeError, ValueError):
         return None
+
+
+def read_spec_baseline(goal: ActiveGoal) -> str | None:
+    """The frozen-spec digest the arming command recorded, or None.
+
+    This file is the run's only authorized baseline. The gate compares every
+    Stop against it and never against a digest found in the event log: the
+    log is writable by the run, and round 4's laundering probe replaced it
+    with a run-authored row carrying an edited digest and was allowed
+    through. `None` means the run was never armed through the fence - the
+    gate refuses completion claims rather than judging them unverified.
+    """
+    if goal.spec_baseline_path is None:
+        return None
+    try:
+        text = goal.spec_baseline_path.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeError):
+        return None
+    return text if re.fullmatch(r"[0-9a-f]{12}", text) else None
 
 
 def event_session(event: dict[str, Any]) -> str | None:
@@ -377,14 +402,21 @@ def run_hook(
         return 0
 
 
-def append_event(goal: ActiveGoal, entry: dict[str, Any]) -> None:
-    """Append one line to the goal's event log. Silent on failure."""
+def append_event(goal: ActiveGoal, entry: dict[str, Any]) -> bool:
+    """Append one line to the goal's event log. Returns whether it landed.
+
+    A silent failure here used to be announced as a success: the gate said
+    "passed on attempt N" over an empty log (round 4's probe wrote a green
+    allow while the log stayed zero bytes). The caller decides what an
+    unrecorded attempt means; this just refuses to pretend it was recorded.
+    """
     try:
         goal.goals_dir.mkdir(parents=True, exist_ok=True)
         with goal.events_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
+        return True
     except (OSError, UnicodeError, TypeError, ValueError):
-        pass
+        return False
 
 
 def read_events(goal: ActiveGoal) -> list[dict[str, Any]]:
