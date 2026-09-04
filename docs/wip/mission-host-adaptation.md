@@ -976,16 +976,6 @@ session and derail the probe model.
 
 ### 8.2 Claude Code — review rounds
 
-_(Claude Code writes here, and in `docs/wip/reviews/claude-round-N.md`)_
-
-### 8.3 Codex — review rounds
-
-**Round 1.** Independent report: [`docs/wip/reviews/codex-round-1.md`](reviews/codex-round-1.md).
-Verdict: request changes; the blind suite passed 332 tests, but Kimi command activation and
-per-turn budgeting, stagnation evidence, and the review baseline still have reproduced gaps.
-
-### 8.2 Claude Code — review rounds
-
 - **Round 1** — [`reviews/claude-round-1.md`](reviews/claude-round-1.md). Six findings, and
   an addendum retracting three of them after reading the vendors' references and the Claude
   Code loader. Blind verdict 332 passed.
@@ -1071,3 +1061,111 @@ asked whether any of the above was conceded wrongly.
 gap in your own evidence as a defect in the work. The implementer read the references; the
 reviewer did not. That is the most reusable result of the exercise, and it is an argument for
 the retraction ledger this design still lacks.
+
+## 9 The three acceptance items no script-level control could cover
+
+Codex's acceptance list for the correction round was explicitly **not "394 tests again"**.
+Three items on it needed a host, and after five delegated sessions were killed this session
+ran them itself. Driver: [`reviews/probes-round-5-hosts.py`](reviews/probes-round-5-hosts.py).
+Receipts: [`reviews/probe-receipts-round-5-hosts.json`](reviews/probe-receipts-round-5-hosts.json).
+
+```
+[PASS] windows-batch-guard      5 commandWindows guards, both directions, no failures
+[PASS] kimi-deny-nested         nested deny consumed; reason appended verbatim; 6 further llm.requests
+[PASS] zcode-documented-root    2 Stop callbacks; --host zcode; path and tag from ZCODE_PLUGIN_ROOT
+```
+
+**Kimi — the F8 fix verified on the host that the collapsed shape had killed.** Registered
+through `KIMI_CODE_HOME` (config-files reference), so the owner's `~/.kimi-code` was read and
+never written. A red anchor at a completion claim produced the nested
+`hookSpecificOutput.permissionDecision: "deny"` pair, and the proof of consumption is the
+host's own wire log rather than the model's prose: one `context.append_message` with
+`role: "user"` carrying the gate's reason **verbatim**, followed by six more `llm.request`
+records. The reference promises the host "writes the blocking reason back into the context";
+that record is the promise kept. **One Stop callback is the maximum here, not a miss** - this
+host triggers a blocking Stop at most once per turn, which is the budget the gate declares
+for it.
+
+**zCode — driven from its documented root, and two host defects found on the way.** The gate
+ran twice, tagged `--host zcode`, with both the script path and the host tag resolved from
+`ZCODE_PLUGIN_ROOT`, and its top-level `{"decision": "block", "reason"}` pair was consumed:
+the host continued the blocked turn and came back for a second Stop. Getting there required
+correcting two things this exercise had assumed:
+
+- **`--settings <path>` and `--max-turns <n>` are printed by `zcode 0.16.5 --help` and
+  rejected by its own parser** as unknown options - bare, and after `tui` and `app-server`.
+  Its docs name no config-directory environment variable either, so the isolation is
+  relocating `HOME` and writing `$HOME/.zcode/cli/config.json` with `hooks.enabled: true`.
+  The earlier round's `Unknown option --settings` was therefore **not** a probe defect, and
+  the correction here is mine: I read the help text and took it for the contract.
+- **`"matcher": ""` - the exact value in zCode's own hooks documentation - makes the host
+  reject the entire config file, and the error it prints is `Model config is missing`,
+  naming a section that is intact.** Bisected against the owner's working config: `""`
+  fails, `".*"` and `"*"` both load. This plugin already ships `"*"` everywhere, so nothing
+  needed fixing; the sentence now in `hooks/hooks.json`'s description exists so the next
+  person following the doc example does not spend the hour.
+
+**Windows is a simulator, and it is labelled one in the receipt.** No Windows host exists on
+this machine and no emulator for one (`wine` absent; Docker for Mac cannot run Windows
+containers). What ran is a cmd.exe batch-subset interpreter over every `commandWindows`
+string in the manifests: with the script absent each guard exits 0 and reaches no
+interpreter, with it present each reaches `where`/`py`. That proves the guards' **logic**.
+It does not prove Windows, and no claim here should be read as proving Windows.
+
+**One gap this probe exposed, closed; one named and left alone.**
+
+*Closed.* `hooks/codex.json` carried no `commandWindows` on any of its three handlers, so a
+Windows Codex would have been handed a POSIX shell string. Codex's hooks reference documents
+the field verbatim - "`commandWindows` is an optional Windows-only command override" - so
+this was an omission rather than a host that lacks the field. All three now carry one,
+mirroring the pattern the simulator already proves, and the probe count went 5 → 8.
+
+*Named, not fixed.* The Windows branch takes its path from `%CLAUDE_PLUGIN_ROOT%` only,
+while the POSIX branch of the same shared file falls back to `ZCODE_PLUGIN_ROOT` **and**
+adds `--host zcode` from it - the single-variable rule that finding F2 was about. So a
+Windows zCode would find `%CLAUDE_PLUGIN_ROOT%` unset, fail the `if not exist` guard on a
+literal path, and **exit 0 silently**: fail-safe, and a gate that never runs. The cmd.exe
+form of that fallback needs `if defined` chaining with delayed expansion, which is exactly
+the kind of string this machine cannot execute even once - and writing untestable batch to
+close a finding is how the `python3 X || python X` "fix" happened. It stays named.
+
+### 9.1 What reading all four references for one field turned up
+
+Closing the Codex gap meant checking who actually documents `commandWindows`, and the answer
+is one host of the three that carry it:
+
+| Host | Documents `commandWindows`? | Its documented Windows path |
+|---|---|---|
+| Codex | **yes**, verbatim: "an optional Windows-only command override" | that field |
+| Claude Code | no - the hooks reference lists `shell` accepting `"bash"` or `"powershell"` | `shell: "powershell"`, or the `args` exec form |
+| zCode | no - ten handler fields, none of them this | the `process` executor, "directly via argv without a shell" |
+
+So in `hooks/hooks.json`, the file both Claude Code and zCode auto-discover, `commandWindows`
+is **inert decoration**: it does nothing on Windows for either consumer. It stays because
+removing it costs something and keeping it costs nothing *measured*: Claude Code has been
+loading that file all session with the field present, and zCode was bisected directly - a
+config carrying `commandWindows` still loads and still fires the hook. That measurement
+matters more than usual here, because this same host rejects a whole config over
+`"matcher": ""` and blames the model section for it, so "an unknown field is harmless" is
+not something to assume on it.
+
+What was wrong was the **claim**, and it was wrong inside a test named
+`test_no_undocumented_hook_fields`: its allowlist contained `commandWindows` while a
+neighbouring docstring said the field "is not in the hooks reference". Both are now
+annotated with which host documents it and which two merely tolerate it, verified how. The
+new `test_codex_handlers_carry_the_windows_override_codex_documents` asserts the three Codex
+handlers each carry the field, each guard in both directions, and the `--host codex` tag on
+the Windows branch as well - the round-4 miss on this field was checking the POSIX command
+and never opening `commandWindows`.
+
+```
+$ python3 -m pytest tests/ -q
+403 passed in 25.57s
+```
+
+### 9.2 Version
+
+Version 2.10.0 → 2.11.0 at all eight pinned sites, for the two rounds this branch carries
+that change shipped behaviour: arming became a Python fence with the authorized baseline
+written once, the Stop deny is now translated per host instead of shared, and Codex's three
+handlers gained the Windows override its reference documents.

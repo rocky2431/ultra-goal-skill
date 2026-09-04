@@ -1278,6 +1278,40 @@ class PerHostHookRegistrationTests(unittest.TestCase):
         kimi = (PLUGIN_ROOT / "kimi.plugin.json").read_text(encoding="utf-8")
         self.assertIn("goal_prompt_submit.py", kimi)
 
+    def test_codex_handlers_carry_the_windows_override_codex_documents(self):
+        """Codex's hooks reference documents the field verbatim - "`commandWindows`
+        is an optional Windows-only command override" - and `hooks/codex.json`
+        carried it on none of its three handlers, so a Windows Codex would have
+        been handed a POSIX shell string. Found by walking every manifest for
+        the field rather than by reading the one file that had it.
+
+        Every guard is also asserted in both directions, because the round-4
+        miss on this exact field was checking the POSIX command and never
+        opening `commandWindows`: with the script absent the guard exits before
+        any interpreter, with it present the interpreter is reached.
+        """
+        codex = self.load("plugins/ultra-goal/hooks/codex.json")
+        events = []
+        for event, matchers in codex["hooks"].items():
+            for matcher in matchers:
+                for entry in matcher["hooks"]:
+                    with self.subTest(event=event):
+                        windows = entry.get("commandWindows")
+                        self.assertIsNotNone(windows, event)
+                        # The guard comes first and leaves on a missing script.
+                        self.assertTrue(
+                            windows.startswith("if not exist "), windows)
+                        self.assertIn("exit 0 &", windows)
+                        # And the interpreter is reachable behind it.
+                        self.assertIn("py -3 ", windows)
+                        self.assertIn(r"%CLAUDE_PLUGIN_ROOT%", windows)
+                    events.append(event)
+        self.assertEqual(["Stop", "SessionStart", "PreCompact"], events)
+        # The host tag travels on the Windows branch too, or a Windows Codex
+        # would be gated with another host's continuation budget.
+        stop = codex["hooks"]["Stop"][0]["hooks"][0]["commandWindows"]
+        self.assertTrue(stop.endswith("--host codex"), stop)
+
 class RolesByStageTests(unittest.TestCase):
     """Roles are settled per stage, and most stages are not a choice.
 
@@ -1797,7 +1831,19 @@ class AuditFixTests(unittest.TestCase):
     def test_no_undocumented_hook_fields(self) -> None:
         """`additionalContextLimit` is not in the hooks reference. The script's
         CONTEXT_LIMIT is what actually bounds the injection, so the manifest
-        field was either ignored or grounds to reject the whole entry."""
+        field was either ignored or grounds to reject the whole entry.
+
+        `commandWindows` is the one field in this allowlist that neither
+        consumer of this shared file documents: Claude Code's hooks reference
+        lists `shell: "powershell"` as its Windows knob and no
+        `commandWindows`, and zCode's lists ten handler fields and no
+        `commandWindows` either. It is here on a measurement rather than a
+        reading - both hosts load this file with the field present (zCode
+        bisected directly: a config carrying it still loads and still fires the
+        hook) - so on these two hosts the field is inert decoration, and it is
+        the real Windows mechanism only in `hooks/codex.json`, whose reference
+        does document it verbatim. That asymmetry is the whole reason this
+        entry is annotated instead of silently allowlisted."""
         documented = {
             "type", "command", "commandWindows", "timeout", "statusMessage",
             "shell", "url", "headers", "prompt", "agent", "once",
@@ -1810,8 +1856,8 @@ class AuditFixTests(unittest.TestCase):
                         self.assertNotIn("additionalContextLimit", hook)
 
     def test_every_hook_selects_its_interpreter_and_execs_once(self) -> None:
-        """`commandWindows` is not in the hooks reference, so it cannot be the
-        only Windows path - and `python3` is usually absent there. The old
+        """`commandWindows` is in neither consumer's hooks reference, so it
+        cannot be the only Windows path - and `python3` is usually absent there. The old
         `|| python` fallback was retired: it re-ran the hook on a deliberate
         exit 2 with stdin drained and swallowed the block (plan defect 1.2,
         reproduced). The replacement selects the interpreter first, `exec`s it

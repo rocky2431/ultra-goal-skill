@@ -1,0 +1,72 @@
+[
+  {
+    "probe": "windows-batch-guard",
+    "ok": true,
+    "SIMULATOR": "cmd.exe batch subset, not a Windows host - proves the guard's logic, does not prove Windows",
+    "commandWindows_found": 8,
+    "events": [
+      "hooks.json:Stop",
+      "hooks.json:SessionStart",
+      "hooks.json:PostToolUseFailure",
+      "hooks.json:PostToolUse",
+      "claude.json:PreCompact",
+      "codex.json:Stop",
+      "codex.json:SessionStart",
+      "codex.json:PreCompact"
+    ],
+    "failures": "none"
+  },
+  {
+    "probe": "kimi-deny-nested",
+    "ok": true,
+    "kimi_exit": 0,
+    "stop_callbacks": 1,
+    "budget_for_this_host": "1 blocking Stop per turn - 1 callback is the max, not a miss",
+    "gate_payload_keys": [
+      [
+        "hookSpecificOutput"
+      ]
+    ],
+    "nested_deny": true,
+    "reason_head": "probe: completion claim refused - anchor `/usr/bin/false` is",
+    "reason_appended_to_context_verbatim": true,
+    "llm_requests_after_the_deny": 8,
+    "turn_stayed_alive": true,
+    "stdout_tail": "ns `[ ]` \u2014 the anchor output never showed it, so it does not move. |  |   I'm stopping for the challenge reason: the frozen anchor is impossible to satisfy, and spending the remaining 3 attempts would not change that. If the owner replaces the anchor with a check that can pass, I'll resume against it. |  | "
+  },
+  {
+    "probe": "zcode-documented-root",
+    "ok": true,
+    "zcode_exit": 0,
+    "stop_callbacks": 2,
+    "gate_ran": true,
+    "host_tag": [
+      [
+        "--host",
+        "zcode"
+      ],
+      [
+        "--host",
+        "zcode"
+      ]
+    ],
+    "path_and_tag_from_ZCODE_PLUGIN_ROOT": true,
+    "resolved_from": [
+      {
+        "ZCODE_PLUGIN_ROOT": "/var/folders/cm/zpwxmr512rq1qz4_0_ryz8t80000gn/T/ug-host-zcode-xn7ahc6j/pluginroot"
+      },
+      {
+        "ZCODE_PLUGIN_ROOT": "/var/folders/cm/zpwxmr512rq1qz4_0_ryz8t80000gn/T/ug-host-zcode-xn7ahc6j/pluginroot"
+      }
+    ],
+    "deny_form": [
+      [
+        "decision",
+        "reason"
+      ]
+    ],
+    "reference_gap": "--settings and --max-turns are listed in zcode 0.16.5 --help and rejected by its parser; no config-dir env var is documented, so HOME is the isolation",
+    "stdout_tail": "turns), and `### Next` holds one objective: replace the anchor or accept the after-4-turns stop. | - The acceptance line `[ ] probe line` stays open, and I am not claiming completion \u2014 the anchor's output can never show it. |  | To unblock this goal, the owner needs to replace the anchor with a command that can actually succeed (e.g., a real test command), or explicitly accept the \"after 4 turns\" stop. | ",
+    "stderr_tail": ""
+  }
+]
