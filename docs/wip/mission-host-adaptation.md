@@ -826,6 +826,90 @@ _(Claude Code writes here, and in `docs/wip/reviews/claude-round-N.md`)_
 Verdict: request changes; the blind suite passed 332 tests, but Kimi command activation and
 per-turn budgeting, stagnation evidence, and the review baseline still have reproduced gaps.
 
+### 8.2 Claude Code — review rounds
+
+- **Round 1** — [`reviews/claude-round-1.md`](reviews/claude-round-1.md). Six findings, and
+  an addendum retracting three of them after reading the vendors' references and the Claude
+  Code loader. Blind verdict 332 passed.
+- **Round 2** — [`reviews/claude-round-2.md`](reviews/claude-round-2.md). Two of its
+  surviving findings closed; one new (zCode had neither observable turn boundary). Blind
+  verdict 347 passed.
+- **Round 3** — [`reviews/claude-round-3.md`](reviews/claude-round-3.md). Both open P1s
+  closed; its own round-2 proposal retracted as wrong. Blind verdict 358 passed.
+- Pre-registered readings, written before any implementation existed and kept outside this
+  worktree until both round-1 reports were filed:
+  [`reviews/claude-preregistered.md`](reviews/claude-preregistered.md).
+
+### 8.3 Codex — review rounds
+
+- **Round 1** — [`reviews/codex-round-1.md`](reviews/codex-round-1.md). Complete. Request
+  changes, 4 P1 + 2 P2, blind verdict 332 passed. Its F2 was the deepest finding of the
+  three rounds.
+- **Round 2** — [`reviews/codex-round-2.md`](reviews/codex-round-2.md). **Partial**, and it
+  says so in its own text: the session ended mid-review after two P1s, with F3-F6, the other
+  reviewer's findings, and its regression audit unreached. Blind verdict 347 passed. The two
+  P1s it did produce - fail-open arming, and the turn boundary still being inferred - were
+  the whole content of round 3.
+- **Round 3** — [`reviews/codex-round-3.md`](reviews/codex-round-3.md). **Blind verdict
+  only** (358 passed, matching independently), then "Findings: Verification pending."
+
 ### 8.4 Joint conclusion
 
-_(Claude Code and Codex, after the final round)_
+**There is no joint conclusion, and saying so is the conclusion.** The owner asked for one
+report from two reviewers with their disagreements included. Codex's third-round half does
+not exist, so what follows is one reviewer's conclusion plus the parts of Codex's work that
+completed. Presenting it as joint would be the exact failure this project's own
+`adversarial-review.md` refuses: two reviewers who both say "looks fine" have produced one
+opinion reported twice, and here the second reviewer did not speak at all.
+
+**Why it does not exist, with the records:**
+
+| attempt | target | stop reason | duration | wrapper reported |
+|---|---|---|---|---|
+| round 2 | codex | `cancelled` | 130s | `exit=0 status=success` |
+| round 2 retry | codex | killed (harness) | — | `[killed]`, receipt written |
+| round 3 | codex | killed (harness) | ~7 min | no `result.json` at all |
+
+The first is the one worth keeping as a finding rather than an inconvenience: **a review that
+never happened was reported as a success.** 41k tokens, 200 output tokens, no protocol error,
+no quota exhaustion, no file. `PostToolUseFailure` writes `role_unavailable` only when a call
+*fails*, so nothing in this plugin could see it. That is what `REVIEW_UNEVIDENCED` now exists
+for, and this run is its first real instance - the detector was built in round 3 because the
+delegation layer produced the failure in round 2.
+
+**What is actually settled, and by whom:**
+
+- The suite: 358 passed, verified independently by both reviewers in round 3
+  (`358 passed in 31.55s` and `358 passed in 41.75s`).
+- Codex F1 (fail-open arming) and F2 (inferred turn boundary): closed, verified by Claude
+  Code in round 3 against the closure bar **Codex itself set** - a host-provided turn
+  identity plus a non-user-origin regression. Codex has not confirmed its own closures.
+- Claude Code's three surviving findings: closed, one of them by a repair Claude Code
+  proposed and one by retracting the repair Claude Code proposed.
+- Codex's F3, F4, F5, F6 from round 1: **only zCode's own account says these are closed.**
+  Neither reviewer verified them. F6 in particular is Codex's own unreproducible evidence
+  line, and it was never withdrawn or substantiated.
+
+**What no round of this exercise touched:** no host other than Claude Code ran a single one
+of these hooks. Three of the four host adaptations are read from references, binaries and
+manifests only. The 358 tests measure this repository's logic and packaging conventions;
+they do not measure a host honouring a registration.
+
+**The reviewers' retraction record**, which the Protoss study argued should be a product
+artifact rather than a footnote:
+
+| Round | Claude Code retracted | Beaten by |
+|---|---|---|
+| 1 | zCode's `ZCODE_PLUGIN_ROOT` called "a load-bearing guess" | zCode's hooks reference lists it among four plugin variables |
+| 1 | "Codex would still load `PostToolUseFailure` from the shared file" | Codex's plugin reference: the manifest entry is used *instead of* the default |
+| 1 | "Claude Code's manifest `hooks` might replace discovery" | the CC loader's own schema text and control flow: additive |
+| 2 | grading `prompt_submitted` as an observed turn boundary | Codex F2: the invocation is observed, the equivalence is inferred |
+| 3 | its own round-2 fix proposal (register `UserPromptSubmit` for zCode) | it would have installed the refuted proxy on the one unverifiable host |
+
+Codex retracted nothing across three rounds, and never reached the section where it was
+asked whether any of the above was conceded wrongly.
+
+**Five retractions, four of one shape:** measure the machine, skip the contract, report the
+gap in your own evidence as a defect in the work. The implementer read the references; the
+reviewer did not. That is the most reusable result of the exercise, and it is an argument for
+the retraction ledger this design still lacks.
