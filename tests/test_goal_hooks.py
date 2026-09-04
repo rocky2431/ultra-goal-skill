@@ -5,6 +5,7 @@ path must lead to exit 0 with no side effects."""
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -370,12 +371,35 @@ class AnchorGateTests(Harness):
     def test_resolvability_is_decided_by_looking(self) -> None:
         import importlib
         gate = importlib.import_module("goal_stop")
-        self.assertTrue(gate._resolvable(f'"{sys.executable}" -c "pass"'))
-        self.assertTrue(gate._resolvable(sys.executable))
-        self.assertFalse(gate._resolvable("this-command-does-not-exist-42"))
-        self.assertFalse(gate._resolvable("   "))
+        root = Path(self.cwd)
+        self.assertTrue(gate._resolvable(f'"{sys.executable}" -c "pass"', root))
+        self.assertTrue(gate._resolvable(sys.executable, root))
+        self.assertFalse(gate._resolvable("this-command-does-not-exist-42", root))
+        self.assertFalse(gate._resolvable("   ", root))
         # Unparseable quoting must not be judged - hand it to the shell.
-        self.assertTrue(gate._resolvable('unbalanced "quote'))
+        self.assertTrue(gate._resolvable('unbalanced "quote', root))
+
+    def test_a_relative_anchor_resolves_against_the_project_not_the_cwd(self) -> None:
+        """`.venv/bin/python` is the commonest anchor there is, and it used to be
+        looked for wherever the host spawned the hook - while the anchor itself
+        runs with `cwd=root`. Those two disagreeing makes every turn `unknown`
+        and the gate silently inert. Found on a real artifact.
+        """
+        import importlib
+        gate = importlib.import_module("goal_stop")
+        root = Path(self.cwd)
+        venv = root / ".venv" / "bin"
+        venv.mkdir(parents=True, exist_ok=True)
+        exe = venv / "python"
+        exe.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        exe.chmod(0o755)
+
+        cwd = os.getcwd()
+        os.chdir(tempfile.gettempdir())
+        try:
+            self.assertTrue(gate._resolvable(".venv/bin/python -m pkg", root))
+        finally:
+            os.chdir(cwd)
 
     def test_an_unresolvable_anchor_is_never_executed(self) -> None:
         """Cheaper and safer: nothing runs when the executable is absent."""

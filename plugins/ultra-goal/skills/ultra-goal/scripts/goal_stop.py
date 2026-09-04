@@ -161,7 +161,7 @@ def _budget(anchor_section: str) -> tuple[int, bool]:
     return min(max(seconds, 1), ANCHOR_BUDGET_CEILING), True
 
 
-def _resolvable(command: str) -> bool:
+def _resolvable(command: str, root: Path) -> bool:
     """Can this command's executable actually be found?
 
     Asked before running, because "command not found" is reported differently
@@ -172,6 +172,14 @@ def _resolvable(command: str) -> bool:
     to end and says the result is unverified. A false negative in the other
     direction - treating a broken anchor as a failing one - denies the stop on
     no evidence. Erring toward unknown is the safe direction.
+
+    `root` is not optional and not cosmetic. A relative head - and
+    `.venv/bin/python` is the commonest anchor there is - used to be resolved
+    against whatever directory the host happened to spawn the hook in, while
+    twenty lines below the anchor is executed with `cwd=root` explicitly. Those
+    two disagreeing is the worst kind of failure this gate can have: every turn
+    reports `unknown`, the gate never enforces anything, and nothing anywhere
+    says so. Found on a real artifact whose anchor began `.venv/bin/python`.
     """
     try:
         parts = shlex.split(command, posix=(os.name != "nt"))
@@ -183,7 +191,8 @@ def _resolvable(command: str) -> bool:
     if not head:
         return False
     try:
-        if Path(head).exists():
+        candidate = Path(head)
+        if (root / candidate).exists() if not candidate.is_absolute() else candidate.exists():
             return True
     except OSError:
         pass
@@ -388,7 +397,7 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
         )
 
     # Step 6: is the anchor even runnable? Answered by looking, not by inference.
-    if not _resolvable(anchor):
+    if not _resolvable(anchor, goal.goals_dir.parent):
         append_event(
             goal,
             {
