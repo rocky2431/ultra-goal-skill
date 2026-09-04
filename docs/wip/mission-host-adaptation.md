@@ -217,7 +217,246 @@ named as unverified.
 
 ### 8.1 zCode — implementation
 
-_(zCode writes here)_
+**Round 1.** Five implementation commits on `host-adaptation` (frozen diff
+`3dddfd1..a7ef7e1`): `b5143a7` (4.1, the loop), `77e8cb0` (4.2, the reviewer's
+diff), `a8b2d1d` (the four manifests), `dc2f70d` (shipped documents + v2.9.0,
+all eight version sites), `a7ef7e1` (one-block-host deny addendum). Not pushed,
+not installed, not published.
+
+#### Test command and its real output
+
+```
+$ python3 -m pytest tests/ -q
+332 passed in 19.08s
+```
+
+Baseline, re-run for this report at the mission's own baseline commit:
+
+```
+$ git checkout 3dddfd1 && python3 -m pytest tests/ -q
+302 passed in 7.67s
+```
+
+Also run, real output: `claude plugin validate plugins/ultra-goal` →
+`✔ Validation passed` (and again under `--strict`, which fails on unrecognized
+fields — relevant because this round adds a `hooks` field to two manifests).
+Version: 2.8.0 → 2.9.0 at all eight sites, equality pinned by
+`test_every_manifest_declares_the_same_version_as_the_skill`.
+
+#### What changed, per defect
+
+**4.1 — the loop.** `goal_hooks.run_hook` no longer hard-exits on
+`stop_hook_active`; a continuation is a gated turn. The guard against a gate
+that denies forever is now the per-host continuation budget in
+`goal_hooks.HOSTS` (`plugins/ultra-goal/skills/ultra-goal/scripts/goal_hooks.py`),
+each entry carrying its citation:
+
+| Host | Budget (consecutive blocks) | Source, read directly |
+|---|---|---|
+| claude | 7 | host cap 8: `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` default, Claude Code 2.1.260 binary (the mission's own §4.1 quote) |
+| zcode | 2 | host cap 3: "After 3 consecutive continuations the run is force-ended" — https://zcode.z.ai/en/docs/hooks |
+| kimi | 1 | the host triggers a blocking Stop only while `!stopHookContinuationUsed`, reset in `notifyTurnEnded` — Kimi 0.40.1 binary (`/Users/rocky243/.kimi-code/bin/kimi`, `runStepLoop`); its reference documents no cap |
+| codex | none | no cap in https://learn.chatgpt.com/docs/hooks and none greppable in the 0.150.1 binary; the gate's own ceiling binds |
+
+An unknown `--host` gets budget 1, never Claude's 7. Every `anchor_checked`
+event now records `"blocked": true|false` (the streak measurement);
+`goal_stop._block_streak` counts trailing blocks and the gate releases one
+**before** the host's cap, writing a `continuation_budget_spent` event that
+`--audit` surfaces as a `CONTINUATION_BUDGET_SPENT` advisory
+(`validate_artifact.py`). The release message names the commit subject with the
+gate's turn number; on claude it also names `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`.
+
+**The not-progressing rule had to change with it, and this was forced by a
+test, not chosen in the abstract.** A deterministic anchor prints the same
+failing summary until the work lands, so under the output-only rule the second
+check released the turn — 4.1's defect in a new costume. Stagnation is now
+measured on what the anchor can see: `goal_stop._tree_digest` digests
+`git rev-parse HEAD` + `git status --porcelain` + `git diff HEAD`, all
+excluding `.goals` (whose event log grows every check and would mask
+stagnation), and `_stagnant` releases only when neither the output nor the
+tree moved. Projects without Git keep the old output-only rule as fallback.
+
+**4.2 — the reviewer's empty diff.** `goal-run.md` step 3 now records
+`git rev-parse HEAD > .goals/$1.baseline` (`none` without Git); `review` and
+`critic` SKILL.md read `git diff "$(cat .goals/$1.baseline)"` — working tree
+against the arming revision, so committed *and* uncommitted work shows — plus
+`git status --porcelain` for untracked files a diff cannot show. The
+boundary-attribution wrinkle Codex's document raised is stated in the reviewer
+skill itself: pre-arming uncommitted work falls inside the range and is
+attributed by `## Boundary`. The critic is told the range is the same one the
+reviewer saw, so findings citing files outside it are findings about the
+review. The baseline is committed with the run's first turn, so moving it
+afterwards is visible in `git log`.
+
+**The four manifests.** One logic copy; host facts live at entry points.
+Layout and the loading semantics each rest on (binary- or reference-)verified
+ground:
+
+- `hooks/hooks.json` — auto-discovered by Claude Code **and** zCode, so it
+  carries only events **both** document: Stop, SessionStart,
+  PostToolUseFailure. Its Stop entry self-tags zCode via
+  `${ZCODE_PLUGIN_ROOT:+--host zcode}` (the env variable zCode's hooks
+  reference documents for hook commands; Claude Code does not set it), and an
+  untagged run defaults to claude. Verified in `sh`: unset expands to nothing,
+  set expands to `--host zcode`; the full command line was run end-to-end
+  against a fixture and blocks/allows correctly.
+- `hooks/claude.json` — PreCompact only, named by `.claude-plugin/plugin.json`
+  `"hooks"`, which Claude Code treats as **additional** files on top of
+  auto-discovery — read from the 2.1.260 binary's own schema description
+  ("manifest.hooks should only reference additional hook files").
+- `hooks/codex.json` — Stop `--host codex`, SessionStart, PreCompact; named by
+  `.codex-plugin/plugin.json` `"hooks"`, which **replaces** the default file
+  location (documented at developers.openai.com/plugins/build/plugins), so
+  Codex never sees the shared file and never inherits the
+  `PostToolUseFailure` it does not document. Codex loses the
+  `role_unavailable` recording for the same reason — the run's report is the
+  only record of a degraded round there, which is a declared loss, not parity.
+- `kimi.plugin.json` — the four events tagged `--host kimi`, Stop timeout
+  200 → 600 (200 would kill a 540s-declared anchor into permanent `unknown` —
+  the clock-cap defect class), plus `UserPromptSubmit` → new
+  `goal_prompt_submit.py`: Kimi's SessionStart output is fire-and-forget
+  (reference: only PreToolUse, Stop and UserPromptSubmit affect the flow), so
+  the documented alternative injects one fixed-size pointer line per prompt —
+  a declared degradation, tested to be the same size whatever the artifact.
+- zCode needs no extra file: the shared core is exactly its documented subset.
+  `install_user.py`: Stop timeout 200 → 600 and the registration tags
+  `--host claude`.
+
+**§3 — one anchor check is one turn.** The gate's counter already counted
+checks, so its meaning is unchanged; what changed is that a host turn can now
+hold several. The run's commit subject cites the number from the gate's most
+recent message — spelled out in the budget-spent release, in the one-block-host
+deny reason, and in `goal-run.md` ("`<N>` is the number in the gate's most
+recent message, not a number you count yourself"). `--audit`'s join key is
+unchanged; a run citing a number the gate never measured is caught by the
+existing `CLAIM_UNWITNESSED`.
+
+#### Answers to the shape questions §4.1 asked
+
+- **May a run end a turn with a red anchor?** In exactly three ways — budget
+  spent, not progressing, ceiling — each loud (event + message + commit
+  subject). The alternative, never releasing, is mechanically impossible
+  against a host cap and would only trade the gate's last word for the host's
+  force-end warning.
+- **What does an unattended run do when the budget is spent?** It parks:
+  carry-over written, committed red, turn ended. On Claude Code the message
+  names `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` so the owner can raise 8 → N; at the
+  default, a ceiling of 40 checks costs roughly five owner prompts (8 checks
+  per host turn). That is the host's mechanical limit — stated, not hidden. On
+  Kimi every turn parks after one block, so long unattended runs there are
+  effectively attended. Codex, with no known cap, does not park at all.
+
+#### Codex's proposal: adopted, adapted, rejected
+
+- **Adopted**: the baseline-diff shape for 4.2 including the wrinkle; per-host
+  budgets as cited facts (their CC=8 / zCode=3 / Kimi=1-per-turn claims were
+  re-derived from primary sources and all three held; their Kimi one-continuation
+  claim, which their own doc marks as binary-derived, is now independently
+  confirmed at `runStepLoop`).
+- **Adapted**: Kimi's `UserPromptSubmit` alternative — as a one-line pointer,
+  not spec injection (per-prompt cost must be fixed-size; the full spec is
+  what SessionStart injection is for, and Kimi cannot have that).
+- **Rejected**: their `goal_host.py --host kimi` input/output conversion shim
+  and six-event Kimi declaration — a translation layer is a second copy of
+  host knowledge, against the mission's one-logic-copy rule; `--host` at the
+  manifest entry points does the same job with no shim. Also rejected their
+  `hooks/zcode.json` (holding PostToolUseFailure): zCode unions
+  auto-discovery with manifest declarations, so a zcode.json re-registering
+  PostToolUseFailure would double-register it. Their
+  `hooks/hooks.json = Stop + SessionStart`-only split was widened: PostToolUseFailure
+  belongs in the shared file because both auto-discovering hosts document it.
+
+#### Objections (§5), each with what breaks and what would settle it
+
+1. **Anchor re-runs under continuations are now the dominant clock cost.**
+   What breaks: a 540s anchor with a 7-block Claude Code budget can spend
+   about an hour of anchor time per host turn — the owner's clock spent on
+   checks, not work. What would settle it: the tree digest this round already
+   measures "nothing changed"; skipping the anchor and re-reporting the
+   cached outcome (without advancing the turn counter) is now cheap to build.
+   It stays unbuilt because its failure case — a Stop with no work since the
+   last check — has not been reproduced under the new loop shape, and the
+   stagnant pair costs at most one anchor run today. One real run's timing
+   data settles build/don't-build.
+2. **The tree digest sees untracked paths, not untracked content.** What
+   breaks: a run whose work only rewrites the *content* of untracked files
+   (scratch outputs, build dirs outside git) reads as stagnant if the anchor
+   output is also identical. What would settle it: hashing untracked file
+   content, or the first real run that trips it — whichever comes first.
+3. **`CONTEXT_LIMIT = 12000` and `FROZEN_SECTIONS_OVER_BUDGET` still rest on
+   one artifact.** What breaks: nothing silently — overruns are loud since
+   2.7.2 — but the budget's *fit* is one data point. What would settle it:
+   the next real artifact's measurement.
+4. **`FROZEN_SECTIONS` hardcoded in `goal_hooks.py` — defended, not
+   challenged.** A freeze declared in the artifact is a freeze the run can
+   edit; keeping the list outside the artifact's reach is the property, and
+   the cost (new frozen sections need a code change) is the price of it.
+5. **The shared `hooks/hooks.json` now carries one zCode-specific shell
+   expansion.** What breaks: a hypothetical CC-compatible host that
+   auto-discovers this file, has a cap below 7, sets no `ZCODE_PLUGIN_ROOT`,
+   and runs no POSIX shell would get claude's budget and meet its host's
+   force-end (backstop, not corruption). What would settle it: zCode
+   documenting replace-semantics for its manifest `hooks` field (its reference
+   was asked and does not answer), which would let every host own its file.
+
+#### Tests rewritten to new contracts (none weakened silently)
+
+- `test_stop_hook_active_is_a_hard_early_exit` →
+  `test_stop_hook_active_still_reaches_the_handler`: the forever-guard moved
+  from an input flag to the budget.
+- `test_kimi_hooks_name_the_same_events_as_the_claude_manifest` → asserts the
+  shared core is contained in Kimi's set; identical event sets across hosts is
+  exactly what this round removes.
+- `test_the_gate_table_counts_the_hooks_that_ship` → five hooks, per-host
+  registration, union of events across files.
+- Hygiene expectations for the script list and the shared file's event list.
+- **Flagged for the reviewers' ruling**: the package hygiene scan
+  (`test_package_ships_hooks_but_no_mcp_or_machine_specific_paths`) is now
+  scoped to the shipped tree and excludes `docs/wip/`. Pre-existing failure:
+  the mission envelope itself (commit `97d0780`) cites two absolute paths
+  (`docs/wip/mission-host-adaptation.md:7,66`) and the old scan red-ed the
+  suite on the owner's own notes — verified by `git stash` before any of my
+  changes touched anything. I did not edit the envelope (protocol: my section
+  only) and did not delete the guard: it still scans everything that installs.
+
+#### What I could not verify — named, not smoothed over
+
+1. **Codex's budget of `None`.** No cap in the reference or the binary, but no
+   live Codex goal run proved that unbounded blocking is honored. If a hidden
+   cap exists, the host's force-end is the backstop.
+2. **zCode's union semantics.** Inferred from its reference's "do not point
+   the manifest at the same file again"; the merge-vs-replace question for a
+   *different* path is explicitly unanswered by that page. A live zCode plugin
+   install would settle it — and installing is outside this mission's rules.
+3. **Claude Code's manifest-hooks-are-additional.** Read from the 2.1.260
+   binary's schema text and consistent with `plugin validate --strict`
+   passing; not proven by installing the plugin into a live session.
+4. **Kimi's one-continuation-per-turn.** Binary-verified control flow, not
+   observed in a live Kimi goal run.
+5. **The `${ZCODE_PLUGIN_ROOT:+--host zcode}` expansion under zCode's real
+   hook execution.** Verified in `sh` and end-to-end from a shell; zCode's own
+   command invocation path was not exercised.
+6. **No live four-host run.** The loop fix is proven by git-backed tests that
+   model continuations, plus one manual end-to-end invocation of the exact
+   manifest command — not by an unattended run on any host. The mission's own
+   minimal acceptance (two failures then success, pause, context recovery, a
+   graph node, independent review) remains unexecuted.
+7. **The baseline-diff review flow** is file changes plus tests; no live
+   review round exercised it.
+8. **Kimi's plugin-hook working directory** (plugin root; project from event
+   `cwd`) is from Codex's document and was not re-verified against Kimi's
+   plugin reference.
+
+#### Refused, with reasons
+
+- **No live installs or runs on any host** — mission rule ("do not push, do
+  not install, do not publish"), so every host-behavior claim above stops at
+  reference, binary, or shell evidence and is labeled accordingly.
+- **No `goal_host.py` conversion shim** — second copy of host knowledge;
+  rejected in favor of `--host` at entry points.
+- **No anchor-skip optimization** — no reproduced failure under the new loop
+  shape (objection 1 above records the settlement condition).
+- **No edit to any section of this envelope but §8.1.**
 
 ### 8.2 Claude Code — review rounds
 
