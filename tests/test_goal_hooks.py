@@ -1224,6 +1224,17 @@ class ContinuationBudgetTests(Harness):
         self.assertEqual("red", spent[0]["outcome"])
         self.assertEqual(2, spent[0]["turn"], "turn 1 blocked; turn 2 is the release")
 
+    def test_a_one_block_host_carries_the_park_instructions_on_the_block(self) -> None:
+        """Kimi never invokes the Stop hook again after one block, so the turn
+        ends with no second gate message: the park instructions have to travel
+        with the only message the run will get."""
+        payload = self.turn(host="kimi")
+        self.assertEqual("block", self.decision(payload))
+        reason = payload["reason"]
+        self.assertIn("at most once", reason)
+        self.assertIn("goal(demo) turn 1", reason)
+        self.assertIn("[anchor: red]", reason)
+
     def test_identical_output_with_committed_work_keeps_the_turn_alive(self) -> None:
         """The not-progressing rule cannot be allowed to strangle the loop.
 

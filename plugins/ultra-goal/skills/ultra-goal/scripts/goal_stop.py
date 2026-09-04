@@ -673,15 +673,25 @@ def handle(
     # It says nothing at all there instead: a run without a ceiling should never
     # read the word, and inventing a number is what `_ceiling` exists to prevent.
     of_ceiling = f" of {ceiling}" if ceiling is not None else ""
-    record(True)
-    return _deny(
+    deny_reason = (
         f"{goal.slug}: anchor `{anchor}` is still failing (exit {exit_code}) on turn "
         f"{turn}{of_ceiling}, so the goal is not met. Keep working. Before the next "
         "attempt, write one lesson into `### Lessons` naming the cause and the next "
         "action. The anchor is this turn's check; the reviewer and critic in "
-        "`## Verification` run when you propose completion, not on every red turn.",
-        _obligation(found, goal),
+        "`## Verification` run when you propose completion, not on every red turn."
     )
+    if budget == 1:
+        # A one-block host never invokes this gate again after blocking: when
+        # the turn ends there is no second message, so the park instructions
+        # travel with the only message the run will get.
+        deny_reason += (
+            " This host continues a blocked turn at most once: when the turn "
+            f"ends, commit it as `goal({goal.slug}) turn {turn}: ... [anchor: red]`, "
+            "rewrite `### Lessons` and `### Next`, and continue on the next prompt - "
+            "the ceiling still binds on the event log's count."
+        )
+    record(True)
+    return _deny(deny_reason, _obligation(found, goal))
 
 
 if __name__ == "__main__":
