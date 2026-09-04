@@ -292,6 +292,149 @@ class ScriptSmokeTests(Harness):
                 self.assertEqual(0, result.returncode, result.stderr)
 
 
+class LauncherContractTests(Harness):
+    """The command string the hosts actually execute, not just the script
+    behind it. Two confirmed defects (plan section 1.2 and 1.3):
+
+    - `python3 X || python X` re-runs the hook when the first run exits 2,
+      with stdin already drained, and the final status is the second run's -
+      so the one code every host here reads as a deliberate block was being
+      swallowed by the launcher itself. The plan reproduced it with a probe
+      script; these tests drive the shipped command strings the same way.
+    - A missing script file or an argparse error also exits 2, and all four
+      hosts read exit 2 as a deliberate block. Fail-open must therefore
+      cover the launch and argument handling, not only the inside of
+      `run_hook`.
+    """
+
+    STUB = (
+        "import sys\n"
+        "from pathlib import Path\n"
+        "log = Path(__file__).with_name('runs.txt')\n"
+        "with log.open('a') as f:\n"
+        "    f.write('run\\n')\n"
+        "sys.stdin.read()\n"
+        "raise SystemExit(2)\n"
+    )
+
+    def command_from(self, relative: str, event: str) -> str:
+        manifest = json.loads((REPO_ROOT / relative).read_text(encoding="utf-8"))
+        hooks = manifest["hooks"]
+        if isinstance(hooks, dict):
+            return hooks[event][0]["hooks"][0]["command"]
+        entry = next(h for h in hooks if h.get("event") == event)
+        return entry["command"]
+
+    def stub_root(self) -> Path:
+        root = self.cwd / "plugin"
+        script = root / "skills" / "ultra-goal" / "scripts" / "goal_stop.py"
+        script.parent.mkdir(parents=True, exist_ok=True)
+        script.write_text(self.STUB, encoding="utf-8")
+        return root
+
+    def run_launcher(
+        self, command: str, root: Path, payload: str = "{}"
+    ) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["/bin/sh", "-c", command],
+            input=payload,
+            capture_output=True, text=True, timeout=60,
+            env={"PATH": os.environ.get("PATH", ""), "PLUGIN_ROOT": str(root)},
+            cwd=str(root),
+        )
+
+    def runs(self, root: Path) -> int:
+        log = root / "skills" / "ultra-goal" / "scripts" / "runs.txt"
+        return len(log.read_text().splitlines()) if log.is_file() else 0
+
+    def test_the_shipped_stop_command_preserves_exit_2_and_runs_once(self) -> None:
+        root = self.stub_root()
+        result = self.run_launcher(
+            self.command_from("plugins/ultra-goal/hooks/hooks.json", "Stop"), root
+        )
+        self.assertEqual(2, result.returncode, result.stderr)
+        self.assertEqual(1, self.runs(root),
+                         "the hook must execute once: a second run sees drained "
+                         "stdin and swallows the deliberate exit 2")
+
+    def test_the_codex_and_kimi_stop_commands_preserve_exit_2(self) -> None:
+        for relative in ("plugins/ultra-goal/hooks/codex.json",
+                         "plugins/ultra-goal/kimi.plugin.json"):
+            with self.subTest(manifest=relative):
+                root = self.stub_root()
+                before = self.runs(root)
+                result = self.run_launcher(
+                    self.command_from(relative, "Stop"), root
+                )
+                self.assertEqual(2, result.returncode, result.stderr)
+                self.assertEqual(1, self.runs(root) - before)
+
+    def test_a_missing_script_fails_open_not_block(self) -> None:
+        root = self.cwd / "plugin"
+        (root / "skills" / "ultra-goal" / "scripts").mkdir(parents=True)
+        for relative, event in (
+            ("plugins/ultra-goal/hooks/hooks.json", "Stop"),
+            ("plugins/ultra-goal/hooks/hooks.json", "SessionStart"),
+            ("plugins/ultra-goal/hooks/hooks.json", "PostToolUseFailure"),
+            ("plugins/ultra-goal/hooks/claude.json", "PreCompact"),
+            ("plugins/ultra-goal/hooks/codex.json", "Stop"),
+            ("plugins/ultra-goal/hooks/codex.json", "SessionStart"),
+            ("plugins/ultra-goal/kimi.plugin.json", "Stop"),
+            ("plugins/ultra-goal/kimi.plugin.json", "UserPromptSubmit"),
+            ("plugins/ultra-goal/kimi.plugin.json", "TurnStarted"),
+        ):
+            with self.subTest(entry=f"{relative}:{event}"):
+                result = self.run_launcher(
+                    self.command_from(relative, event), root
+                )
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertEqual("", result.stdout.strip())
+
+    def test_a_missing_interpreter_falls_back_exactly_once(self) -> None:
+        """The fallback the `||` was originally written for: python3 absent,
+        python present. It must still run the hook once and keep its status."""
+        root = self.stub_root()
+        binroot = self.cwd / "bin"
+        binroot.mkdir()
+        (binroot / "python").symlink_to(sys.executable)
+        result = subprocess.run(
+            ["/bin/sh", "-c",
+             self.command_from("plugins/ultra-goal/hooks/hooks.json", "Stop")],
+            input="{}", capture_output=True, text=True, timeout=60,
+            env={"PATH": f"{binroot}:/usr/bin:/bin", "PLUGIN_ROOT": str(root)},
+            cwd=str(root),
+        )
+        self.assertEqual(2, result.returncode, result.stderr)
+        self.assertEqual(1, self.runs(root))
+
+    def test_an_argparse_error_fails_open_not_block(self) -> None:
+        """`--host` without a value makes argparse exit 2 - the same code the
+        hosts read as a deliberate block. Reproduced, then guarded: the whole
+        launch path is inside the fail-open now."""
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_stop.py"), "--host"],
+            input="{}", capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(0, result.returncode)
+        self.assertEqual("", result.stdout.strip())
+
+    def test_the_shipped_command_still_runs_the_real_hook(self) -> None:
+        root = (REPO_ROOT / "plugins" / "ultra-goal").resolve()
+        self.make_loop()
+        result = subprocess.run(
+            ["/bin/sh", "-c",
+             self.command_from("plugins/ultra-goal/hooks/hooks.json", "Stop")],
+            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            capture_output=True, text=True, timeout=60,
+            env={"PATH": os.environ.get("PATH", ""),
+                 "CLAUDE_PLUGIN_ROOT": str(root)},
+            cwd=str(self.cwd),
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertIn("passed on turn", payload["systemMessage"])
+
+
 if __name__ == "__main__":
     unittest.main()
 

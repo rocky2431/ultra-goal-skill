@@ -197,11 +197,20 @@ def _hook_command(home: Path, host: str, script: str) -> str:
     `sys.executable` rather than a bare `python3`: the latter is absent on most
     Windows installs, and a hook whose interpreter does not exist is a gate that
     fails silently - the exact outcome this Skill refuses elsewhere.
+
+    The script's existence is checked before anything runs, and the interpreter
+    is `exec`ed: both are for exit 2, which every host reads as a deliberate
+    block. A missing script used to make Python exit 2 - a broken install
+    blocking turns - and any non-zero status must be the hook's own decision,
+    never the launcher's accident. A missing script is a fail-open allow.
     """
     target = _skill_destination(home, host) / "scripts" / script
     args = HOOK_ARGS.get(script, "")
     suffix = f" {args}" if args else ""
-    return f'"{sys.executable}" "{target}"{suffix}'
+    return (
+        f'P="{target}"; [ -f "$P" ] || exit 0; '
+        f'exec "{sys.executable}" "$P"{suffix}'
+    )
 
 
 def _load_settings(path: Path) -> dict[str, Any]:

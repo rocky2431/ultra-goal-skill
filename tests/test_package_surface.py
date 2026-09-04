@@ -1759,16 +1759,23 @@ class AuditFixTests(unittest.TestCase):
                         self.assertEqual(set(), set(hook) - documented)
                         self.assertNotIn("additionalContextLimit", hook)
 
-    def test_every_hook_runs_without_python3_on_path(self) -> None:
+    def test_every_hook_selects_its_interpreter_and_execs_once(self) -> None:
         """`commandWindows` is not in the hooks reference, so it cannot be the
-        only Windows path - and `python3` is usually absent there. `|| python`
-        fires only when the first name is not found, because these hooks exit 0
-        whenever they actually run."""
+        only Windows path - and `python3` is usually absent there. The old
+        `|| python` fallback was retired: it re-ran the hook on a deliberate
+        exit 2 with stdin drained and swallowed the block (plan defect 1.2,
+        reproduced). The replacement selects the interpreter first, `exec`s it
+        once, and checks the script exists - a missing script is a fail-open
+        allow, never an exit-2 block (defect 1.3)."""
         for event, entries in self._hooks().items():
             for entry in entries:
                 for hook in entry["hooks"]:
                     with self.subTest(event=event):
-                        self.assertIn("|| python ", hook["command"])
+                        self.assertIn("command -v python3", hook["command"])
+                        self.assertIn("exec python3 ", hook["command"])
+                        self.assertIn("exec python ", hook["command"])
+                        self.assertIn('|| exit 0', hook["command"])
+                        self.assertNotIn("|| python ", hook["command"])
 
     def test_the_stop_clock_is_the_documented_default(self) -> None:
         """200 was a number I picked, and it capped every anchor in this design

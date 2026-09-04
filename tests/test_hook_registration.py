@@ -235,14 +235,21 @@ class PlatformIdentityTests(Harness):
         self.assertEqual([], self.our_entries())
 
     def test_the_registered_interpreter_exists(self) -> None:
-        """A hook whose interpreter is absent is a gate that fails silently."""
+        """A hook whose interpreter is absent is a gate that fails silently.
+        The command now selects and `exec`s the interpreter once, so the
+        interpreter is the token inside `exec "..."` - and the script's
+        existence check keeps a deleted script a fail-open allow rather than
+        an exit-2 block."""
         self.run_installer("install", "--hosts", "claude")
         for groups in self.settings()["hooks"].values():
             for group in groups:
                 for entry in group["hooks"]:
                     if not iu._tagged(entry["command"]):
                         continue
-                    interpreter = entry["command"].split('" "')[0].strip('"')
+                    command = entry["command"]
+                    self.assertIn('exec "', command)
+                    self.assertIn('[ -f "$P" ] || exit 0', command)
+                    interpreter = command.split('exec "', 1)[1].split('"', 1)[0]
                     self.assertTrue(
                         Path(interpreter).exists(),
                         f"registered interpreter must exist: {interpreter}",

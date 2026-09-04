@@ -20,27 +20,27 @@
   "hooks": [
     {
       "event": "Stop",
-      "command": "python3 ./skills/ultra-goal/scripts/goal_stop.py --host kimi",
+      "command": "P=\"./skills/ultra-goal/scripts/goal_stop.py\"; [ -f \"./skills/ultra-goal/scripts/goal_stop.py\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"./skills/ultra-goal/scripts/goal_stop.py\" --host kimi; else exec python \"./skills/ultra-goal/scripts/goal_stop.py\" --host kimi; fi",
       "timeout": 600
     },
     {
       "event": "PreCompact",
-      "command": "python3 ./skills/ultra-goal/scripts/goal_pre_compact.py",
+      "command": "P=\"./skills/ultra-goal/scripts/goal_pre_compact.py\"; [ -f \"./skills/ultra-goal/scripts/goal_pre_compact.py\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"./skills/ultra-goal/scripts/goal_pre_compact.py\"; else exec python \"./skills/ultra-goal/scripts/goal_pre_compact.py\"; fi",
       "timeout": 10
     },
     {
       "event": "PostToolUseFailure",
-      "command": "python3 ./skills/ultra-goal/scripts/goal_tool_failure.py",
+      "command": "P=\"./skills/ultra-goal/scripts/goal_tool_failure.py\"; [ -f \"./skills/ultra-goal/scripts/goal_tool_failure.py\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"./skills/ultra-goal/scripts/goal_tool_failure.py\"; else exec python \"./skills/ultra-goal/scripts/goal_tool_failure.py\"; fi",
       "timeout": 10
     },
     {
       "event": "UserPromptSubmit",
-      "command": "python3 ./skills/ultra-goal/scripts/goal_prompt_submit.py",
+      "command": "P=\"./skills/ultra-goal/scripts/goal_prompt_submit.py\"; [ -f \"./skills/ultra-goal/scripts/goal_prompt_submit.py\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"./skills/ultra-goal/scripts/goal_prompt_submit.py\"; else exec python \"./skills/ultra-goal/scripts/goal_prompt_submit.py\"; fi",
       "timeout": 10
     },
     {
       "event": "TurnStarted",
-      "command": "python3 ./skills/ultra-goal/scripts/goal_turn_started.py",
+      "command": "P=\"./skills/ultra-goal/scripts/goal_turn_started.py\"; [ -f \"./skills/ultra-goal/scripts/goal_turn_started.py\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"./skills/ultra-goal/scripts/goal_turn_started.py\"; else exec python \"./skills/ultra-goal/scripts/goal_turn_started.py\"; fi",
       "timeout": 10
     }
   ],

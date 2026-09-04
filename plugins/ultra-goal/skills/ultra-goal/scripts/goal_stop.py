@@ -788,11 +788,21 @@ def handle(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument(
-        "--host",
-        default=DEFAULT_HOST,
-        help="which host is running this hook; sets the continuation budget",
-    )
-    args, _unrecognized = parser.parse_known_args()
-    raise SystemExit(run_hook("Stop", handle, host=args.host))
+    # Exit 2 is the one code every host here reads as a deliberate block, and
+    # it is also what Python itself returns for an unreadable script and what
+    # argparse returns for a bad argument - so the fail-open has to cover the
+    # launch and the argument handling, not only the inside of `run_hook`.
+    # SystemExit is a BaseException: argparse's error exit is caught here and
+    # downgraded to the one code a broken hook is allowed to return.
+    try:
+        parser = argparse.ArgumentParser(add_help=False)
+        parser.add_argument(
+            "--host",
+            default=DEFAULT_HOST,
+            help="which host is running this hook; sets the continuation budget",
+        )
+        args, _unrecognized = parser.parse_known_args()
+        code = run_hook("Stop", handle, host=args.host)
+    except BaseException:  # noqa: BLE001 - launch and argparse fail open too
+        code = 0
+    raise SystemExit(code)
