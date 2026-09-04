@@ -645,6 +645,177 @@ below.
    invocation, no live four-host run, no live baseline-diff review round,
    Kimi's plugin-hook working directory.
 
+**Round 3.** One implementation commit (`f77e7c2`) plus the release commit
+(`27a8c50`, v2.9.2 at all eight sites). One commit instead of one per
+finding because the findings share three files — `SKILL.md`, `README.md` and
+`tests/test_package_surface.py` each carry halves of both P1s — and a split
+would have left every intermediate commit half-described. Not pushed, not
+installed, not published.
+
+#### Round-3 test command and its real output
+
+```
+$ pytest -q
+358 passed in 27.11s
+```
+
+(347 at round-2 close; +11, every one written failing-first.) Also run, real
+output: `claude plugin validate plugins/ultra-goal --strict` →
+`✔ Validation passed`.
+
+#### Round-3 answers, one line per finding
+
+- **Codex F1 (arming is fail-open) — agreement.** The validate step and the
+  arming step are now ONE fence (`goal-run.md` §2): the validator's error
+  stops the script with `|| exit 1` before `.goals/active` is written, the
+  candidate roots gained Kimi's documented managed-install default
+  (`$KIMI_CODE_HOME/plugins/managed/ultra-goal`, `~/.kimi-code` when unset —
+  the plugin reference documents the location, the config reference and the
+  0.40.1 binary the default), and where no documented root reaches, arming
+  REFUSES and names what the owner does instead (validate by hand from the
+  install root — Kimi's managed copy, Codex's `~/.codex/plugins/cache/
+  <marketplace>/ultra-goal/<version>` — then re-run with `PLUGIN_ROOT`
+  exported or arm by hand). Kimi's primary path stays usable because it
+  validates for real through that documented default. The reviewer's own
+  repro, re-driven on this tree: `validate_exit= 1`, "ultra-goal: arming
+  refused - …", and `.goals/active` is **not written** (round 2 printed
+  `validate_exit= 0` / `armed= demo` on the same inputs). `pytest -q
+  tests/test_package_surface.py::ArmingRangeContractTests` → `7 passed in
+  0.61s`, including `test_an_invalid_artifact_cannot_arm_when_no_root_reaches_the_command`
+  (the repro, as a refusal) and
+  `test_the_documented_kimi_install_default_validates_and_gates_arming`
+  (a validator under the managed copy decides arming: error → no marker,
+  pass → armed).
+- **Codex F2 (the turn boundary is inferred) — agreement, including the
+  correction aimed at both reviewers.** Kimi now registers `TurnStarted`
+  (new `goal_turn_started.py`; `kimi.plugin.json` carries five events, all
+  documented): it fires for every new turn whatever its origin — the
+  reference names `user`, `task`, `system_trigger` and the payload carries
+  `turn_id` and `origin_kind` — and the 0.40.1 binary dispatches it from
+  `startTurn` for every new turn while the stop-hook continuation stays
+  inside the running `runStepLoop` call, so the gate's own block never fires
+  one. `_block_streak` resets at `turn_started` rows and keys the count by
+  the host's `turn_id`; every `anchor_checked` records which host turn it
+  happened in. The demanded regression exists with a NON-user origin:
+  `pytest -q tests/test_goal_hooks.py::ContinuationBudgetTests` → `21
+  passed in 16.44s`, including `test_a_non_user_origin_turn_gets_its_own_budget`
+  (a `system_trigger` turn arrives with a fresh budget after a spent
+  user-origin turn — this exact sequence allowed, i.e. parked, before the
+  change) and `test_turn_identity_scopes_the_streak_within_a_turn` (two
+  `task`-origin turns each block once; only the same-turn continuation
+  parks; checks carry `["t1", "t2", "t2"]`). `prompt_submitted` remains a
+  boundary — the invocation is still an observed fact — but it is no longer
+  *called* the turn boundary anywhere, including in
+  `goal_prompt_submit.py`'s own docstring, which now records the round-2
+  over-claim and the correction.
+- **Codex F2, the zCode half — the mission's question answered with
+  evidence, and the answer is: neither, so declare it.** zCode's hooks
+  reference (zcode.z.ai/en/docs/hooks) lists Stop's input fields as
+  "stop_hook_active, last_assistant_message" and spells **no meaning** for
+  either; it names exactly seven events with no turn boundary among them
+  and no turn identity anywhere (its own shipped zcode-guide skills agree);
+  the documented cap is "After 3 consecutive continuations the run is
+  force-ended". So zCode has neither a readable chain flag nor a turn
+  identity, and the honest delivery is the declared degradation now stated
+  in `HOSTS`, SKILL.md and README: a blocked chain that ends without one of
+  the gate's own observed facts (an owner interrupt, an error, a session
+  end) carries its tail into the next turn, which can park one block early —
+  budget 2, so one block of it already spent. What the run loses is that
+  one block, once, loudly (`continuation_budget_spent` names its reason);
+  what it never gets is a proxy that looks grounded — reading the
+  undocumented field, or treating a user prompt as the turn boundary, are
+  the two mistakes this design already made and this round refuses a third.
+- **Claude round-2's zCode finding (neither observable boundary) —
+  agreement with the gap, the proposed repair not implemented (it was
+  withdrawn).** Registering zCode's `UserPromptSubmit` would install exactly
+  the inferred proxy Codex round 2 refuted; the declared degradation above
+  is the delivery instead.
+- **The silent-success delegation — decided, and the detector placed where
+  the run must look.** It is not detectable from inside this plugin:
+  `PostToolUseFailure` fires on failures only, and the one event that fires
+  on success (`PostToolUse`) is deliberately unregistered — it spawns once
+  per tool call — and could not attribute which artifact a successful call
+  owed without inferring from prompt text. The only real detector is the
+  expected artifact's absence, and it now lives in three places: the run's
+  instructions (`goal-run.md` §3: "the round's evidence is the file the
+  role was told to write … check the file exists before you treat the round
+  as done"), the stated contract (SKILL.md, README, agent-modes.md — pinned
+  by `pytest -q
+  tests/test_package_surface.py::RolesByStageTests::test_a_succeeded_delegation_with_no_artifact_is_named`
+  → `1 passed in 0.10s`), and the owner's view (`--audit` gains
+  `REVIEW_UNEVIDENCED`, an advisory fired when a begun run declares a
+  reviewer and `.goals/.work/<slug>-review.md` is absent; a review file on
+  disk settles it. `pytest -q tests/test_validate_artifact.py::AuditTests`
+  → `14 passed in 2.04s`). The finding's own text names its bound: a
+  reviewer that writes elsewhere is invisible to it.
+
+#### Round-3 receipt corrections
+
+- Round 1 and 2 cited "reset in `notifyTurnEnded`" for Kimi's one-block
+  guard. Reading the 0.40.1 binary's `runStepLoop` this round shows the
+  guard is a **local variable of that function** — one call per host turn —
+  so it resets by construction, not by a reset call. Same number, sharper
+  citation; `HOSTS` now says so.
+- Round 1's unverified claim #8 (Kimi's plugin-hook working directory, from
+  Codex's external document) is now **reference-verified**: the plugin
+  reference states "Each hook runs with its working directory set to the
+  plugin root", and "The hook process receives two extra environment
+  variables: `KIMI_CODE_HOME` and `KIMI_PLUGIN_ROOT`"
+  (moonshotai.github.io/kimi-code/en/customization/plugins).
+- Round 2's unverified claim #3, second half — whether Kimi fires
+  `UserPromptSubmit` for the internally-appended Stop continuation — is
+  **binary-resolved**: the continuation is appended to the running turn's
+  context directly (`context.appendUserMessage(..., {kind:
+  "system_trigger", name: "stop_hook"})`), not submitted through the prompt
+  pipeline, so no `UserPromptSubmit` fires for it. The prompt marker cannot
+  mis-scope the same-turn budget. Still not observed in a live session.
+
+#### What remains unverified, and by whom
+
+The suite above is mine. **Codex's round 2 was killed mid-review and never
+reached its F3–F6 or Claude's findings, and it says so** — so the round-2
+closures of Codex F3 (stagnation sensor), F4 (baseline `none` branch), F5
+(evidence contracts), F6 (host tags) and Claude F-1/F-4/F-5 rest on my tests
+and Claude Code's round-2 review alone, and the joint conclusion must not
+report them as confirmed by both. Claude round 2 explicitly did not verify
+`0da0a96`'s two claims (`$ARGUMENTS` binding, write-once baseline) either;
+my round-3 `ArmingRangeContractTests` re-drives both end to end, but that is
+still one implementer's evidence.
+
+New this round, none verified by a live host (installs are outside the
+mission's rules):
+
+1. **Kimi's `TurnStarted` registration and payload shapes** — reference and
+   binary derived; no Kimi session fired the hook. The manifest command is
+   `python3 ./skills/ultra-goal/scripts/goal_turn_started.py`, relative to
+   the plugin-root cwd the reference documents.
+2. **The managed-copy validation path on a real Kimi install** — the
+   location and default home are documented and the fence is driven in
+   tests with a stub and with the real validator, but whether a marketplace
+   (as opposed to local) install also lands under `plugins/managed/` is not
+   in the reference; such an install would hit the refusal and the by-hand
+   path.
+3. **Claude Code's `${CLAUDE_PLUGIN_ROOT}` substitution in command bodies**
+   — its plugins reference documents the placeholder for "skill and agent
+   content … anywhere the placeholder appears" and classifies commands as
+   skills; no Claude Code session ran the fence.
+4. **Codex and zCode command execution** — Codex's plugin reference
+   documents no command-body placeholder at all (not even `$ARGUMENTS`) and
+   zCode's documents `$ARGUMENTS` only; on both, arming may refuse and
+   require the by-hand path. That is the honest outcome Codex's own finding
+   demands, and the refusal message carries the repair.
+5. **`turn_id` collision across concurrent sessions** — Kimi's ids are
+   per-session ordinals; two concurrent sessions in one repository could
+   collide. Named as a bound in `_current_turn_id`; no failure measured.
+6. **`REVIEW_UNEVIDENCED`'s reach** — it sees `.goals/.work/<slug>-review.md`
+   only; reviewers writing elsewhere are beyond it, and the finding says so
+   in its own text.
+
+Carried unchanged from round 2: Codex's `None` budget as honored live,
+zCode's union semantics, Claude Code's manifest-hooks-additional (binary
+read), the `${ZCODE_PLUGIN_ROOT:+…}` expansion under zCode's real command
+invocation, no live four-host run, no live baseline-diff review round.
+
 ### 8.2 Claude Code — review rounds
 
 _(Claude Code writes here, and in `docs/wip/reviews/claude-round-N.md`)_
