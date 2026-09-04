@@ -17,8 +17,18 @@ author's reasoning - that is the point, so do not go looking for it.
 
 ```bash
 cat .goals/$1.goal.md
-git -C . diff HEAD
+base=$(cat .goals/$1.baseline 2>/dev/null)
+git -C . diff "${base:-HEAD}"
+git -C . status --porcelain
 ```
+
+The diff starts from the revision recorded when the gate was armed — the run commits once
+per turn, so `git diff HEAD` would show only the leftovers and you would be reviewing a
+change you never saw. `status --porcelain` lists the untracked files a diff cannot show;
+read any that the boundary suggests are part of the work. If the baseline file is missing
+or reads `none`, say plainly that your diff covers uncommitted work only before drawing
+any conclusion from its size. Uncommitted changes that predate the run also fall inside
+the range: attribute them with `## Boundary` rather than assuming the run made them.
 
 Read `## Boundary`, `## Acceptance` and `## Anchor` from the artifact, and the diff. Then run
 the anchor command yourself and keep its raw output.

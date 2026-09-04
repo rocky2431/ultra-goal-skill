@@ -17,8 +17,16 @@ Audit the review for goal `$1`. **You are auditing the review, not the code.**
 ```bash
 cat .goals/.work/$1-review.md
 cat .goals/$1.goal.md
-git -C . diff HEAD
+base=$(cat .goals/$1.baseline 2>/dev/null)
+git -C . diff "${base:-HEAD}"
+git -C . status --porcelain
 ```
+
+The diff starts from the revision recorded when the gate was armed, and it is the same
+range the reviewer was given: if the review's findings cite files or lines that are not in
+this range, that is a finding about the review. A missing or `none` baseline means the
+range covers uncommitted work only — a review of "no findings" on that range is a review
+of almost nothing, whatever it concludes.
 
 **What you are not given, and must not seek**: the run's opinion of the review, or the
 reviewer's account of its own confidence. Both are arguments, and an auditor handed an

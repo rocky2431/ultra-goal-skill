@@ -34,6 +34,7 @@ Advisories are printed and do not stop it.
 
 ```bash
 printf '%s\n' "$1" > .goals/active
+git rev-parse HEAD > .goals/$1.baseline 2>/dev/null || printf '%s\n' none > .goals/$1.baseline
 [ -f .goals/.gitignore ] || printf '%s\n' '.work/' 'active' > .goals/.gitignore
 ```
 
@@ -42,6 +43,14 @@ reports for one round and `.goals/active` is a switch, and the document system s
 belongs in Git - but saying so is not the same as arranging it, and a run that stages with
 `git add -A` commits both. A `.gitignore` **inside** `.goals/` makes the claim true without
 touching a file the owner owns.
+
+The `baseline` line records where the run's reviewable change starts. This run commits once
+per turn, so by the time the reviewer is invoked almost everything is already committed -
+and a reviewer handed `git diff HEAD` sees only the leftovers and can honestly report "no
+findings" on a change it never saw. The reviewer and critic read their diff from this
+revision instead. It is committed with the run's first turn, so rewriting it afterwards
+shows in `git log`. Work that was already uncommitted when the gate was armed also falls
+inside the range: the reviewer attributes it against `## Boundary` rather than guessing.
 
 Until this file names the artifact, **every hook in this plugin does nothing at all** —
 which is why a project that never asked for a goal pays nothing, and why this step cannot
@@ -67,6 +76,11 @@ it succeed in this session. Report the turn and the exit code you saw rather tha
 summarising them. Rewrite `## Carry-over` before you finish, `### Next` included, and
 commit as
 `goal($1) turn <N>: <one line> [anchor: green|red|unknown]`.
+
+One anchor check is one turn, and a host turn can hold several checks when the gate keeps
+the turn alive — so `<N>` is the number in the gate's most recent message, not a number
+you count yourself. `--audit` joins your commit subject to the gate's measurements by that
+number.
 
 ## To stop
 

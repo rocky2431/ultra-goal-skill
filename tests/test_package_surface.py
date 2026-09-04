@@ -1561,6 +1561,38 @@ class AuditFixTests(unittest.TestCase):
         self.assertIn(".goals/.gitignore", command)
         self.assertIn("'.work/' 'active'", command)
 
+    def test_arming_records_where_the_review_diff_starts(self) -> None:
+        """The reviewer used to be handed `git diff HEAD` - uncommitted work
+        only - while the run commits once per turn, so at proposed completion
+        the reviewer saw almost nothing and could honestly report 'no
+        findings', which the run then treated as coverage. Arming now records
+        the starting revision; the review reads the diff from there."""
+        command = (PLUGIN_ROOT / "commands" / "goal-run.md").read_text(encoding="utf-8")
+        self.assertIn("git rev-parse HEAD > .goals/$1.baseline", command)
+        self.assertIn("baseline", command)
+
+    def test_the_reviewer_sees_the_whole_run_not_the_last_commit(self) -> None:
+        review = (PLUGIN_ROOT / "skills" / "review" / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(".goals/$1.baseline", review)
+        # With no baseline (a run started before this existed, or no Git), the
+        # reviewer still gets the old view - but says so instead of mistaking
+        # it for the whole change.
+        self.assertIn("HEAD", review)
+        # Untracked files never appear in a diff; they are listed instead.
+        self.assertIn("status --porcelain", review)
+        # Uncommitted work that predates arming also lands in the range, so
+        # the reviewer still attributes by the boundary.
+        self.assertIn("## Boundary", review)
+
+    def test_the_critic_audits_the_same_range_the_reviewer_saw(self) -> None:
+        critic = (PLUGIN_ROOT / "skills" / "critic" / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(".goals/$1.baseline", critic)
+        self.assertIn("status --porcelain", critic)
+
     def test_the_gate_table_counts_the_hooks_that_ship(self) -> None:
         skill = skill_text()
         shipped = len(self._hooks())
