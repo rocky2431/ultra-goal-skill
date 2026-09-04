@@ -464,7 +464,9 @@ _(Claude Code writes here, and in `docs/wip/reviews/claude-round-N.md`)_
 
 ### 8.3 Codex — review rounds
 
-_(Codex writes here, and in `docs/wip/reviews/codex-round-N.md`)_
+**Round 1.** Independent report: [`docs/wip/reviews/codex-round-1.md`](reviews/codex-round-1.md).
+Verdict: request changes; the blind suite passed 332 tests, but Kimi command activation and
+per-turn budgeting, stagnation evidence, and the review baseline still have reproduced gaps.
 
 ### 8.4 Joint conclusion
 
