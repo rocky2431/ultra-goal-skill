@@ -211,17 +211,18 @@ directly from a Git marketplace.
 On a host that exposes the events, hooks install with the Skill and turn the anchor from
 a sentence in a prompt into something that actually runs. Which hooks register is a
 per-host fact — each manifest registers only events its host documents, so zCode (no
-`PreCompact`) and Codex (no `PostToolUseFailure`) each get their own set, and Kimi's
-`SessionStart`-cannot-inject limitation is answered by a `UserPromptSubmit` pointer line
-rather than pretended away.
+`PreCompact`) and Codex (no `PostToolUseFailure`) each get their own set, and Kimi — whose
+reference makes every event but `PreToolUse`, `Stop` and `UserPromptSubmit`
+observation-only — registers no `SessionStart` at all; its `UserPromptSubmit` line carries
+the pointer and the gate's last decision instead.
 
 | Hook | Does | Can it block? |
 |---|---|---|
 | `Stop` | Runs the anchor every turn | **Yes, while the anchor is red** — up to the host's continuation budget |
-| `SessionStart` | Re-injects the frozen spec and carried state after a restart | No |
+| `SessionStart` | Re-injects the frozen spec and carried state after a restart (not registered on Kimi — that host ignores its output) | No |
 | `PreCompact` | Records the carried state before the context is emptied | No |
-| `PostToolUseFailure` | Records that a call naming a delegation target failed, so a degraded round cannot read as a clean one | No |
-| `UserPromptSubmit` | Kimi only: a one-line pointer per prompt, that host's documented injection channel | No |
+| `PostToolUseFailure` | Records that a call naming a delegation target failed, so a degraded round cannot read as a clean one (no such event on Codex — the run's report is the only record there) | No |
+| `UserPromptSubmit` | Kimi only: one fixed-size line per prompt — artifact pointer plus the gate's last decision — that host's documented channel for both | No |
 
 **The loop is the continuation budget.** A host keeps a Stop-blocked turn alive only so
 many times in a row — Claude Code force-ends after 8 consecutive blocks, zCode after 3,
@@ -432,12 +433,15 @@ session alone, and record which happened.
 | whether a target answered | observed at call time | — |
 | that a fallback was used | the run, in its report and `### Lessons` | a **claim**, not evidence |
 
-**This one is declared and reported, not measured**, and an earlier version of this README
-claimed otherwise. It promised a `role_unavailable` event surfaced by `--audit`. Nothing
-could write it: the only thing able to observe a failed delegation is the run that attempted
-it, and a run's statements are claims — `events.jsonl` is hook-written precisely so that it
-is not. A finding no code can produce is worse than none, because it reads as coverage. The
-constant and the finding are deleted.
+**Whether a delegation failed is measured where the host fires `PostToolUseFailure`**
+(Claude Code, zCode, Kimi): the hook writes `role_unavailable` and `--audit` surfaces it
+as `ROUND_DEGRADED`. This passage once said the opposite — that no code could write the
+event — and that was true of the version it described: the only writer considered was the
+run, and a run's statements are claims, so `events.jsonl` was the wrong place and the
+finding was deleted. The hooks reference settled that a *host* observes the failed call,
+which is why the finding exists again with a hook writing it. Codex documents no such
+event, so there the run's report is the only record — a declared loss, not parity. Whether
+the fallback was *adequate* stays a claim on every host, which is the last row above.
 
 `fallback: none` is a legitimate answer and says the run stops rather than degrading; silence
 does not. And a review that could not happen is a **missing review, not a red anchor** — the

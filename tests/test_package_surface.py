@@ -1039,16 +1039,25 @@ class HostManifestTests(unittest.TestCase):
             "plugins/ultra-goal/kimi.plugin.json")["skills"])
 
     def test_kimi_hooks_name_the_same_events_as_the_claude_manifest(self) -> None:
-        """Rewritten for the per-host contract: hosts no longer register
-        identical event sets - each registers what it documents. What must
-        still hold is that Kimi's set contains the shared file's core, so the
-        two files cannot drift apart silently."""
+        """Rewritten for the per-host contract: hosts register what they
+        document AND can use. Kimi's reference makes every event but
+        PreToolUse, Stop and UserPromptSubmit observation-only, so a Kimi
+        SessionStart registration is one that cannot deliver anything by
+        design (Claude round-1 F-4) - it is deliberately absent, and the rest
+        of the shared core must still reach Kimi so the files cannot drift
+        apart silently."""
         hooks = self.load("plugins/ultra-goal/kimi.plugin.json")["hooks"]
         manifest = json.loads(
             (PLUGIN_ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8")
         )
+        kimi_events = {h["event"] for h in hooks}
+        self.assertNotIn(
+            "SessionStart", kimi_events,
+            "Kimi ignores SessionStart output; registering it reads as context "
+            "recovery that cannot happen",
+        )
         self.assertLessEqual(
-            set(manifest["hooks"]), {h["event"] for h in hooks},
+            set(manifest["hooks"]) - {"SessionStart"}, kimi_events,
             "the shared core must reach every host that documents it",
         )
 
@@ -1168,16 +1177,25 @@ class PerHostHookRegistrationTests(unittest.TestCase):
         )
         self.assertEqual(["./hooks/claude.json"], manifest["hooks"])
 
-    def test_kimi_registers_five_events_all_documented(self):
+    def test_kimi_registers_four_events_all_documented(self):
+        """Claude round-1 F-4: Kimi's SessionStart registration could not do
+        its job by design - its reference makes the event observation-only,
+        with the return value ignored - so it is dropped. What remains is
+        exactly what Kimi can use: the shared core minus SessionStart, plus
+        PreCompact (recorded evidence) and UserPromptSubmit (the documented
+        recovery channel). Five hooks still ship; Kimi registers four."""
         hooks = self.load("plugins/ultra-goal/kimi.plugin.json")["hooks"]
         self.assertEqual(
-            {"Stop", "SessionStart", "PreCompact", "PostToolUseFailure",
-             "UserPromptSubmit"},
+            {"Stop", "PreCompact", "PostToolUseFailure", "UserPromptSubmit"},
             {h["event"] for h in hooks},
         )
         self.assertLessEqual(
             {h["event"] for h in hooks}, self.DOCUMENTED["kimi"]
         )
+        # And the dropped registration is named as dropped, with its reason,
+        # where a Kimi user will read it.
+        manifest_text = (PLUGIN_ROOT / "kimi.plugin.json").read_text("utf-8")
+        self.assertIn("SessionStart is not registered", manifest_text)
 
     def test_the_shared_stop_entry_tags_zcode_through_its_documented_env_var(self):
         """One file serves two hosts, so the Stop entry must tell the gate
@@ -1327,25 +1345,56 @@ class RolesByStageTests(unittest.TestCase):
         )
 
     def test_degradation_says_which_half_it_actually_has(self) -> None:
-        """An earlier draft promised a mechanical check that cannot exist.
-
-        It said a degraded round would appear in the event log and be surfaced
-        by `--audit`. Nothing could write that event: the only thing able to
-        observe a failed delegation is the run that attempted it, and a run's
-        statements are claims - `events.jsonl` is hook-written precisely so it
-        is not. The finding and the constant are gone; the honest weaker
-        version is documented in their place.
-        """
+        """Rewritten for Codex round-1 F5: this passage used to pin the
+        contract as "declared and reported, not measured", which was true
+        only while no hook could observe a failed delegation. The hooks
+        reference documents PostToolUseFailure, so the failure IS measured on
+        the hosts that register it, and the document now states the split in
+        one place: order declared, failure measured where the event exists,
+        adequacy always a claim."""
         doc = self.reference()
         self.assertIn("## Declared degradation", doc)
         self.assertIn("| who to fall back to | the **owner**, at design time", doc)
         self.assertIn("a **claim**, not evidence", doc)
-        self.assertIn("declared and reported**, not measured", doc)
+        # The one contract, both halves, in this document.
+        self.assertIn("declared; the failure is measured", doc)
+        self.assertIn("no such event", doc)
+        # The stale absolutes are gone - they contradicted the hook and the
+        # audit finding that does get produced.
+        self.assertNotIn("declared and reported**, not measured", doc)
+        self.assertNotIn("no code could ever produce", doc)
         # The reason a fake check is worse than no check, stated.
         self.assertIn("because it reads as coverage", doc)
         self.assertIn(
             "a review that cannot happen is a missing review, not a red anchor", doc
         )
+
+    def test_the_degradation_contract_is_the_same_everywhere(self) -> None:
+        """Codex round-1 F5: SKILL.md, the README and agent-modes.md all
+        carried a verdict on whether role failure is measured, and no two of
+        them agreed with the validator. The search that found the
+        contradictions must now come back consistent."""
+        stale = (
+            "UserPromptSubmit is not registered",
+            "Nothing could write that event",
+            "finding that no code could ever produce",
+        )
+        for path in (
+            REPO_ROOT / "README.md",
+            SKILL_ROOT / "SKILL.md",
+            SKILL_ROOT / "references" / "agent-modes.md",
+        ):
+            with self.subTest(path=path.name):
+                text = path.read_text(encoding="utf-8")
+                for phrase in stale:
+                    self.assertNotIn(phrase, text)
+        for path in (
+            REPO_ROOT / "README.md",
+            SKILL_ROOT / "SKILL.md",
+            SKILL_ROOT / "references" / "agent-modes.md",
+        ):
+            with self.subTest(path=path.name, contract="stated"):
+                self.assertIn("role_unavailable", path.read_text(encoding="utf-8"))
 
     def test_degradation_is_written_by_a_hook_and_read_by_the_audit(self) -> None:
         """Deleted once for the right reason and the wrong fact.

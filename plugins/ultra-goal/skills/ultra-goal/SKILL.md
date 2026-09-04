@@ -269,10 +269,13 @@ lost, read it and resume from the first unanswered question instead of starting 
    process dies: try the role, then its fallback, then continue as this session alone. A run
    that stops because a reviewer was out of quota has turned an optional check into a single
    point of failure.
-   **This one is declared and reported, not measured** — the only thing that can observe a
-   failed delegation is the run that attempted it, and a run's statements are claims, so the
-   event log is the wrong place for it. Ask for the fallback order here; ask the run to say
-   out loud when it used one.
+   **The fallback order is declared; the failure is measured where the host allows it.**
+   `PostToolUseFailure` fires after a failed tool call, which is a host-observed fact, so on
+   the hosts that register it (Claude Code, zCode, Kimi) a call naming a delegation target
+   writes `role_unavailable` and `--audit` surfaces it as `ROUND_DEGRADED`. Codex documents
+   no such event, so there the run's report is the only record — a declared loss, not
+   parity. Whether the fallback was *adequate* is never measured; ask the run to say that
+   out loud, and treat the answer as the claim it is.
 
    **Never settle any of this silently.** A review that turned out to be a second opinion
    from its own model, with no row saying so, cannot be told apart afterwards from one that
@@ -636,15 +639,17 @@ them register is a per-host fact, not a constant: **each manifest registers only
 host documents**, because an event a host does not support is either an error or silence,
 and silence here means a dead gate. zCode documents no `PreCompact` (its compaction
 recovery rides `SessionStart`'s compact source), Codex documents no `PostToolUseFailure`,
-and Kimi's `SessionStart` output is fire-and-forget — which is why the last row exists.
+and Kimi ignores `SessionStart` output outright — a registration that cannot deliver reads
+as coverage — which is why the last row exists and why Kimi registers no `SessionStart` at
+all.
 
 | Hook | Does | Can it block? |
 |---|---|---|
 | `Stop` | Digests the frozen spec, runs the anchor, and re-states the mutable surface. Eight steps, seven of which let the turn end | **Yes, while the anchor is red** — up to the host's continuation budget |
-| `SessionStart` | Re-injects the frozen spec and the carried state after a restart or resume | No |
+| `SessionStart` | Re-injects the frozen spec and the carried state after a restart or resume. Not registered on Kimi: its reference makes the event observation-only, so the registration could not deliver anything | No |
 | `PreCompact` | Records the carried state and the fact of the compaction into the event log | No |
-| `PostToolUseFailure` | Records `role_unavailable` when a delegated role's call fails, so a degraded round cannot read as a clean one | No |
-| `UserPromptSubmit` | Kimi only: a one-line pointer to the artifact and carry-over on every prompt, because that host's `SessionStart` cannot inject | No |
+| `PostToolUseFailure` | Records `role_unavailable` when a delegated role's call fails, so a degraded round cannot read as a clean one — on Codex, which documents no such event, the run's report is the only record | No |
+| `UserPromptSubmit` | Kimi only: one fixed-size line per prompt — the artifact pointer plus the gate's last decision from the event log — because that host's `SessionStart` cannot inject and its Stop has no allow-channel to speak through | No |
 
 **The loop is the continuation budget, and the budget is a per-host fact with a citation.**
 A host keeps a Stop-blocked turn alive only so many times in a row: Claude Code forces
@@ -714,14 +719,18 @@ scales with tool use, and its value duplicates what `SessionStart` already injec
 the goal text already demands each turn. It gets added when a real run shows the loop
 retrying a path its own `### Lessons` already ruled out — not before.
 
-`UserPromptSubmit` is not registered either, and it is the more tempting of the two: it
-could catch a wrong activation exactly, by checking whether the submitted prompt contains an
-artifact's own `## Handoff` block — an exact match against a file on disk, not a keyword
-guess. It stays unbuilt because the instruction-level fix comes first and has not been shown
-to fail: the exclusion is in this Skill's `description`, and the goal text itself says *you
-are the run, not its designer*, which reaches all four hosts rather than only this one. The
-trigger to build it: a real session where a pasted goal line pulled this Skill into an
-interview anyway.
+`UserPromptSubmit` is registered on Kimi only, and it is that host's recovery channel
+rather than a wrong-activation guard. Kimi's reference makes every event but `PreToolUse`,
+`Stop` and `UserPromptSubmit` observation-only, so two things have no other path there: the
+frozen-spec injection the other hosts get on `SessionStart`, and any word from a Stop that
+*allows* — green, unknown, ceiling, frozen-spec-changed and not-progressing would otherwise
+end a Kimi turn in silence. The hook answers both with one fixed-size line per prompt: the
+artifact pointer plus the gate's last decision, read from the event log. The
+wrong-activation detector once sketched for this event — an exact match of the submitted
+prompt against the artifact's `## Handoff` block — stays unbuilt everywhere: the
+instruction-level fix comes first and has not been shown to fail, and the trigger to build
+it remains a real session where a pasted goal line pulled this Skill into an interview
+anyway.
 
 ### Wide latitude, zero trust in self-report
 

@@ -130,6 +130,29 @@ class RegistrationTests(Harness):
         self.assertIn("not readable JSON", result.stderr)
         self.assertEqual("{ this is not json", path.read_text(encoding="utf-8"))
 
+    def test_the_registered_stop_command_names_its_host(self) -> None:
+        """Codex round-1 F6: HOOK_ARGS was keyed by event name (`Stop`) while
+        _hook_command looked it up by script name (`goal_stop.py`), so the
+        generated registration silently carried no `--host claude` and ran as
+        Claude only because Claude is the default - dead configuration one
+        rename away from selecting the wrong budget."""
+        self.run_installer("install", "--hosts", "claude")
+        hooks = self.settings()["hooks"]
+        stops = [
+            entry["command"]
+            for group in hooks["Stop"]
+            for entry in group["hooks"]
+            if iu._tagged(entry["command"])
+        ]
+        self.assertEqual(1, len(stops))
+        self.assertIn("--host claude", stops[0])
+        # Only the gate is host-sensitive; the recovery hooks carry no tag.
+        for event in ("SessionStart", "PreCompact"):
+            for group in hooks[event]:
+                for entry in group["hooks"]:
+                    if iu._tagged(entry["command"]):
+                        self.assertNotIn("--host", entry["command"])
+
 
 class DoctorTests(Harness):
     def doctor(self, host: str = "claude") -> dict:

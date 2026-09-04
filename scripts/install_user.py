@@ -45,8 +45,10 @@ HOOK_MATCHERS = {"SessionStart": "^(startup|resume|clear|compact)$"}
 HOOK_TIMEOUTS = {"Stop": 600}
 # The Stop registration names its host so the gate spends the right
 # continuation budget; this installer only ever writes Claude Code's
-# settings.json, so the tag is fixed.
-HOOK_ARGS = {"Stop": "--host claude"}
+# settings.json, so the tag is fixed. Keyed by script name because that is
+# what _hook_command looks up - keyed by event name it was dead
+# configuration, and the tag silently never landed (Codex round-1 F6).
+HOOK_ARGS = {"goal_stop.py": "--host claude"}
 HOOK_HOSTS = ("claude",)
 # Matched against a normalised command string: a registration written on
 # Windows carries backslashes, and comparing them raw made every identity check
