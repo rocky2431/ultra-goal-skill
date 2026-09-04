@@ -1408,6 +1408,29 @@ def audit_artifact(path: Path) -> tuple[dict[str, object], list[Finding]]:
             )
         )
 
+    # Turns that ended on the host's continuation budget rather than on the
+    # anchor. Hook-written, so this is a measurement: a run whose turns keep
+    # parking with the anchor red is not advancing even when every turn works,
+    # and the owner should see that pattern without it counting as a failure
+    # of any single turn.
+    parked = [e for e in events if e.get("event") == "continuation_budget_spent"]
+    if parked:
+        hosts = ", ".join(
+            sorted({str(e.get("host")) for e in parked if e.get("host")})
+        ) or "unknown host"
+        out.append(
+            Finding(
+                str(path),
+                "CONTINUATION_BUDGET_SPENT",
+                f"{len(parked)} turn(s) ended with the anchor still red because this "
+                f"host's continuation budget was spent ({hosts}): the run parks rather "
+                "than loops. Raise the host's own cap where it has one (e.g. "
+                "CLAUDE_CODE_STOP_HOOK_BLOCK_CAP on Claude Code), or expect to "
+                "re-prompt once per budget",
+                "advisory",
+            )
+        )
+
     # Did the goalposts move? Two ways to find out, both from machine-written
     # facts: the gate said so on some turn, or the file on disk no longer
     # matches the digest recorded on turn 1.

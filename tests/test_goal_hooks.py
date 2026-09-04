@@ -181,7 +181,7 @@ class FailOpenTests(Harness):
     def test_garbage_stdin_exits_zero(self) -> None:
         calls = []
         self.assertEqual(
-            0, lh.run_hook("Stop", lambda e, l: calls.append(e), stdin_text="not json")
+            0, lh.run_hook("Stop", lambda e, l, h: calls.append(e), stdin_text="not json")
         )
         self.assertEqual([], calls, "the handler must not run on unparseable input")
 
@@ -189,7 +189,7 @@ class FailOpenTests(Harness):
         calls = []
         payload = json.dumps({"hook_event_name": "PostToolUse", "cwd": str(self.cwd)})
         self.assertEqual(
-            0, lh.run_hook("Stop", lambda e, l: calls.append(e), stdin_text=payload)
+            0, lh.run_hook("Stop", lambda e, l, h: calls.append(e), stdin_text=payload)
         )
         self.assertEqual([], calls)
 
@@ -197,21 +197,30 @@ class FailOpenTests(Harness):
         calls = []
         payload = json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)})
         self.assertEqual(
-            0, lh.run_hook("Stop", lambda e, l: calls.append(e), stdin_text=payload)
+            0, lh.run_hook("Stop", lambda e, l, h: calls.append(e), stdin_text=payload)
         )
         self.assertEqual([], calls, "no loop here, so the handler is never reached")
 
-    def test_stop_hook_active_is_a_hard_early_exit(self) -> None:
-        """Re-entry guard: without this a denied stop can loop forever."""
+    def test_stop_hook_active_still_reaches_the_handler(self) -> None:
+        """`stop_hook_active` marks a continuation, not a reason to go quiet.
+
+        The one-shot guard this replaced read the host's post-mortem advice as
+        general guidance: Claude Code prints "return success while
+        stop_hook_active is true" only after its consecutive-block cap is
+        exceeded, so honouring it eagerly meant the gate blocked exactly once
+        per host turn and `ceiling: 40` was unreachable by the gate alone. The
+        guard against a gate that denies forever is now the per-host
+        continuation budget, counted from the gate's own events.
+        """
         self.make_loop()
         calls = []
         payload = json.dumps(
             {"hook_event_name": "Stop", "cwd": str(self.cwd), "stop_hook_active": True}
         )
         self.assertEqual(
-            0, lh.run_hook("Stop", lambda e, l: calls.append(e), stdin_text=payload)
+            0, lh.run_hook("Stop", lambda e, l, h: calls.append(e), stdin_text=payload)
         )
-        self.assertEqual([], calls)
+        self.assertEqual(1, len(calls), "a continuation is still gated")
 
     def test_disable_env_var_is_honoured(self) -> None:
         self.make_loop()
@@ -221,7 +230,7 @@ class FailOpenTests(Harness):
             0,
             lh.run_hook(
                 "Stop",
-                lambda e, l: calls.append(e),
+                lambda e, l, h: calls.append(e),
                 stdin_text=payload,
                 env={"ULTRA_GOAL_HOOKS_DISABLED": "1"},
             ),
@@ -233,7 +242,7 @@ class FailOpenTests(Harness):
         seen = {}
         payload = json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)})
 
-        def handler(event, loop):
+        def handler(event, loop, host):
             seen["slug"] = loop.slug
             return None
 
@@ -1050,6 +1059,194 @@ class UnboundedCeilingTests(Harness):
         self.assertNotIn("ceiling", json.dumps(payload).lower())
         # Turn 40 of an unbounded run still gets judged on its anchor.
         self.assertEqual("block", payload.get("decision"))
+
+
+class ContinuationBudgetTests(Harness):
+    """The loop must loop, within each host's own continuation budget.
+
+    Confirmed live: a real run left exactly one `anchor_checked` event and the
+    turn ended, because `run_hook` returned 0 the moment `stop_hook_active` was
+    true - so the gate gave the run one nudge and `ceiling: 40` was unreachable
+    by the gate alone. Every host counts Stop continuations differently, so the
+    budget is a per-host fact with a citation, never a constant copied from
+    Claude Code:
+
+    - claude: cap 8 consecutive blocks, `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`
+      default, read from the running Claude Code 2.1.260 binary.
+    - zcode: cap 3 - "After 3 consecutive continuations the run is force-ended"
+      (zCode hooks reference, zcode.z.ai/en/docs/hooks).
+    - kimi: one per turn - the host triggers a blocking Stop only while
+      `!stopHookContinuationUsed` (Kimi 0.40.1 binary, `runStepLoop`), reset in
+      `notifyTurnEnded`; its reference documents no cap.
+    - codex: no cap documented (learn.chatgpt.com/docs/hooks) and none visible
+      in the 0.150.1 binary - `None` means the gate's own ceiling binds.
+
+    The gate releases one block BEFORE the cap so the last word is its own
+    reason rather than the host's force-end warning.
+    """
+
+    # Each turn appends one line of "work" and commits it, the way a real run
+    # does: the anchor's output stays byte-identical every turn (the common
+    # case - a suite printing the same failing summary), so these tests prove
+    # the loop lives even when only the work tree moves.
+    def turn(self, host: str | None = None, anchor: str = RED,
+             ceiling: str = "40 turns", work: bool = True) -> dict:
+        goal = GOAL.replace(f"```\n{GREEN}\n```", f"```\n{anchor}\n```").replace(
+            "or after 4 turns", f"or after {ceiling}"
+        )
+        self.make_loop(goal=goal)
+        if not hasattr(self, "_repo"):
+            self.run_git("init", "-q", ".")
+            self.run_git("config", "user.email", "t@e.st")
+            self.run_git("config", "user.name", "t")
+            self._repo = True
+        if work:
+            with open(self.cwd / "src.txt", "a", encoding="utf-8") as handle:
+                handle.write("more work\n")
+            self.run_git("add", "-A")
+            self.run_git("commit", "-qm", "wip")
+        payload = {"hook_event_name": "Stop", "cwd": str(self.cwd)}
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_stop.py"),
+             *(["--host", host] if host else [])],
+            input=json.dumps(payload),
+            capture_output=True, text=True, timeout=60,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        return json.loads(result.stdout) if result.stdout.strip() else {}
+
+    def run_git(self, *args: str) -> None:
+        subprocess.run(
+            ["git", *args], cwd=str(self.cwd), check=True, capture_output=True
+        )
+
+    def decision(self, payload: dict) -> str | None:
+        top = payload.get("decision")
+        if top == "block":
+            return "block"
+        nested = payload.get("hookSpecificOutput", {}).get("permissionDecision")
+        return "block" if nested == "deny" else nested
+
+    def events(self) -> list[dict]:
+        path = self.cwd / ".goals" / "demo.events.jsonl"
+        if not path.is_file():
+            return []
+        return [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
+
+    def test_the_defect_a_continuation_still_blocks(self) -> None:
+        """The repro from the mission: block, then block again.
+
+        Under the old guard the second Stop - the continuation the first block
+        bought - exited before the handler ran, so one host turn held at most
+        one anchor check and the loop did not loop. The anchor's output is
+        byte-identical on both checks, which is the common case; the work tree
+        moving is what keeps the turn alive.
+        """
+        first = self.turn()
+        self.assertEqual("block", self.decision(first))
+        second = self.turn()
+        self.assertEqual(
+            "block", self.decision(second),
+            "a continuation must be gated, not skipped",
+        )
+        checks = [e for e in self.events() if e["event"] == "anchor_checked"]
+        self.assertEqual(2, len(checks))
+        self.assertTrue(checks[0]["blocked"])
+
+    def test_every_host_budget_carries_a_citation(self) -> None:
+        facts = lh.HOSTS
+        self.assertEqual(7, facts["claude"].continuation_budget)
+        self.assertEqual(2, facts["zcode"].continuation_budget)
+        self.assertEqual(1, facts["kimi"].continuation_budget)
+        self.assertIsNone(facts["codex"].continuation_budget)
+        for name, fact in facts.items():
+            with self.subTest(host=name):
+                self.assertTrue(fact.source.strip(), "a budget without a source is a guess")
+
+    def test_an_unknown_host_gets_the_most_conservative_budget(self) -> None:
+        """A host the table has never heard of must not inherit Claude's 8."""
+        first = self.turn(host="nowhere")
+        self.assertEqual("block", self.decision(first))
+        second = self.turn(host="nowhere")
+        self.assertIsNone(self.decision(second))
+        self.assertIn("continuation budget", second["systemMessage"])
+
+    def test_claude_blocks_seven_of_the_hosts_eight(self) -> None:
+        payloads = [self.turn(host="claude") for _ in range(8)]
+        self.assertEqual(["block"] * 7, [self.decision(p) for p in payloads[:7]])
+        self.assertIsNone(self.decision(payloads[7]))
+        spent = [e for e in self.events() if e["event"] == "continuation_budget_spent"]
+        self.assertEqual(1, len(spent))
+        self.assertEqual(("claude", 7), (spent[0]["host"], spent[0]["budget"]))
+
+    def test_zcode_releases_before_the_hosts_three(self) -> None:
+        payloads = [self.turn(host="zcode") for _ in range(3)]
+        self.assertEqual(["block", "block"], [self.decision(p) for p in payloads[:2]])
+        self.assertIsNone(self.decision(payloads[2]))
+
+    def test_kimi_blocks_at_most_once(self) -> None:
+        payloads = [self.turn(host="kimi") for _ in range(2)]
+        self.assertEqual("block", self.decision(payloads[0]))
+        self.assertIsNone(self.decision(payloads[1]))
+
+    def test_codex_has_no_documented_budget_to_spend(self) -> None:
+        payloads = [self.turn(host="codex") for _ in range(6)]
+        self.assertEqual(["block"] * 6, [self.decision(p) for p in payloads])
+        self.assertEqual(
+            [], [e for e in self.events() if e["event"] == "continuation_budget_spent"]
+        )
+
+    def test_a_check_that_allowed_resets_the_streak(self) -> None:
+        self.turn(anchor=RED)
+        self.turn(anchor=GREEN)
+        again = self.turn(anchor=RED)
+        self.assertEqual("block", self.decision(again))
+
+    def test_budget_spent_ends_loudly_with_the_commit_turn(self) -> None:
+        """A red anchor may end a turn only by saying so, and by naming the
+        gate's turn number for the commit subject - one anchor check is one
+        turn, so a host turn that held several checks commits under the last
+        one the gate reports."""
+        self.turn(host="kimi")
+        payload = self.turn(host="kimi")
+        message = payload["systemMessage"]
+        self.assertIn("still red", message)
+        self.assertIn("goal(demo) turn 2", message)
+        self.assertIn("[anchor: red]", message)
+
+    def test_a_budget_spent_turn_is_not_progressing_toward_green(self) -> None:
+        """The event is a measurement, and `--audit` surfaces it: a run that
+        keeps parking on the host's budget is not advancing even when every
+        turn works."""
+        self.turn(host="kimi")
+        self.turn(host="kimi")
+        spent = [e for e in self.events() if e["event"] == "continuation_budget_spent"]
+        self.assertEqual("red", spent[0]["outcome"])
+        self.assertEqual(2, spent[0]["turn"], "turn 1 blocked; turn 2 is the release")
+
+    def test_identical_output_with_committed_work_keeps_the_turn_alive(self) -> None:
+        """The not-progressing rule cannot be allowed to strangle the loop.
+
+        A deterministic anchor prints the same failing summary until it
+        suddenly passes, so under the output-only rule the second check
+        released the turn and `ceiling: 40` was unreachable again - the 4.1
+        defect in a new costume. Progress is now judged on what the anchor can
+        see: the anchor's output AND the work tree, both unchanged twice in a
+        row is stagnation; either one moving is work.
+        """
+        verdicts = [self.decision(self.turn()) for _ in range(4)]
+        self.assertEqual(["block"] * 4, verdicts)
+        checks = [e for e in self.events() if e["event"] == "anchor_checked"]
+        self.assertEqual(checks[0]["signature"], checks[3]["signature"])
+        self.assertNotEqual(checks[0]["tree_digest"], checks[1]["tree_digest"])
+
+    def test_no_work_moved_releases_as_not_progressing(self) -> None:
+        self.turn()
+        payload = self.turn(work=False)
+        self.assertIsNone(self.decision(payload))
+        self.assertIn("not progressing", payload["systemMessage"])
+        checks = [e for e in self.events() if e["event"] == "anchor_checked"]
+        self.assertFalse(checks[-1]["blocked"])
 
 
 class CompactNoticeTests(Harness):

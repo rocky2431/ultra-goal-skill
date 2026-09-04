@@ -633,12 +633,18 @@ class HygieneTests(unittest.TestCase):
         `.goals/active`, no work. That early exit is pinned by
         tests/test_goal_hooks.py, which is now the load-bearing test.
         """
+        # The scan covers what ships (the plugin tree, the installer, tests,
+        # README) - not docs/wip/, the working-notes directory whose whole job
+        # is citing absolute local paths to evidence. The mission envelope
+        # itself carries two such paths by design, and red-ing the suite on
+        # the owner's own notes guards nothing that installs anywhere.
         files = [
             path
             for path in REPO_ROOT.rglob("*")
             if path.is_file()
             and ".git" not in path.relative_to(REPO_ROOT).parts
             and "__pycache__" not in path.relative_to(REPO_ROOT).parts
+            and path.relative_to(REPO_ROOT).parts[:2] != ("docs", "wip")
         ]
         relative = {path.relative_to(REPO_ROOT).as_posix() for path in files}
         self.assertFalse(any(path.endswith(".mcp.json") for path in relative))

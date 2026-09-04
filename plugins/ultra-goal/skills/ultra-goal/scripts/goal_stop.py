@@ -2,27 +2,33 @@
 """Stop hook: the anchor gate.
 
 Eight steps, seven of which let the turn end. A mechanical gate's default has
-to be "allow" - it only refuses in the one case it is certain about.
+to be "allow" - it only refuses where it is certain.
 
-It refuses exactly once: the anchor ran, and it was red. Everything else -
-frozen spec changed, ceiling reached, run not progressing, anchor unrunnable,
-anchor green - lets the turn end and says why.
+It refuses while the anchor ran and was red, up to the host's continuation
+budget: every host counts consecutive Stop blocks differently (Claude Code
+force-ends at 8, zCode at 3, Kimi triggers a blocking Stop once per turn,
+Codex documents no cap), so the gate counts its own blocks in the event log
+and releases one before the host's cap - the last word is its reason, not the
+host's force-end warning. Everything else - frozen spec changed, ceiling
+reached, run not progressing, budget spent, anchor unrunnable, anchor green -
+lets the turn end and says why.
 
-A changed frozen spec is the newest of those and the least obvious. It allows
-rather than denies on purpose: if the intent, the boundary or the anchor moved,
-the run is no longer pursuing the goal the owner authorized, and denying the
-stop would only make it work harder on a target nobody agreed to. The right
-response is to end the turn loudly and put it back in front of the owner.
+A changed frozen spec is the least obvious of those and it allows on purpose:
+if the intent, the boundary or the anchor moved, the run is no longer pursuing
+the goal the owner authorized, and denying the stop would only make it work
+harder on a target nobody agreed to. The right response is to end the turn
+loudly and put it back in front of the owner.
 
 The third outcome is the one that is easy to leave out and expensive to get
 wrong. An anchor that cannot run is not a failed anchor; it is an unknown, and
 folding unknown into either verdict is how a mechanical gate starts lying. A
-timeout is the same class of mistake: it measures elapsed time and reports it as
-success or failure, two things it has no access to.
+timeout is the same class of mistake: it measures elapsed time and reports it
+as success or failure, two things it has no access to.
 """
 
 from __future__ import annotations
 
+import argparse
 from datetime import datetime, timezone
 import hashlib
 import os
@@ -38,9 +44,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from goal_hooks import (  # noqa: E402
     ANCHOR_BUDGET_CEILING,
     DEFAULT_ANCHOR_BUDGET,
+    DEFAULT_HOST,
     ActiveGoal,
     append_event,
     frozen_digest,
+    host_facts,
     read_events,
     run_hook,
     sections,
@@ -336,7 +344,77 @@ def _signature(outcome: str, exit_code: int | None, digest: str) -> str:
     return f"{outcome}:{exit_code}:{digest}"
 
 
-def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
+def _tree_digest(root: Path) -> str | None:
+    """Digest of everything the anchor could see: HEAD, changed paths, content.
+
+    `.goals` is excluded because the gate's own event log lives there and
+    grows by one line with every check - counting it would make even a turn
+    that did nothing read as progress. None means there is no work-tree fact
+    (no Git, or Git failed), and the caller falls back to the anchor's output
+    alone.
+    """
+    parts: list[str] = []
+    for args in (
+        ("rev-parse", "HEAD"),
+        ("status", "--porcelain", "--", ":!.goals"),
+        ("diff", "HEAD", "--", ":!.goals"),
+    ):
+        try:
+            completed = subprocess.run(
+                ["git", *args],
+                cwd=str(root),
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        except (OSError, ValueError, subprocess.SubprocessError):
+            return None
+        if completed.returncode != 0:
+            return None
+        parts.append(completed.stdout)
+    return hashlib.sha256("\0".join(parts).encode("utf-8", "replace")).hexdigest()[:12]
+
+
+def _stagnant(
+    previous: dict[str, Any] | None, signature: str, tree: str | None
+) -> bool:
+    """Did nothing measurable move since the last check?
+
+    The anchor's output alone cannot answer this. A suite printing the same
+    failing summary is what honest mid-run progress looks like - the output
+    stays byte-identical until the work suddenly lands - so an unchanged
+    result releases the turn only when the work tree did not move either.
+    Where no work-tree fact exists on either side (a pre-counter event, or a
+    project without Git), the output is the only measurable left, which is
+    the rule this replaces and its fallback.
+    """
+    if previous is None or previous.get("signature") != signature:
+        return False
+    previous_tree = previous.get("tree_digest")
+    if tree is None or previous_tree is None:
+        return True
+    return previous_tree == tree
+
+
+def _block_streak(checks: list[dict[str, Any]]) -> int:
+    """How many anchor checks in a row this gate has already blocked.
+
+    A measurement from this gate's own log. Events without a `blocked` field
+    predate the counter and read as allows, which is the safe direction: a run
+    upgraded mid-flight counts its budget from zero rather than inheriting a
+    streak it cannot see.
+    """
+    streak = 0
+    for check in reversed(checks):
+        if not check.get("blocked"):
+            break
+        streak += 1
+    return streak
+
+
+def handle(
+    event: dict[str, Any], goal: ActiveGoal, host: str | None = None
+) -> dict[str, Any] | None:
     spec = goal.goal_path.read_text(encoding="utf-8")
     found = sections(spec)
     anchor_section = found.get("anchor") or ""
@@ -437,6 +515,7 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
                 "output_digest": "",
                 "signature": "unknown:unresolvable:",
                 "spec_digest": digest,
+                "blocked": False,
                 "tail": "executable not found",
             },
         )
@@ -446,7 +525,11 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
             "say the result is unverified; do not guess either way."
         )
 
-    # Step 7+8: run it. Three outcomes, not two.
+    # Step 7+8: run it. Three outcomes, not two. The work tree is digested
+    # first, before the anchor can dirty it with its own side effects, so
+    # "did anything move" measures the run's work and not the anchor's
+    # footprint.
+    tree_digest = _tree_digest(goal.goals_dir.parent)
     try:
         completed = subprocess.run(
             anchor,
@@ -471,23 +554,27 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
 
     output_digest = hashlib.sha256(output.encode("utf-8", "replace")).hexdigest()[:12]
     signature = _signature(outcome, exit_code, output_digest)
-    append_event(
-        goal,
-        {
-            "ts": datetime.now(timezone.utc).isoformat(),
-            "event": "anchor_checked",
-            "turn": turn,
-            "anchor": anchor,
-            "outcome": outcome,
-            "exit_code": exit_code,
-            "output_digest": output_digest,
-            "signature": signature,
-            "spec_digest": digest,
-            "budget_seconds": budget,
-            "budget_source": "declared" if budget_declared else "default",
-            "tail": output.splitlines()[-1][:200] if output else "",
-        },
-    )
+
+    def record(blocked: bool) -> None:
+        append_event(
+            goal,
+            {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "event": "anchor_checked",
+                "turn": turn,
+                "anchor": anchor,
+                "outcome": outcome,
+                "exit_code": exit_code,
+                "output_digest": output_digest,
+                "signature": signature,
+                "spec_digest": digest,
+                "budget_seconds": budget,
+                "budget_source": "declared" if budget_declared else "default",
+                "tree_digest": tree_digest,
+                "blocked": blocked,
+                "tail": output.splitlines()[-1][:200] if output else "",
+            },
+        )
 
     if outcome == "unknown":
         if exit_code is None:
@@ -498,6 +585,7 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
             )
         else:
             detail = f"exit {exit_code}"
+        record(False)
         return _allow(
             f"{goal.slug}: the anchor could not run ({detail}), so whether the work "
             "landed is unknown - not failed. Stopping. Say it is unverified rather "
@@ -523,26 +611,69 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
             "is `## Stop condition`'s question, not this gate's - check it before "
             "claiming completion."
         )
+        record(False)
         return _allow(
             f"{goal.slug}: anchor `{anchor}` passed on turn {turn}.{left}",
             _obligation(found, goal),
         )
 
-    # Step 5: red, but is anything changing? Two identical results in a row mean
-    # the run is spinning, and denying the stop again would only spin it more.
-    previous = checks[-1].get("signature") if checks else None
-    if previous == signature:
+    # Step 5: red, but is anything changing? The anchor's output alone cannot
+    # answer that - a suite printing the same failing summary is what honest
+    # mid-run progress looks like, so the turn is released only when neither
+    # the output nor the work tree moved. Judged before the budget: a stuck
+    # run's truest ending is "not progressing", not "budget spent".
+    if _stagnant(checks[-1] if checks else None, signature, tree_digest):
+        record(False)
         return _allow(
-            f"{goal.slug}: the anchor produced an identical result two turns in a "
-            f"row (turn {turn}), so the run is not progressing. Stopping. Report "
-            "what is blocking it instead of retrying.",
+            f"{goal.slug}: the anchor produced an identical result and the work "
+            f"tree did not move since the last check (turn {turn}), so the run is "
+            "not progressing. Stopping. Report what is blocking it instead of "
+            "retrying.",
             _obligation(found, goal),
         )
+
+    # Red and moving. How much longer may this turn be held? The host's
+    # continuation budget is the number of consecutive blocks it will honor;
+    # spending it means blocking again would only meet the host's force-end,
+    # whose last word would be a warning instead of this gate's reason. A red
+    # anchor may end a turn only by saying so, never silently.
+    facts = host_facts(host)
+    budget = facts.continuation_budget
+    if budget is not None and _block_streak(checks) >= budget:
+        record(False)
+        append_event(
+            goal,
+            {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "event": "continuation_budget_spent",
+                "turn": turn,
+                "host": host or DEFAULT_HOST,
+                "budget": budget,
+                "outcome": "red",
+                "exit_code": exit_code,
+            },
+        )
+        message = (
+            f"{goal.slug}: anchor `{anchor}` is still red (exit {exit_code}) on turn "
+            f"{turn}, and this host's continuation budget is spent - it honors at most "
+            f"{budget} consecutive block(s) ({facts.source}). The turn ends here with "
+            "the goal unmet. Write `### Lessons` and `### Next`, commit this turn as "
+            f"`goal({goal.slug}) turn {turn}: ... [anchor: red]` - one anchor check is "
+            "one turn, so commit under the gate's number - and the next prompt "
+            "continues the run. The ceiling still binds: the event log keeps the count."
+        )
+        if (host or DEFAULT_HOST) == "claude":
+            message += (
+                " The host's own cap is CLAUDE_CODE_STOP_HOOK_BLOCK_CAP (default 8); "
+                "the owner can raise it to continue more per turn."
+            )
+        return _allow(message, _obligation(found, goal))
 
     # `of {ceiling}` printed "of None" for a run the owner declared unbounded.
     # It says nothing at all there instead: a run without a ceiling should never
     # read the word, and inventing a number is what `_ceiling` exists to prevent.
     of_ceiling = f" of {ceiling}" if ceiling is not None else ""
+    record(True)
     return _deny(
         f"{goal.slug}: anchor `{anchor}` is still failing (exit {exit_code}) on turn "
         f"{turn}{of_ceiling}, so the goal is not met. Keep working. Before the next "
@@ -554,4 +685,11 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
 
 
 if __name__ == "__main__":
-    raise SystemExit(run_hook("Stop", handle))
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument(
+        "--host",
+        default=DEFAULT_HOST,
+        help="which host is running this hook; sets the continuation budget",
+    )
+    args, _unrecognized = parser.parse_known_args()
+    raise SystemExit(run_hook("Stop", handle, host=args.host))

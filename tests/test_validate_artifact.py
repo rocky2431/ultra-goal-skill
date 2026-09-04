@@ -661,6 +661,21 @@ class AuditTests(Harness):
         self.claim(1, "green")
         self.assertIn("FROZEN_SPEC_CHANGED", self.audit_codes())
 
+    def test_a_turn_parked_on_the_continuation_budget_is_reported(self) -> None:
+        """A budget-spent release is the gate's own measurement of a run that
+        keeps ending its host turns with the anchor still red. `--audit`
+        surfaces it as an advisory: it is not a verdict on the work, but a run
+        whose every turn parks is not advancing even when every turn works."""
+        self.log({"event": "anchor_checked", "turn": 1, "outcome": "red",
+                  "exit_code": 1, "spec_digest": self.digest(), "blocked": True},
+                 {"event": "continuation_budget_spent", "turn": 2, "host": "kimi",
+                  "budget": 1, "outcome": "red", "exit_code": 1})
+        self.claim(2, "red")
+        codes = self.audit_codes()
+        self.assertIn("CONTINUATION_BUDGET_SPENT", codes)
+        severity = {f.code: f.severity for f in va.audit_artifact(self.artifact)[1]}
+        self.assertEqual("advisory", severity["CONTINUATION_BUDGET_SPENT"])
+
     def test_an_unchanged_frozen_spec_is_not_reported(self) -> None:
         digest = va.frozen_digest(self.artifact.read_text(encoding="utf-8"))
         self.log({"event": "anchor_checked", "turn": 1, "outcome": "green",

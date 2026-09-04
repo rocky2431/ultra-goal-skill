@@ -75,7 +75,9 @@ def _declared_targets(goal: ActiveGoal) -> list[str]:
     return [t.lower() for t in TARGET_FIELD.findall(body)]
 
 
-def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
+def handle(
+    event: dict[str, Any], goal: ActiveGoal, host: str | None
+) -> dict[str, Any] | None:
     invocation = _invocation(event)
     if not invocation:
         return None

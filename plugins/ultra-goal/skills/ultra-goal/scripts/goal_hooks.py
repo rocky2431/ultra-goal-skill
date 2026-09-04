@@ -64,6 +64,72 @@ class ActiveGoal:
     decisions_path: Path
 
 
+@dataclass(frozen=True)
+class HostFacts:
+    """What a host will actually do with a blocked Stop.
+
+    `continuation_budget` is how many times in a row this gate may block one
+    host turn before it releases the stop with its own reason; `None` means no
+    cap is known, so the gate's own ceiling is the only bound. The budget is
+    one less than a host's documented cap where one exists, so the last word
+    is the gate's reason and never the host's force-end warning - the host cap
+    is the backstop, not the budget. Every number cites where it came from: a
+    budget without a source is a constant copied from Claude Code.
+    """
+
+    continuation_budget: int | None
+    source: str
+
+
+HOSTS: dict[str, HostFacts] = {
+    # Claude Code counts consecutive Stop blocks and force-ends at 8; the
+    # count is raisable via CLAUDE_CODE_STOP_HOOK_BLOCK_CAP. Read from the
+    # running 2.1.260 binary, whose "check stop_hook_active" advice is printed
+    # only after the cap is exceeded - post-mortem advice, not general
+    # guidance, and reading it as general guidance is how this gate came to
+    # block exactly once per host turn.
+    "claude": HostFacts(
+        7,
+        "host cap 8 consecutive blocks (CLAUDE_CODE_STOP_HOOK_BLOCK_CAP default, "
+        "Claude Code 2.1.260 binary)",
+    ),
+    # zCode's hooks reference: "After 3 consecutive continuations the run is
+    # force-ended to prevent infinite loops" (zcode.z.ai/en/docs/hooks).
+    "zcode": HostFacts(
+        2,
+        "host cap 3 consecutive continuations (zCode hooks reference)",
+    ),
+    # Kimi triggers a blocking Stop only while `!stopHookContinuationUsed` and
+    # resets that flag when the turn ends (0.40.1 binary: runStepLoop,
+    # notifyTurnEnded) - one continuation per host turn is the mechanical max,
+    # and its reference documents no cap at all.
+    "kimi": HostFacts(
+        1,
+        "host triggers a blocking Stop at most once per turn (Kimi 0.40.1 binary)",
+    ),
+    # No cap in Codex's hooks reference and none visible in the 0.150.1
+    # binary; the documented self-guard is the stop_hook_active input. UNVERIFIED
+    # that unbounded blocking is allowed - if a hidden cap exists, the host's
+    # force-end is the backstop.
+    "codex": HostFacts(
+        None,
+        "no cap documented (Codex hooks reference) or visible in the 0.150.1 binary",
+    ),
+}
+# A host the table has never heard of gets the smallest documented budget
+# rather than Claude's eight: an unknown cap can only be undershot safely.
+UNKNOWN_HOST = HostFacts(
+    1, "unknown host: the smallest budget any measured host allows"
+)
+# The shared hooks/hooks.json speaks Claude Code's format and is what an
+# untagged invocation runs under; every other entry point tags itself.
+DEFAULT_HOST = "claude"
+
+
+def host_facts(host: str | None) -> HostFacts:
+    return HOSTS.get(host or DEFAULT_HOST, UNKNOWN_HOST)
+
+
 def _valid_slug(raw: str) -> str | None:
     slug = raw.strip()
     if not slug or len(slug) > SLUG_MAX:
@@ -112,16 +178,24 @@ def emit(payload: dict[str, Any]) -> None:
 
 def run_hook(
     event_name: str,
-    handler: Callable[[dict[str, Any], ActiveGoal], dict[str, Any] | None],
+    handler: Callable[[dict[str, Any], ActiveGoal, str | None], dict[str, Any] | None],
     stdin_text: str | None = None,
     env: dict[str, str] | None = None,
+    host: str | None = None,
 ) -> int:
     """Run `handler` only when this really is `event_name` on an active goal.
 
-    Returns an exit code. It is always 0: a hook that cannot decide must let the
-    host continue. Blocking, where a hook is entitled to it, travels through the
+    Returns an exit code. It is always 0: a hook that cannot decide must let
+    the host continue. Blocking, where a hook is entitled to it, travels through the
     emitted JSON rather than through the exit code, so a crash can never be
     mistaken for a deliberate block.
+
+    There is deliberately no `stop_hook_active` early exit here. That flag
+    marks a continuation - a turn this gate itself kept alive - and the guard
+    it used to implement made the gate block exactly once per host turn, which
+    is the difference between a loop and a nudge. The guard against a gate
+    that denies forever is the per-host continuation budget in `HOSTS`,
+    counted from this gate's own events.
     """
     try:
         environ = os.environ if env is None else env
@@ -138,15 +212,11 @@ def run_hook(
         if event.get("hook_event_name") != event_name:
             return 0
 
-        # Re-entry guard. Without it, a denied stop can be denied forever.
-        if event.get("stop_hook_active"):
-            return 0
-
         goal = active_goal(event.get("cwd"))
         if goal is None:
             return 0
 
-        payload = handler(event, goal)
+        payload = handler(event, goal, host)
         if payload:
             emit(payload)
         return 0

@@ -76,7 +76,9 @@ ESSENTIAL = ("intent", "boundary", "anchor", "carry-over")
 SKIP = ("handoff",)
 
 
-def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
+def handle(
+    event: dict[str, Any], goal: ActiveGoal, host: str | None
+) -> dict[str, Any] | None:
     if event.get("source") not in SOURCES:
         return None
 
