@@ -254,40 +254,67 @@ def _deny(reason: str, context: str | None = None) -> dict[str, Any]:
     return payload
 
 
-def _mutable_surface(found: dict[str, str]) -> str | None:
-    """The sections a run is allowed to rewrite, with their current values.
+def _obligation(found: dict[str, str], goal: ActiveGoal) -> str | None:
+    """What the run owes before this turn ends. Fixed size, by design.
 
-    The owner's rule, and it is a sharp one: **what the gate reminds you of
-    should be exactly what you may change.** So the frozen spec is deliberately
-    absent - it is re-injected at session boundaries, where the question is
-    "what am I doing", not here, where the question is "what do I owe before
-    this turn ends".
+    This used to carry `### Next`, `### Lessons`, `### State` and every open
+    `## Acceptance` line *with their current text*. On the first real artifact
+    that was 4,683 characters, every turn, against a 40-turn ceiling - about
+    47k tokens of text that barely changed from one turn to the next, re-sent
+    to a model that could read the file.
+
+    The rule that replaced it, and it is the one worth remembering:
+
+        **A hook inlines only what it alone possesses. Everything already on
+        disk gets a path.**
+
+    What this hook alone possesses is the measurement it just took - it ran the
+    anchor, the run did not - plus the obligation, which is the gate's to state
+    and not the artifact's. The bodies of the mutable sections are on disk, and
+    a run that is about to rewrite them has to read them anyway. Naming them
+    without quoting them keeps the owner's rule intact - *what it reminds you
+    of is exactly what you may change* - because the rule was about which
+    sections, never about their contents.
+
+    The counts stay inline because they are measurements too: how many
+    acceptance lines are still open is a fact about the file, and a run that
+    miscounts its remaining work is the failure this is here to prevent.
     """
-    parts: list[str] = []
-    carry = found.get("carry-over")
-    if carry:
-        for name in ("next", "lessons", "state"):
-            body = _subsection(carry, name)
-            if body:
-                parts.append(f"### {name.title()} (rewrite before you finish)\n{body}")
-    acceptance = found.get("acceptance")
-    if acceptance:
-        open_lines = [
-            line for line in acceptance.splitlines() if line.strip().startswith("- [ ]")
-        ]
-        if open_lines:
-            parts.append(
-                "## Acceptance, still open (a line moves to [x] only after the "
-                "anchor's output showed it)\n" + "\n".join(open_lines)
-            )
-    if not parts:
+    carry = found.get("carry-over") or ""
+    present = [
+        name for name in ("next", "lessons", "state") if _subsection(carry, name)
+    ]
+    acceptance = found.get("acceptance") or ""
+    still_open = [
+        line for line in acceptance.splitlines() if line.strip().startswith("- [ ]")
+    ]
+    if not present and not still_open:
         return None
-    return (
-        "These are the only sections this run may change. The intent, the "
-        "boundary and the anchor are frozen; if one of them is wrong, stop and "
-        "write a row under `## Challenges from the run` instead of editing it.\n\n"
-        + "\n\n".join(parts)
+
+    parts = [
+        "Before this turn ends, in `" + goal.goal_path.name + "`:",
+    ]
+    if present:
+        parts.append(
+            "- rewrite "
+            + ", ".join(f"`### {name.title()}`" for name in present)
+            + " under the carry-over section. Read them there - their current text "
+            "is deliberately not repeated here. `### Next` takes exactly one "
+            "objective, `### Lessons` a cause and a next action, never an event."
+        )
+    if still_open:
+        parts.append(
+            f"- the acceptance list has {len(still_open)} line(s) still open. A line "
+            "moves to `[x]` only after the anchor's output showed it - not on "
+            "reasoning about the code."
+        )
+    parts.append(
+        "The intent, the boundary and the anchor are frozen. If one of them is "
+        f"wrong, write a row under the challenges heading in "
+        f"`{goal.decisions_path.name}` instead of editing it, and say you stopped "
+        "for that reason."
     )
+    return "\n".join(parts)
 
 
 def _subsection(text: str, name: str) -> str | None:
@@ -393,7 +420,7 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
         return _allow(
             f"{goal.slug}: ceiling of {ceiling} turns reached without meeting the "
             f"goal. Stopping. Report what is left rather than claiming success.{source}",
-            _mutable_surface(found),
+            _obligation(found, goal),
         )
 
     # Step 6: is the anchor even runnable? Answered by looking, not by inference.
@@ -475,7 +502,7 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
             f"{goal.slug}: the anchor could not run ({detail}), so whether the work "
             "landed is unknown - not failed. Stopping. Say it is unverified rather "
             "than guessing either way.",
-            _mutable_surface(found),
+            _obligation(found, goal),
         )
 
     if outcome == "green":
@@ -498,7 +525,7 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
         )
         return _allow(
             f"{goal.slug}: anchor `{anchor}` passed on turn {turn}.{left}",
-            _mutable_surface(found),
+            _obligation(found, goal),
         )
 
     # Step 5: red, but is anything changing? Two identical results in a row mean
@@ -509,7 +536,7 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
             f"{goal.slug}: the anchor produced an identical result two turns in a "
             f"row (turn {turn}), so the run is not progressing. Stopping. Report "
             "what is blocking it instead of retrying.",
-            _mutable_surface(found),
+            _obligation(found, goal),
         )
 
     # `of {ceiling}` printed "of None" for a run the owner declared unbounded.
@@ -522,7 +549,7 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
         "attempt, write one lesson into `### Lessons` naming the cause and the next "
         "action. The anchor is this turn's check; the reviewer and critic in "
         "`## Verification` run when you propose completion, not on every red turn.",
-        _mutable_surface(found),
+        _obligation(found, goal),
     )
 
 

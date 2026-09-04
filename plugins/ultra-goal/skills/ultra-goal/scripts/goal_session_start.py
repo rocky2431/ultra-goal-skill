@@ -28,7 +28,20 @@ SOURCES = {"startup", "resume", "clear", "compact", "fork"}
 # `## Carry-over` - the state and lessons this hook exists to restore. A resume
 # is rare (startup, resume, clear, compact), so a few hundred extra tokens
 # there is far cheaper than resuming without knowing what was already learned.
-CONTEXT_LIMIT = 8000
+# What one session boundary may cost. 8000 was fitted to the shipped template,
+# whose frozen terms are ~5.9k; the first real artifact's are 8.1k, so nothing
+# optional reached a resuming run at all.
+#
+# The number is now derived rather than picked: a resumed run needs the four
+# frozen terms, plus the two sections that answer "when do I stop" and "what is
+# left" - `## Stop condition` and `## Acceptance`. On that artifact those are
+# 8073 + 1465 + 2124 = 11662. Everything past them (means, roles, verification,
+# cadence) is genuinely re-readable on demand.
+#
+# Paying more here got cheap on the same day the Stop hook stopped re-sending
+# the mutable sections' text every turn: that was 4,683 characters per turn
+# against a 40-turn ceiling, and this is paid once per restart or compaction.
+CONTEXT_LIMIT = 12000
 # What a resuming session needs, most important first. `## Handoff` is absent on
 # purpose: it holds the command that starts the run, and the run is already
 # started - injecting it wastes the budget that `## Carry-over` needs.
@@ -124,6 +137,10 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
     # nothing known should be displaced by them.
     extra = [n for n in found if n not in INJECT_ORDER and n not in SKIP]
     budget = CONTEXT_LIMIT - len(head) - len(required)
+    # Recorded before the loop, which zeroes `budget` when it stops early: a
+    # dropped optional section would otherwise erase the fact that the frozen
+    # terms had already overrun, and the overrun is the part worth saying.
+    overrun = budget < 0
     body: list[str] = []
     dropped: list[str] = []
     for name in (*INJECT_ORDER, *extra):
@@ -131,13 +148,20 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
             continue
         candidate = block(name)
         if len(candidate) > budget:
+            # A strict prefix, not a greedy fill. Greedy let a later, smaller
+            # section take the place of an earlier, larger one - `## Stop
+            # condition` was dropped and `## Verification` injected in the space
+            # it left. INJECT_ORDER is a priority order, and size silently
+            # reordering it is the same defect that let a non-essential displace
+            # an essential. Once one section will not fit, nothing after it does.
             dropped.append(name)
+            budget = 0
             continue
         body.append(candidate)
         budget -= len(candidate)
 
     context = head + required + "".join(body)
-    if budget < 0:
+    if overrun:
         context += (
             f"\n**The frozen terms alone are {len(required)} characters, past the "
             f"{CONTEXT_LIMIT}-character target.** They are injected anyway: a run that "

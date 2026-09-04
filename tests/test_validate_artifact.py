@@ -1352,7 +1352,7 @@ class FrozenSectionBudgetTests(unittest.TestCase):
             return va.validate_paths([str(goals)])
 
     def test_an_oversized_frozen_section_is_advisory_not_error(self) -> None:
-        goal = GOOD_GOAL.replace("## Anchor", "## Anchor\n\n" + ("pad. " * 2000), 1)
+        goal = GOOD_GOAL.replace("## Anchor", "## Anchor\n\n" + ("pad. " * 3000), 1)
         report = self._report(goal)
         codes = {f.code: f for f in report.findings}
         self.assertIn("FROZEN_SECTIONS_OVER_BUDGET", codes)

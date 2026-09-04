@@ -5,7 +5,7 @@ when_to_use: "When the owner wants work to keep running without them - \"make an
 license: MIT
 metadata:
   author: rocky2431
-  version: "2.7.2"
+  version: "2.8.0"
 ---
 
 # UltraGoal
@@ -651,11 +651,21 @@ changed, ceiling reached, run not progressing, anchor unrunnable, anchor green, 
 all, no active goal — all let the turn end and say why.
 
 **What it reminds you of is exactly what you may change.** Every turn that ends carries
-`additionalContext` holding `### Next`, `### Lessons`, `### State` and the still-open
-`## Acceptance` lines — with their current values, and nothing frozen. The rule is the
-owner's and it cuts both ways: a mutable section the gate never mentions is the one that
-goes stale, and a frozen section it does mention is an invitation to edit. Blocking is the
-other channel: `decision: "block"` plus a `reason` saying why the turn may not end.
+`additionalContext` naming `### Next`, `### Lessons`, `### State` and counting the
+still-open acceptance lines — and nothing frozen. The rule is the owner's and it cuts both
+ways: a mutable section the gate never mentions is the one that goes stale, and
+a frozen section it does mention is an invitation to edit. Blocking is the other
+channel: `decision: "block"` plus a `reason` saying why the turn may not end.
+
+**It names those sections without quoting them, and that is a rule with a reason.** A hook
+inlines only what it alone possesses; everything already on disk gets a path. What this
+hook alone possesses is the measurement it just took — it ran the anchor, the run did not —
+plus the obligation, which is the gate's to state and not the artifact's. The bodies were
+inlined until the first real artifact measured them at **4,683 characters every turn
+against a 40-turn ceiling**, most of it unchanged turn to turn and all of it in a file the
+run must open anyway to rewrite. The payload is now about 660 characters and, more to the
+point, **the same size whatever the artifact holds** — which is the property an eighty-line
+acceptance list needs.
 
 **A moved goalpost allows on purpose.** The gate records a digest of `## Intent`,
 `## Boundary` and `## Anchor` on the first turn and compares it on every later one. When it

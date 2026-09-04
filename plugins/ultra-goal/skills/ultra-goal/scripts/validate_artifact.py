@@ -509,7 +509,7 @@ def check_workflow(path: Path, text: str, out: list[Finding]) -> None:
 # section's size is a design-time fact the owner can act on, and a runtime
 # announcement arrives when it is too late to shape the document.
 INJECTED_WHOLE = ("intent", "boundary", "anchor", "carry-over")
-INJECTION_TARGET = 8000
+INJECTION_TARGET = 12000
 
 
 def check_goal(path: Path, text: str, out: list[Finding]) -> None:

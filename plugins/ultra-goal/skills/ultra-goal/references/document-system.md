@@ -55,6 +55,32 @@ question a finished run is ever asked.
 Nothing here auto-resolves a divergence. The log cannot know why a turn claimed green; it
 knows only what it measured.
 
+## What a hook inlines, and what it points at
+
+Both hooks write into the model's context, and they had the same bug for different reasons:
+they quoted files the model can open. The rule that settles it:
+
+> **A hook inlines only what it alone possesses. Everything already on disk gets a path.**
+
+| | Stop, every turn | SessionStart, once per boundary |
+|---|---|---|
+| **Possesses alone** | the anchor verdict it just measured; the obligation | the fact that a run exists at all |
+| **Inlines** | verdict, obligation, section names, open-line count | the frozen terms: intent, boundary, anchor, carry-over |
+| **Points at** | the bodies of `### State`, `### Lessons`, `### Next`, `## Acceptance` | everything else, named when dropped |
+| **Size** | ~660 characters, **independent of the artifact** | bounded by `CONTEXT_LIMIT`, frozen terms exempt |
+
+The asymmetry is not inconsistency. At a session boundary the run **does not know a goal
+exists**, so it has no reason to open any file - the injection's job is to establish that
+there is a run and what it may not do. A prohibition delivered by pointer is a prohibition
+the run can decline to read, which is why `## Boundary` is inlined and `## Roles` is not.
+Mid-run the model has already been told all of that, so the only thing it cannot get for
+itself is what the anchor just did.
+
+Two numbers from the first real artifact, which is where both rules came from: the Stop
+payload was **4,683 characters per turn** against a 40-turn ceiling, and `## Anchor` alone
+was **7,752 characters** - 97% of the injection budget, so every restart lost the anchor.
+Neither was visible against the shipped template, whose sections are a quarter the size.
+
 ## `## Acceptance` is not a task ledger, and here is the line
 
 This is the boundary most likely to be misread later, so it is drawn explicitly rather
@@ -95,7 +121,7 @@ Two channels, and confusing them wastes the only per-turn contact the design has
 | Channel | Read by | Carries |
 |---|---|---|
 | `decision: "block"` + `reason` | the model, when the turn may not end | why it may not end, and the one thing to do first |
-| `hookSpecificOutput.additionalContext` | the model, on every turn that does end | **exactly the sections the run may change**, with their current values |
+| `hookSpecificOutput.additionalContext` | the model, on every turn that does end | **exactly the sections the run may change** - named, with the open acceptance lines counted, never quoted |
 | `systemMessage` | the owner | one line of what happened |
 
 The middle row follows a rule worth stating on its own: **what the gate reminds you of should

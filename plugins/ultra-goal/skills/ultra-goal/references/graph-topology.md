@@ -77,3 +77,33 @@ That constrains the design in three ways worth stating in the artifact:
 
 Confirm the registered targets before naming any of them in the artifact rather than
 assuming a vendor is installed.
+
+
+## The Stop hook is not the sequencer
+
+The question that produced this section: *if a graph has eighty tasks in a JSON file, what
+does the Stop hook compose out of them?*
+
+**Nothing.** It is the wrong layer, and answering it any other way is how a loop's gate
+turns into a graph's engine.
+
+A graph decides its routing at author time, so its position lives in the runtime that walks
+it - `workflow.js` on a host that has one, or the delegation triad's own per-worker calls.
+Those know which node is next because the author wrote the edges. A Stop hook knows one
+thing: whether the anchor exited 0 just now. Handing it a task list would make it read a
+position it did not write and choose a next node the author never routed to - inference-time
+routing over an author-time graph, which is the confusion this Skill exists to prevent.
+
+Two consequences worth keeping:
+
+- **The per-turn payload must not grow with the work.** Whatever the artifact holds, the
+  Stop hook's `additionalContext` names the mutable sections and counts the open acceptance
+  lines: about 660 characters, the same for eight lines or eighty. See "What a hook inlines,
+  and what it points at" in `document-system.md`.
+- **A goal that has grown eighty ordered tasks was authored wrong.** `### Next` takes
+  exactly one objective, and `## Acceptance` is unordered on purpose. A list of ordered
+  steps is a plan, and a plan belongs in a graph - where a runtime, not a gate, holds the
+  position.
+
+The gate's power comes from being small enough to be certain. An exit code is something it
+can know; which of eighty tasks should be next is not.

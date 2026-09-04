@@ -709,7 +709,7 @@ class InjectionBudgetTests(Harness):
         import goal_session_start as ss
         padded = GOAL.replace(
             "A fresh agent re-runs the anchor.",
-            "A fresh agent re-runs the anchor. " + ("padding " * 900),
+            "A fresh agent re-runs the anchor. " + ("padding " * 1800),
         )
         context = self.context(padded)
         self.assertIn("Not injected for space:", context)
@@ -813,7 +813,7 @@ class InjectionBudgetTests(Harness):
         """
         bloated = GOAL.replace(
             "- nothing yet\n\n### Lessons",
-            "- nothing yet\n" + "\n".join(f"- filler {i}" for i in range(700))
+            "- nothing yet\n" + "\n".join(f"- filler {i}" for i in range(1200))
             + "\n\n### Lessons",
         )
         context = self.context(bloated)
@@ -830,7 +830,7 @@ class InjectionBudgetTests(Harness):
         import goal_session_start as ss
 
         bloated = GOAL.replace(
-            "## Boundary", "## Boundary\n\n" + ("padding. " * 700), 1
+            "## Boundary", "## Boundary\n\n" + ("padding. " * 1400), 1
         )
         context = self.context(bloated)
         self.assertIn("## Carry-Over", context)
@@ -969,14 +969,41 @@ class StopContractTests(Harness):
             self.assertNotIn(frozen, context, frozen)
         self.assertIn("are frozen", context)
 
-    def test_open_acceptance_lines_are_carried_and_closed_ones_are_not(self) -> None:
+    def test_the_reminder_counts_open_acceptance_lines_without_quoting_them(
+        self,
+    ) -> None:
+        """A hook inlines only what it alone possesses. How many lines are open
+        is a measurement; their text is on disk, and the run has to open the
+        file to change them anyway. Quoting them cost 4,683 characters a turn on
+        the first real artifact.
+        """
         goal = GOAL.replace(
             "## Carry-over",
             "## Acceptance\n\n- [x] already true\n- [ ] not yet true\n\n## Carry-over",
         )
         context = self.stop(GREEN, goal)["hookSpecificOutput"]["additionalContext"]
-        self.assertIn("- [ ] not yet true", context)
+        self.assertIn("1 line(s) still open", context)
+        self.assertNotIn("not yet true", context)
         self.assertNotIn("already true", context)
+        # And it says where they are.
+        self.assertIn("demo.goal.md", context)
+
+    def test_the_reminder_is_the_same_size_whatever_the_artifact(self) -> None:
+        """The reason for the rule: an 80-node graph must not make the per-turn
+        payload 80 lines long."""
+        small = GOAL.replace(
+            "## Carry-over", "## Acceptance\n\n- [ ] one\n\n## Carry-over"
+        )
+        big = GOAL.replace(
+            "## Carry-over",
+            "## Acceptance\n\n"
+            + "\n".join(f"- [ ] line {i}" for i in range(80))
+            + "\n\n## Carry-over",
+        )
+        a = self.stop(GREEN, small)["hookSpecificOutput"]["additionalContext"]
+        b = self.stop(GREEN, big)["hookSpecificOutput"]["additionalContext"]
+        self.assertLess(abs(len(a) - len(b)), 40)
+        self.assertIn("80 line(s) still open", b)
 
 
 class UnboundedCeilingTests(Harness):
@@ -1078,7 +1105,7 @@ class UnknownSectionTests(Harness):
         self.assertIn("the contract nobody planned for", context)
 
     def test_an_unknown_section_too_large_is_named_not_vanished(self) -> None:
-        goal = GOAL + "\n## Check contracts\n\n" + ("x" * 9000) + "\n"
+        goal = GOAL + "\n## Check contracts\n\n" + ("x" * 13000) + "\n"
         context = self.start(goal)
         self.assertNotIn("x" * 100, context)
         self.assertIn("Not injected for space", context)
@@ -1086,7 +1113,7 @@ class UnknownSectionTests(Harness):
 
     def test_the_frozen_terms_still_win_the_budget(self) -> None:
         """Unknown sections go last, so one cannot push out an essential."""
-        goal = GOAL + "\n## Check contracts\n\n" + ("x" * 9000) + "\n"
+        goal = GOAL + "\n## Check contracts\n\n" + ("x" * 13000) + "\n"
         context = self.start(goal)
         for essential in ("## Intent", "## Anchor", "## Carry-Over"):
             with self.subTest(section=essential):
