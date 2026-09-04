@@ -47,6 +47,8 @@ from goal_hooks import (  # noqa: E402
     DEFAULT_HOST,
     ActiveGoal,
     append_event,
+    claim_session,
+    event_session,
     frozen_digest,
     host_facts,
     read_events,
@@ -495,6 +497,16 @@ def _block_streak(
 def handle(
     event: dict[str, Any], goal: ActiveGoal, host: str | None = None
 ) -> dict[str, Any] | None:
+    # The session identity travels with the measurement, and an unclaimed
+    # goal is claimed here: the first Stop that carries a session id owns
+    # the run from then on. `run_hook` has already turned every other
+    # session's event away; this is the one write that makes that check
+    # meaningful. First-write-wins, and it is ownership information, not a
+    # lock - see `claim_session`.
+    session = event_session(event)
+    if session is not None and goal.owner_session is None:
+        claim_session(goal, session)
+
     spec = goal.goal_path.read_text(encoding="utf-8")
     found = sections(spec)
     anchor_section = found.get("anchor") or ""
@@ -664,6 +676,8 @@ def handle(
         }
         if turn_id is not None:
             entry["turn_id"] = turn_id
+        if session is not None:
+            entry["session_id"] = session
         append_event(goal, entry)
 
     if outcome == "unknown":

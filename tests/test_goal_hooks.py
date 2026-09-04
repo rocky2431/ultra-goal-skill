@@ -153,6 +153,137 @@ class ActivationTests(Harness):
             ".goals/demo.events.jsonl",
             found.events_path.relative_to(self.cwd).as_posix(),
         )
+        self.assertIsNone(
+            found.owner_session,
+            "a freshly armed goal names no session until a hook claims it",
+        )
+
+
+class SessionOwnershipTests(Harness):
+    """Defect 1.4: `.goals/active` had no session ownership, so another
+    session working in the same cwd had its Stops gated on a goal it never
+    ran - and its prompt boundaries resetting the owner's streak.
+
+    The fix records the owning session's id in the marker, and every hook
+    acts only for that session. The claim is made by the first Stop that
+    carries a session identity: `session_id` is the field the Claude Code
+    hooks reference documents for every event and the Codex probe receipts
+    show, while Kimi's Stop input carries only `stopHookActive` (0.40.1
+    binary) and zCode has never loaded a hook - so on those hosts no claim is
+    possible and ownership stays open, a declared degradation rather than a
+    proxy read of an undocumented field.
+
+    The limit is stated with the fix: a session id is ownership
+    information, not an anti-forgery key. Any process that can write files
+    can write the marker; what the id buys is that an unrelated session's
+    ordinary hooks leave the run alone.
+    """
+
+    def stop_with(self, session_id: str | None,
+                  script: str = "goal_stop.py") -> subprocess.CompletedProcess:
+        payload = {"hook_event_name": "Stop", "cwd": str(self.cwd)}
+        if session_id is not None:
+            payload["session_id"] = session_id
+        return subprocess.run(
+            [sys.executable, str(SCRIPTS / script)],
+            input=json.dumps(payload),
+            capture_output=True, text=True, timeout=60,
+        )
+
+    def prompt_with(self, session_id: str | None) -> subprocess.CompletedProcess:
+        payload = {"hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
+        if session_id is not None:
+            payload["session_id"] = session_id
+        return subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_prompt_submit.py")],
+            input=json.dumps(payload),
+            capture_output=True, text=True, timeout=60,
+        )
+
+    def events(self) -> list[dict]:
+        path = self.cwd / ".goals" / "demo.events.jsonl"
+        if not path.is_file():
+            return []
+        return [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
+
+    def marker(self) -> str:
+        return (self.cwd / ".goals" / "active").read_text(encoding="utf-8")
+
+    def test_the_first_stop_with_a_session_claims_the_run(self) -> None:
+        self.make_loop()
+        self.stop_with("session-aaa")
+        self.assertEqual("demo\nsession session-aaa\n", self.marker())
+
+    def test_a_second_session_is_invisible_to_the_gate(self) -> None:
+        """The defect, reproduced then closed: session B works in the same
+        cwd, its Stop runs no anchor, writes no event, and says nothing."""
+        self.make_loop()
+        self.stop_with("session-aaa")
+        before = len(self.events())
+        result = self.stop_with("session-bbb")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("", result.stdout.strip(), "not B's run to gate")
+        self.assertEqual(before, len(self.events()))
+
+    def test_a_second_session_prompt_does_not_reset_the_streak(self) -> None:
+        """The quieter half of the same defect: B's UserPromptSubmit used to
+        write a boundary event into the owner's log, resetting the owner's
+        continuation streak from outside the run."""
+        self.make_loop()
+        self.stop_with("session-aaa")
+        before = len(self.events())
+        result = self.prompt_with("session-bbb")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("", result.stdout.strip())
+        self.assertEqual(before, len(self.events()))
+
+    def test_a_sessionless_event_still_reaches_the_gate(self) -> None:
+        """Kimi sends no session identity in its Stop input and zCode has
+        never loaded a hook: an event with no id is indistinguishable from
+        the owner and is not excluded. A declared degradation, not a proxy."""
+        self.make_loop()
+        self.stop_with("session-aaa")
+        result = self.stop_with(None)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertNotEqual("", result.stdout.strip())
+
+    def test_a_garbage_session_line_is_ignored_not_fatal(self) -> None:
+        self.make_loop()
+        (self.cwd / ".goals" / "active").write_text(
+            "demo\nsession ../../not a session\n", encoding="utf-8")
+        result = self.stop_with("session-bbb")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertNotEqual("", result.stdout.strip())
+
+    def test_the_owner_session_travels_with_the_measurement(self) -> None:
+        self.make_loop()
+        self.stop_with("session-aaa")
+        checks = [e for e in self.events() if e.get("event") == "anchor_checked"]
+        self.assertEqual("session-aaa", checks[0].get("session_id"))
+
+    def test_ownership_is_enforced_by_every_hook_not_just_the_gate(self) -> None:
+        """The injection hooks must not hand session B the owner's frozen
+        spec either: `owns_goal` lives in run_hook, below every handler."""
+        self.make_loop()
+        self.stop_with("session-aaa")
+        payload = {"hook_event_name": "SessionStart", "cwd": str(self.cwd),
+                   "source": "resume", "session_id": "session-bbb"}
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_session_start.py")],
+            input=json.dumps(payload),
+            capture_output=True, text=True, timeout=60,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("", result.stdout.strip(), "not B's spec to receive")
+
+    def test_an_unclaimed_goal_gates_the_first_session_that_stops(self) -> None:
+        """The claim is first-Stop-wins and stays: an unrelated session that
+        stops first over a just-armed goal claims it wrongly - the named
+        bound. What the claim fixes is everything after it."""
+        self.make_loop()
+        result = self.stop_with("session-bbb")
+        self.assertNotEqual("", result.stdout.strip())
+        self.assertEqual("demo\nsession session-bbb\n", self.marker())
 
     def test_activation_check_has_no_side_effects(self) -> None:
         self.make_loop()

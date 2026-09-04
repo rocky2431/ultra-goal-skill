@@ -34,6 +34,13 @@ ACTIVE_MARKER = "active"
 DISABLE_ENV = "ULTRA_GOAL_HOOKS_DISABLED"
 # A slug names one artifact in `.goals/`. It is never a path.
 SLUG_MAX = 100
+# The marker's optional second line names the session that owns the run. A
+# session id is ownership information, not an anti-forgery key: any process
+# that can write files can write the marker. What the line buys is that a
+# *different* session's ordinary hooks - a Stop that would gate, a prompt
+# that would reset the streak, an injection that would hand over the spec -
+# leave the run alone.
+SESSION_MAX = 200
 # The Stop registration in hooks/hooks.json declares this timeout, and the host
 # kills the hook process when it expires. Every budget inside the gate has to
 # fit under it, so the number lives here once and a test pins it against the
@@ -62,6 +69,8 @@ class ActiveGoal:
     goal_path: Path
     events_path: Path
     decisions_path: Path
+    marker_path: Path
+    owner_session: str | None = None
 
 
 @dataclass(frozen=True)
@@ -177,6 +186,51 @@ def _valid_slug(raw: str) -> str | None:
     return slug
 
 
+def _valid_session(raw: str) -> str | None:
+    """A session token: one lineless, pathless, printable word.
+
+    Claude Code and Codex send UUID-shaped ids; anything hostile-looking is
+    ignored rather than rejected, because the marker is fail-open by design -
+    an unreadable session line means an unclaimed goal, never a dead gate.
+    """
+    token = raw.strip()
+    if not token or len(token) > SESSION_MAX:
+        return None
+    if token != Path(token).name or token in {".", ".."}:
+        return None
+    if any(ch in token for ch in ("/", "\\", "\0", " ", "\t")):
+        return None
+    if not token.isprintable():
+        return None
+    return token
+
+
+def _read_marker(marker: Path) -> tuple[str | None, str | None]:
+    """The marker's slug line and its optional `session <id>` line.
+
+    Still deliberately dumb: fixed first line, one optional keyed line, and
+    anything unparsable reads as absent rather than fatal.
+    """
+    try:
+        lines = [
+            line.strip()
+            for line in marker.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+    except (OSError, UnicodeError):
+        return None, None
+    if not lines:
+        return None, None
+    session: str | None = None
+    for line in lines[1:]:
+        key, sep, value = line.partition(" ")
+        if sep and key.lower() == "session":
+            token = _valid_session(value)
+            if token is not None:
+                session = token
+    return lines[0], session
+
+
 def active_goal(cwd: Any) -> ActiveGoal | None:
     """Return the active goal for `cwd`, or None. Never raises."""
     try:
@@ -186,7 +240,8 @@ def active_goal(cwd: Any) -> ActiveGoal | None:
         marker = goals / ACTIVE_MARKER
         if not marker.is_file():
             return None
-        slug = _valid_slug(marker.read_text(encoding="utf-8"))
+        raw_slug, session = _read_marker(marker)
+        slug = _valid_slug(raw_slug or "")
         if slug is None:
             return None
         goal = goals / f"{slug}.goal.md"
@@ -198,9 +253,57 @@ def active_goal(cwd: Any) -> ActiveGoal | None:
             goal_path=goal,
             events_path=goals / f"{slug}.events.jsonl",
             decisions_path=goals / f"{slug}.decisions.md",
+            marker_path=marker,
+            owner_session=session,
         )
     except (OSError, UnicodeError, ValueError):
         return None
+
+
+def event_session(event: dict[str, Any]) -> str | None:
+    """The session identity the host put in the payload, where it does.
+
+    Read only as `session_id`: the field the Claude Code hooks reference
+    documents for every event, and the one the Codex Stop probe receipts
+    carry. Kimi's Stop input is `{stopHookActive: ...}` and nothing else
+    (0.40.1 binary), and zCode has never loaded a hook on this machine - so
+    absence is normal there. An event with no session identity cannot be
+    told apart from the owner's and is not excluded: a declared degradation,
+    not a proxy read of a field no reference documents.
+    """
+    value = event.get("session_id")
+    if isinstance(value, str):
+        return _valid_session(value)
+    return None
+
+
+def owns_goal(goal: ActiveGoal, event: dict[str, Any]) -> bool:
+    """Is this event the owning session's?
+
+    Enforced exactly when both sides name a session: the marker's line and
+    the event's `session_id`. Anything else - an unclaimed marker, an
+    id-less event - passes, because an undistinguishable event is not
+    evidence of a stranger.
+    """
+    session = event_session(event)
+    if session is None or goal.owner_session is None:
+        return True
+    return session == goal.owner_session
+
+
+def claim_session(goal: ActiveGoal, session: str) -> None:
+    """Record `session` as the run's owner in the marker. First write wins.
+
+    Called by the Stop hook the first time a session-carrying Stop arrives
+    over an unclaimed goal. Concurrent first Stops race and the last writer
+    wins - ownership information, not a lock.
+    """
+    try:
+        goal.marker_path.write_text(
+            f"{goal.slug}\nsession {session}\n", encoding="utf-8"
+        )
+    except (OSError, UnicodeError):
+        pass
 
 
 def emit(payload: dict[str, Any]) -> None:
@@ -254,6 +357,10 @@ def run_hook(
 
         goal = active_goal(event.get("cwd"))
         if goal is None:
+            return 0
+        if not owns_goal(goal, event):
+            # Another session's event over this cwd's goal: not its run to
+            # gate, inject into, or reset. Silent and side-effect free.
             return 0
 
         payload = handler(event, goal, host)
