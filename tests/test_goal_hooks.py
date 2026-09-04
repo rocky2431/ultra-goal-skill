@@ -804,17 +804,40 @@ class InjectionBudgetTests(Harness):
             for essential in ss.ESSENTIAL:
                 self.assertNotIn(essential, dropped[0], essential)
 
-    def test_losing_an_essential_section_is_said_out_loud(self) -> None:
-        import goal_session_start as ss
-
+    def test_an_essential_section_is_never_dropped_for_space(self) -> None:
+        """The contract changed after the first real artifact. `## Carry-over`
+        was refused for being 300 characters too large and `## Acceptance`, which
+        is not essential, then fit into the space it had vacated. So the frozen
+        terms are no longer budgeted at all: they are injected, the overrun is
+        announced, and only optional sections compete.
+        """
         bloated = GOAL.replace(
             "- nothing yet\n\n### Lessons",
             "- nothing yet\n" + "\n".join(f"- filler {i}" for i in range(700))
             + "\n\n### Lessons",
         )
         context = self.context(bloated)
-        self.assertIn("Could not inject carry-over", context)
-        self.assertIn("do not act on the sections above alone", context)
+        for essential in ("## Intent", "## Boundary", "## Anchor", "## Carry-Over"):
+            with self.subTest(section=essential):
+                self.assertIn(essential, context)
+        self.assertIn("filler 699", context)
+        self.assertIn("The frozen terms alone are", context)
+        self.assertIn("Nothing optional was injected at all", context)
+
+    def test_a_non_essential_cannot_take_an_essential_section_place(self) -> None:
+        """The exact shape of the live failure: something small and optional
+        sitting late in the order must not fit where an essential could not."""
+        import goal_session_start as ss
+
+        bloated = GOAL.replace(
+            "## Boundary", "## Boundary\n\n" + ("padding. " * 700), 1
+        )
+        context = self.context(bloated)
+        self.assertIn("## Carry-Over", context)
+        essential_end = context.index("## Carry-Over")
+        for optional in ("## Acceptance", "## Verification", "## Cadence"):
+            if optional in context:
+                self.assertGreater(context.index(optional), essential_end)
 
     def test_acceptance_reaches_a_resuming_session(self) -> None:
         goal = GOAL.replace(
@@ -1022,3 +1045,49 @@ class CompactNoticeTests(Harness):
 
     def test_an_ordinary_resume_is_not(self) -> None:
         self.assertNotIn("just compacted", self.context("resume"))
+
+
+class UnknownSectionTests(Harness):
+    """An artifact may grow a heading INJECT_ORDER has never heard of.
+
+    Found by recommending exactly that: splitting an over-large `## Anchor`
+    into `## Anchor` plus `## Check contracts` would have made the new section
+    invisible - not injected, and not named among the drops either.
+    """
+
+    def start(self, goal: str) -> str:
+        self.make_loop(goal=goal)
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_session_start.py")],
+            input=json.dumps(
+                {"hook_event_name": "SessionStart", "source": "resume",
+                 "cwd": str(self.cwd)}
+            ),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        payload = json.loads(result.stdout) if result.stdout.strip() else {}
+        return payload.get("hookSpecificOutput", {}).get("additionalContext", "")
+
+    def test_an_unknown_section_is_injected_when_it_fits(self) -> None:
+        goal = GOAL + "\n## Check contracts\n\nthe contract nobody planned for\n"
+        context = self.start(goal)
+        self.assertIn("## Check Contracts", context)
+        self.assertIn("the contract nobody planned for", context)
+
+    def test_an_unknown_section_too_large_is_named_not_vanished(self) -> None:
+        goal = GOAL + "\n## Check contracts\n\n" + ("x" * 9000) + "\n"
+        context = self.start(goal)
+        self.assertNotIn("x" * 100, context)
+        self.assertIn("Not injected for space", context)
+        self.assertIn("check contracts", context)
+
+    def test_the_frozen_terms_still_win_the_budget(self) -> None:
+        """Unknown sections go last, so one cannot push out an essential."""
+        goal = GOAL + "\n## Check contracts\n\n" + ("x" * 9000) + "\n"
+        context = self.start(goal)
+        for essential in ("## Intent", "## Anchor", "## Carry-Over"):
+            with self.subTest(section=essential):
+                self.assertIn(essential, context)

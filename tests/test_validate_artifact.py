@@ -1329,3 +1329,40 @@ class RolesSectionTests(Harness):
         )
         self.assertEqual(1, len(blocks))
         self.assertIn("fallback:", blocks[0])
+
+
+class FrozenSectionBudgetTests(unittest.TestCase):
+    """An advisory, not an error: the injection happens either way.
+
+    Measured on the first real artifact, whose `## Anchor` was 7,752 characters
+    because the check contracts lived inside it - 97% of the target, so every
+    restart lost everything else.
+    """
+
+    def _report(self, goal: str) -> va.Report:
+        with tempfile.TemporaryDirectory() as tmp:
+            goals = Path(tmp) / ".goals"
+            goals.mkdir()
+            (goals / "demo.goal.md").write_text(goal, encoding="utf-8")
+            (goals / "demo.decisions.md").write_text(
+                "| Decision | Rejected | Why | Who |\n|---|---|---|---|\n"
+                "| a | b | c | owner |\n",
+                encoding="utf-8",
+            )
+            return va.validate_paths([str(goals)])
+
+    def test_an_oversized_frozen_section_is_advisory_not_error(self) -> None:
+        goal = GOOD_GOAL.replace("## Anchor", "## Anchor\n\n" + ("pad. " * 2000), 1)
+        report = self._report(goal)
+        codes = {f.code: f for f in report.findings}
+        self.assertIn("FROZEN_SECTIONS_OVER_BUDGET", codes)
+        self.assertEqual("advisory", codes["FROZEN_SECTIONS_OVER_BUDGET"].severity)
+        self.assertIn("`## Anchor`", codes["FROZEN_SECTIONS_OVER_BUDGET"].message)
+        # Advisories must not fail the artifact: it still runs.
+        self.assertTrue(report.ok)
+
+    def test_a_normal_artifact_raises_nothing(self) -> None:
+        report = self._report(GOOD_GOAL)
+        self.assertNotIn(
+            "FROZEN_SECTIONS_OVER_BUDGET", {f.code for f in report.findings}
+        )

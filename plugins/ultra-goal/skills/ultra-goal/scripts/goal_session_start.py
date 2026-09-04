@@ -102,30 +102,47 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
         ]
     lines += ["Read `## Carry-over` before acting and rewrite it before finishing.", ""]
 
-    head = "\n".join(lines)
-    budget = CONTEXT_LIMIT - len(head)
-    body: list[str] = []
-    dropped: list[str] = []
-    for name in INJECT_ORDER:
-        section = found.get(name)
-        if section is None:
-            continue
-        block = f"\n## {name.title()}\n{section.rstrip()}\n"
+    def block(name: str) -> str:
         # Whole sections only. A section cut in half is worse than an absent
         # one: a truncated instruction still reads as an instruction.
-        if len(block) > budget:
+        return f"\n## {name.title()}\n{found[name].rstrip()}\n"
+
+    head = "\n".join(lines)
+
+    # The frozen terms are not discretionary, so they are not budgeted. They
+    # used to compete for space in one greedy pass, and on the first real
+    # artifact that produced the worst possible outcome: `## Carry-over` was
+    # refused for being 300 characters too large, and then `## Acceptance` -
+    # which is not essential - fit into the space it had just vacated. An
+    # essential displaced by a non-essential is not a budget working, it is a
+    # budget deciding what the run is allowed to know.
+    required = "".join(block(name) for name in ESSENTIAL if name in found)
+
+    # A section this list has never heard of used to be skipped in silence:
+    # neither injected nor named among the dropped, so an artifact that grew a
+    # heading of its own lost it without a word. Unknown sections go last -
+    # nothing known should be displaced by them.
+    extra = [n for n in found if n not in INJECT_ORDER and n not in SKIP]
+    budget = CONTEXT_LIMIT - len(head) - len(required)
+    body: list[str] = []
+    dropped: list[str] = []
+    for name in (*INJECT_ORDER, *extra):
+        if name in ESSENTIAL or name not in found:
+            continue
+        candidate = block(name)
+        if len(candidate) > budget:
             dropped.append(name)
             continue
-        body.append(block)
-        budget -= len(block)
+        body.append(candidate)
+        budget -= len(candidate)
 
-    context = head + "".join(body)
-    missing = [name for name in ESSENTIAL if name in dropped]
-    if missing:
+    context = head + required + "".join(body)
+    if budget < 0:
         context += (
-            f"\n**Could not inject {', '.join(missing)} - too large for the "
-            f"{CONTEXT_LIMIT}-character budget.** Read `{goal.goal_path.name}` in full "
-            "before doing anything; do not act on the sections above alone.\n"
+            f"\n**The frozen terms alone are {len(required)} characters, past the "
+            f"{CONTEXT_LIMIT}-character target.** They are injected anyway: a run that "
+            "cannot see its own intent, boundary, anchor and carry-over is worse than a "
+            "long injection. Nothing optional was injected at all.\n"
         )
     if dropped:
         context += (

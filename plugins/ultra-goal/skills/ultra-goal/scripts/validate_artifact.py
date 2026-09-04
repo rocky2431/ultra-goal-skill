@@ -504,11 +504,43 @@ def check_workflow(path: Path, text: str, out: list[Finding]) -> None:
         )
 
 
+# The four sections SessionStart injects whole, and the target it aims at. Both
+# come from goal_session_start.py; they live here as an advisory because a
+# section's size is a design-time fact the owner can act on, and a runtime
+# announcement arrives when it is too late to shape the document.
+INJECTED_WHOLE = ("intent", "boundary", "anchor", "carry-over")
+INJECTION_TARGET = 8000
+
+
 def check_goal(path: Path, text: str, out: list[Finding]) -> None:
     found = sections(text)
     for name, code, message in GOAL_SECTIONS:
         if name not in found:
             out.append(Finding(str(path), code, f"`## {name.title()}` missing: {message}"))
+
+    # Measured on the first real artifact: `## Anchor` alone was 7,752
+    # characters, 97% of the whole target, because the check contracts lived
+    # inside it. The frozen terms are injected regardless of size - a run that
+    # cannot see its own terms is worse than a long injection - so this is not
+    # an error. But it is worth one sentence, because every session boundary
+    # pays it and the repair is usually to promote a `###` subsection to a
+    # section of its own.
+    frozen_size = sum(len(found.get(name, "")) for name in INJECTED_WHOLE)
+    if frozen_size > INJECTION_TARGET:
+        biggest = max(INJECTED_WHOLE, key=lambda n: len(found.get(n, "")))
+        out.append(
+            Finding(
+                str(path),
+                "FROZEN_SECTIONS_OVER_BUDGET",
+                f"the sections SessionStart injects whole total {frozen_size} "
+                f"characters against a {INJECTION_TARGET}-character target, the largest "
+                f"being `## {biggest.title()}` at {len(found.get(biggest, ''))}. They "
+                "are still injected in full, but every restart and every compaction "
+                "pays this, and nothing optional will reach the run at all. Promoting a "
+                "`###` subsection to its own `##` section is usually the whole fix.",
+                severity="advisory",
+            )
+        )
 
     stop = found.get("stop condition", "")
     # Neither a declared `ceiling:` nor a parseable turn count means the gate
