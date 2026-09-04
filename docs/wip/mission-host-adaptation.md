@@ -816,6 +816,164 @@ zCode's union semantics, Claude Code's manifest-hooks-additional (binary
 read), the `${ZCODE_PLUGIN_ROOT:+…}` expansion under zCode's real command
 invocation, no live four-host run, no live baseline-diff review round.
 
+**Round 4.** The implementation round for `最终方案.md` (phases 0, 1 and 2;
+phase 3 deliberately nothing). Six implementation/docs commits on
+`host-adaptation` after `073a801`, not pushed, not installed, not published.
+Version 2.9.2 → 2.10.0 at all eight pinned sites.
+
+#### Test command and its real output
+
+```
+$ python3 -m pytest tests/ -q
+394 passed in 38.66s
+```
+
+Baseline at the round's start (`073a801`): `358 passed in 33.02s`. Every logic
+change landed test-first: 5 payload-contract regressions, 7 launcher
+regressions, 8 session-ownership regressions, 13 completion-contract tests,
+and 3 closing-the-run tests were all written and shown failing before their
+fixes. Where the plan retired a contract, the old assertions were rewritten
+to the new contract and the change named — never weakened: the per-turn
+anchoring tests became candidate-driven; the two not-progressing releases
+now pin that nothing but the ceiling and the denial bound releases a red
+claim; the `|| python` test that pinned "these hooks exit 0 whenever they
+run" (the ten-second-testable claim the plan refuted) now pins the
+select-once/exec-once form.
+
+#### What changed, per phase
+
+**Phase 0 — the five confirmed defects** (`dc76c87`, `b31561d`, `89bdda9`).
+
+1. *Allow + `additionalContext` continues the turn.* `_allow` returns
+   `systemMessage` only; the five call sites that attached the obligation
+   dropped it. The obligation moved to the run's own loop, not to "the next
+   injectable event": `goal-run.md` §3 now instructs the run to run the
+   applicable verification with ordinary tools after relevant changes, make
+   results visible in the ordinary tool output before any Stop, and write
+   durable state before a turn is allowed to end — with the reason stated:
+   the next injectable event is best-effort recovery and never carries
+   correctness.
+2. *`python3 X || python X` swallows exit 2.* Every registered command now
+   selects the interpreter first (`command -v`), checks the script exists,
+   and `exec`s it once; exec replaces the shell, so a deliberate exit 2
+   survives. LauncherContractTests drive the shipped command strings through
+   `sh -c` with a stub that deliberately exits 2: exactly one run, exit 2.
+3. *Exit 2 from the launch path.* A missing script is now a fail-open allow
+   (exit 0, silent) rather than Python's exit-2 block; `goal_stop.py`'s
+   `__main__` wraps argparse and the launch in the same fail-open
+   (`--host` with no value: exit 0, reproduced then guarded); the
+   installer's registered commands carry the same guard.
+4. *`.goals/active` has no session ownership.* The marker gained a
+   `session <id>` line, claimed by the first session-carrying Stop;
+   `run_hook` turns every other session's event away below all handlers, so
+   a stranger session gets no gating, no streak resets, no spec injection.
+   The limit is in the code and tests: ownership information, not an
+   anti-forgery key; first-Stop-wins; Kimi's Stop input carries no session
+   identity at all and zCode has never loaded a hook, so there ownership
+   stays open — declared degradations, not proxy reads.
+5. *The mixed `_deny` payload kills the block on Codex.* `_deny` is exactly
+   `{"decision": "block", "reason"}`; the obligation rides the reason — the
+   only channel a deny has.
+
+**Phase 1 — the completion contract** (`9ac94fb`). The anchor runs at
+completion candidates only (`.goals/<slug>.candidate`, self-reported,
+consumed by its judgment — one claim, one judgment, so later state changes
+cannot resurrect a judged claim and a stale green forces a re-run). At a
+candidate the gate checks the spec baseline and anchor identity (no old
+result substitutes), refuses while a delegated role's failure is the log's
+last word for the turn (`candidate_refused`, window closed by any observed
+turn boundary), bounds attempts by the owner's ceiling, then executes the
+current anchor once against the current state and writes the measurement:
+session identity, spec digest, anchor digest, post-anchor tree identity,
+exit code, output digest, and the claim's first line. An ordinary Stop is
+never blocked, runs nothing, and carries one deterministic omission line.
+`_block_streak` became `_denial_streak` over refused claims, and the
+continuation budget is redefined as the gate's own bound on consecutive
+denied attempts within one observed host turn — the "host cap − 1" framing
+and the per-turn counting claim are gone from `HostFacts`, the messages and
+the audit advisory; Claude Code's cap is recorded as the no-progress-run
+backstop it is, and zCode's degradation stays declared. The identical-
+signature auto-release was retired **here** rather than in phase 2 because
+its measurement window (per-turn checks) no longer existed once the anchor
+moved: a repeated signature is recorded and named in the refusal
+("byte-identical … does not prove no progress"), and the releases that
+remain are the ceiling and the denial bound.
+
+**Phase 2 — authorization, observation, lifecycle** (`40e3f09`, `ed72ced`).
+The re-baseline semantics is **(b): a legitimate goal change ends the old
+run; the owner opens a new one with a new spec.** Why: the current code
+always compares the first recorded digest with no path that could recognize
+a new baseline, so "deletion-shaped, code unchanged" was never available;
+and (a) would require verifying authority, which no artifact this gate can
+read can carry — a script the agent can also run is the ruling-id mistake
+again (correlation, not authorization). Concretely, `frozen_spec_changed`
+now closes the run: the gate disarms itself (`.goals/active` and any
+pending candidate go; the observations stay for `--audit` and Git), and the
+message names the reopening procedure. Re-baseline requires the owner's
+authority, not a trace; an agent may raise a challenge, never rule its own
+material change into an owner change. The two axes are split in SKILL.md —
+anchor observation `green/red/unknown` versus run disposition
+(`in_progress`, `input_required`, `blocked_retryable`, `budget_exhausted`,
+`unachievable`, `completed`, `canceled`) as report vocabulary that
+`goal-run.md` tells the run to use — with **no fourth mechanical gate
+outcome** and `unachievable` explicitly not implemented because it has no
+consumer.
+
+**Phase 3 — nothing**, as ruled. The four Protoss-derived mechanisms were
+not implemented and no failure was reverse-engineered to justify one. The
+one surviving sentence is in `references/anti-patterns.md` as a criterion,
+with its evidence: **a record with no consumer is not a fix** — the
+TRAJECTORY that carried the same lesson six times while the per-round judge
+that read a different file hit on it zero times.
+
+#### Post-fix live probes (the plan's phase-0 pass condition)
+
+Receipts: `docs/wip/reviews/probe-receipts-round-4.json`, driver
+`docs/wip/reviews/probes-round-4.py`; each registers the real gate behind a
+logging wrapper in an isolated directory.
+
+- `clean-claude-allow-no-context` (Claude Code 2.1.260): **one** Stop
+  callback, payload keys exactly `["systemMessage"]`, turn ended,
+  `PROBE_INITIAL` untouched — against the pre-fix probe's second callback
+  and model acting on the injected text.
+- `clean-codex-deny-toplevel` (codex-cli 0.150.1): the top-level-only deny
+  **blocks** — two Stop callbacks, chain flags `[false, true]`, the model
+  emitted `PROBE_CORRECTED` after the correction. Same-class positive
+  control; bounded to 0.150.1, not extrapolated to other versions.
+- `clean-claude-dual-session`: a session that is not the marker's owner is
+  invisible — one callback, empty gate output, no event written.
+
+Isolation note, recorded because it cost a diagnosis: claude probes must
+pass `--setting-sources project`; user-scope hooks on this machine
+(including hindsight memory injection) otherwise reach every `--print`
+session and derail the probe model.
+
+#### What was refused
+
+- No mid-run re-baseline mechanism, no ruling ids, no trajectory file, no
+  retraction ledger, no promise-checking — 4/4 not admitted by the plan's
+  own gate, and nothing here reverses that.
+- No fourth gate outcome for `unachievable`.
+- No proxy session or turn identity for Kimi/zCode: their payload facts are
+  what they are, and the degradations are stated where a reader will look.
+- No weakening of an assertion to make a suite pass: every rewritten test
+  names the contract change that forced it.
+
+#### What could not be verified
+
+- **zCode and Kimi remain at zero live hook coverage.** zCode has still
+  never loaded one of these hooks (`Unknown option --settings` in every
+  attempt so far); every claim about zCode rests on its reference and on
+  tests, not on a loaded hook. Kimi's Stop path has no live probe either.
+- The Codex deny result is bounded to codex-cli 0.150.1 on this machine.
+- The claim-stamping direction of session ownership (a second session
+  stopping first over a just-armed goal claims it wrongly) is a named bound
+  with unit coverage, not a live dual-session race.
+- `commandWindows` paths are untested on this darwin machine, as before.
+- No live verification that the completion-candidate flow reads correctly
+  to a working model across a real multi-turn run; the probes verify
+  transport and ruling, not the experience.
+
 ### 8.2 Claude Code — review rounds
 
 _(Claude Code writes here, and in `docs/wip/reviews/claude-round-N.md`)_
