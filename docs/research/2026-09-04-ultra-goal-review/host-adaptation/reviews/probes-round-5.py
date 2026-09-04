@@ -20,7 +20,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-REPO = Path("/Users/rocky243/Context Engineering/ultra-goal-adapt")
+# The worktree these ran in is gone; resolve the repository from this
+# file so the drivers stay runnable where the record now lives.
+REPO = Path(__file__).resolve().parents[5]
 SCRIPTS = REPO / "plugins" / "ultra-goal" / "skills" / "ultra-goal" / "scripts"
 
 results: list[dict] = []

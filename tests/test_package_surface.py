@@ -649,17 +649,20 @@ class HygieneTests(unittest.TestCase):
         tests/test_goal_hooks.py, which is now the load-bearing test.
         """
         # The scan covers what ships (the plugin tree, the installer, tests,
-        # README) - not docs/wip/, the working-notes directory whose whole job
-        # is citing absolute local paths to evidence. The mission envelope
-        # itself carries two such paths by design, and red-ing the suite on
-        # the owner's own notes guards nothing that installs anywhere.
+        # README) - not docs/wip/ or docs/research/, the two record directories
+        # whose whole job is citing absolute local paths to evidence. The
+        # mission envelope carries two such paths by design, and the research
+        # record carries more: probe receipts and three other agents' round
+        # transcripts, quoted verbatim because a paraphrased receipt is not one.
+        # Red-ing the suite on those guards nothing that installs anywhere.
+        records = {("docs", "wip"), ("docs", "research")}
         files = [
             path
             for path in REPO_ROOT.rglob("*")
             if path.is_file()
             and ".git" not in path.relative_to(REPO_ROOT).parts
             and "__pycache__" not in path.relative_to(REPO_ROOT).parts
-            and path.relative_to(REPO_ROOT).parts[:2] != ("docs", "wip")
+            and path.relative_to(REPO_ROOT).parts[:2] not in records
         ]
         relative = {path.relative_to(REPO_ROOT).as_posix() for path in files}
         self.assertFalse(any(path.endswith(".mcp.json") for path in relative))

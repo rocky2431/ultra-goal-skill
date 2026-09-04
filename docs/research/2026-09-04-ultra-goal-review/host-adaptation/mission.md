@@ -54,7 +54,7 @@ The load-bearing ideas, in the order they matter:
 Read these before writing code: `plugins/ultra-goal/skills/ultra-goal/SKILL.md`, and in
 `plugins/ultra-goal/skills/ultra-goal/references/`: `document-system.md`,
 `adversarial-review.md`, `agent-modes.md`, `anti-patterns.md`, `graph-topology.md`.
-`docs/wip/theory-sweep.md` sections 16-18 hold the recent findings and why each fix took
+`docs/design/theory-sweep.md` sections 16-18 hold the recent findings and why each fix took
 the shape it did.
 
 ## 2. The four hosts, and what "perfectly adapted" has to mean
