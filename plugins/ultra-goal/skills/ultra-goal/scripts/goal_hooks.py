@@ -75,10 +75,19 @@ class HostFacts:
     is the gate's reason and never the host's force-end warning - the host cap
     is the backstop, not the budget. Every number cites where it came from: a
     budget without a source is a constant copied from Claude Code.
+
+    `chain_flag` names the Stop-input field through which the host itself
+    reports whether this Stop is a continuation of a blocked one - an explicit
+    false is a directly observed fresh chain, so the budget's count starts
+    from zero rather than inheriting the log's tail. It is set only where the
+    host's reference documents the field *and* its meaning; a field name
+    without documented semantics is an inference, and this project does not
+    mechanise on inference.
     """
 
     continuation_budget: int | None
     source: str
+    chain_flag: str | None = None
 
 
 HOSTS: dict[str, HostFacts] = {
@@ -92,20 +101,35 @@ HOSTS: dict[str, HostFacts] = {
         7,
         "host cap 8 consecutive blocks (CLAUDE_CODE_STOP_HOOK_BLOCK_CAP default, "
         "Claude Code 2.1.260 binary)",
+        # The hooks reference documents the field, and the binary's cap
+        # message states its meaning: true while this stop continues a
+        # previously blocked one.
+        chain_flag="stop_hook_active",
     ),
     # zCode's hooks reference: "After 3 consecutive continuations the run is
     # force-ended to prevent infinite loops" (zcode.z.ai/en/docs/hooks).
     "zcode": HostFacts(
         2,
         "host cap 3 consecutive continuations (zCode hooks reference)",
+        # Its reference lists stop_hook_active among Stop's input fields but
+        # spells no semantics for it, so treating a value as a chain boundary
+        # would be inference from a name. Not read; the streak resets on an
+        # observed allow instead, and the residual (an interrupted chain
+        # carrying its tail into the next) is a named, bounded gap.
+        chain_flag=None,
     ),
     # Kimi triggers a blocking Stop only while `!stopHookContinuationUsed` and
     # resets that flag when the turn ends (0.40.1 binary: runStepLoop,
     # notifyTurnEnded) - one continuation per host turn is the mechanical max,
-    # and its reference documents no cap at all.
+    # and its reference documents no cap at all. The turn boundary is observed
+    # instead through this plugin's registered UserPromptSubmit hook, whose
+    # prompt_submitted event marks each new host turn. The binary does pass a
+    # stopHookActive input, but camelCase and constant-false by construction
+    # (it is only read inside the !used guard), so it carries no information.
     "kimi": HostFacts(
         1,
         "host triggers a blocking Stop at most once per turn (Kimi 0.40.1 binary)",
+        chain_flag=None,
     ),
     # No cap in Codex's hooks reference and none visible in the 0.150.1
     # binary; the documented self-guard is the stop_hook_active input. UNVERIFIED
@@ -114,6 +138,9 @@ HOSTS: dict[str, HostFacts] = {
     "codex": HostFacts(
         None,
         "no cap documented (Codex hooks reference) or visible in the 0.150.1 binary",
+        # learn.chatgpt.com/docs/hooks: "Whether this turn was already
+        # continued by Stop" - documented field and meaning.
+        chain_flag="stop_hook_active",
     ),
 }
 # A host the table has never heard of gets the smallest documented budget
@@ -195,7 +222,12 @@ def run_hook(
     it used to implement made the gate block exactly once per host turn, which
     is the difference between a loop and a nudge. The guard against a gate
     that denies forever is the per-host continuation budget in `HOSTS`,
-    counted from this gate's own events.
+    counted from this gate's own events. The flag is still read, but only as
+    a boundary fact and only for the hosts whose references document both the
+    field and its meaning (Claude Code and Codex spell `stop_hook_active`;
+    Kimi's binary passes a constant camelCase `stopHookActive` that carries
+    no information) - an explicit false tells the gate a fresh chain began,
+    it never suppresses the check itself.
     """
     try:
         environ = os.environ if env is None else env

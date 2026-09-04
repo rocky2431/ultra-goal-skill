@@ -1082,7 +1082,11 @@ class ContinuationBudgetTests(Harness):
       in the 0.150.1 binary - `None` means the gate's own ceiling binds.
 
     The gate releases one block BEFORE the cap so the last word is its own
-    reason rather than the host's force-end warning.
+    reason rather than the host's force-end warning. And the count is scoped
+    to the host turn, not to the persistent tail of the run log: the host's
+    own counter resets when a turn ends, so the boundary has to be observed
+    (a prompt marker, an allow, or the host's documented chain flag), never
+    inferred.
     """
 
     # Each turn appends one line of "work" and commits it, the way a real run
@@ -1090,7 +1094,8 @@ class ContinuationBudgetTests(Harness):
     # case - a suite printing the same failing summary), so these tests prove
     # the loop lives even when only the work tree moves.
     def turn(self, host: str | None = None, anchor: str = RED,
-             ceiling: str = "40 turns", work: bool = True) -> dict:
+             ceiling: str = "40 turns", work: bool = True,
+             stop_hook_active: bool | None = None) -> dict:
         goal = GOAL.replace(f"```\n{GREEN}\n```", f"```\n{anchor}\n```").replace(
             "or after 4 turns", f"or after {ceiling}"
         )
@@ -1106,6 +1111,8 @@ class ContinuationBudgetTests(Harness):
             self.run_git("add", "-A")
             self.run_git("commit", "-qm", "wip")
         payload = {"hook_event_name": "Stop", "cwd": str(self.cwd)}
+        if stop_hook_active is not None:
+            payload["stop_hook_active"] = stop_hook_active
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py"),
              *(["--host", host] if host else [])],
@@ -1114,6 +1121,23 @@ class ContinuationBudgetTests(Harness):
         )
         self.assertEqual(0, result.returncode, result.stderr)
         return json.loads(result.stdout) if result.stdout.strip() else {}
+
+    def prompt(self) -> str:
+        """One user prompt, the way a host turn actually begins.
+
+        On Kimi the UserPromptSubmit hook fires for it, and that invocation is
+        the observable fact a fresh host turn exists - the plugin's own hook
+        saw it, nothing is inferred.
+        """
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_prompt_submit.py")],
+            input=json.dumps(
+                {"hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
+            ),
+            capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        return result.stdout
 
     def run_git(self, *args: str) -> None:
         subprocess.run(
@@ -1189,6 +1213,56 @@ class ContinuationBudgetTests(Harness):
         self.assertEqual("block", self.decision(payloads[0]))
         self.assertIsNone(self.decision(payloads[1]))
 
+    def test_two_fresh_kimi_turns_each_get_their_one_block(self) -> None:
+        """Codex round-1 F2: the host resets its Stop guard when a turn ends
+        (0.40.1 binary: notifyTurnEnded clears stopHookContinuationUsed), so a
+        budget counted from the persistent tail of the run log alternates
+        block/allow across fresh turns - every second turn inheriting a spent
+        budget it never spent. The scoping fact must be one the hook observes:
+        on Kimi every host turn begins with a user prompt, and this plugin's
+        registered UserPromptSubmit hook fires for it, so a `prompt_submitted`
+        event is a direct observation of a new turn, not an inference."""
+        self.prompt()
+        first = self.turn(host="kimi")
+        self.assertEqual("block", self.decision(first))
+        self.prompt()
+        second = self.turn(host="kimi")
+        self.assertEqual(
+            "block", self.decision(second),
+            "a fresh host turn arrives with a fresh budget",
+        )
+        self.assertEqual(
+            [],
+            [e for e in self.events() if e["event"] == "continuation_budget_spent"],
+            "neither turn parked: neither spent more than its one block",
+        )
+
+    def test_a_stop_reporting_a_fresh_chain_resets_the_streak(self) -> None:
+        """Claude Code's and Codex's references document stop_hook_active as
+        "whether this turn was already continued by Stop" - an explicit false
+        is the host itself saying this Stop begins a fresh chain, so the count
+        must not inherit the tail of an interrupted one. Kimi passes the same
+        fact as a constant camelCase stopHookActive inside its once-per-turn
+        guard, which carries no information, and zCode names the field without
+        documenting its semantics - neither is read as a reset."""
+        payloads = [self.turn(stop_hook_active=False) for _ in range(8)]
+        self.assertEqual(
+            ["block"] * 8,
+            [self.decision(p) for p in payloads],
+            "eight stops that each report a fresh chain each get a fresh budget",
+        )
+
+    def test_a_continuation_reported_by_the_host_extends_the_streak(self) -> None:
+        """The same field read the other way: true means this Stop is the
+        continuation a previous block bought, so the count keeps running -
+        which is the mission's own repro, now stated through the host's fact
+        instead of an unbroken log tail."""
+        payloads = [
+            self.turn(stop_hook_active=(i > 0)) for i in range(8)
+        ]
+        self.assertEqual(["block"] * 7, [self.decision(p) for p in payloads[:7]])
+        self.assertIsNone(self.decision(payloads[7]))
+
     def test_codex_has_no_documented_budget_to_spend(self) -> None:
         payloads = [self.turn(host="codex") for _ in range(6)]
         self.assertEqual(["block"] * 6, [self.decision(p) for p in payloads])
@@ -1258,6 +1332,41 @@ class ContinuationBudgetTests(Harness):
         self.assertIn("not progressing", payload["systemMessage"])
         checks = [e for e in self.events() if e["event"] == "anchor_checked"]
         self.assertFalse(checks[-1]["blocked"])
+
+    def test_a_mutating_anchor_cannot_pose_as_progress(self) -> None:
+        """Codex round-1 F3: the comparison base used to be captured before
+        the previous anchor ran, so that anchor's own writes landed inside the
+        measured window and a red anchor appending to a tracked file kept the
+        turn alive forever with no model work at all. The base is now the
+        state the previous check *left behind* (captured after its anchor
+        ran), so the anchor's footprint is on both sides of the comparison."""
+        mutating_red = (
+            f'"{sys.executable}" -c '
+            '"open(\'src.txt\',\'a\').write(\'x\'); raise SystemExit(1)"'
+        )
+        first = self.turn(anchor=mutating_red)
+        self.assertEqual("block", self.decision(first))
+        second = self.turn(anchor=mutating_red, work=False)
+        self.assertIsNone(self.decision(second))
+        self.assertIn("not progressing", second["systemMessage"])
+
+    def test_edits_inside_an_existing_untracked_file_are_progress(self) -> None:
+        """Codex round-1 F3, other direction: `git status --porcelain`
+        contributes an untracked path and `git diff HEAD` omits its content,
+        so rewriting an already-untracked file was invisible - real work read
+        as stagnation. The digest now hashes untracked content (ignored files
+        excluded, `.goals` excluded) rather than listing names only."""
+        self.turn()
+        notes = self.cwd / "notes.md"
+        notes.write_text("one", encoding="utf-8")
+        second = self.turn(work=False)
+        self.assertEqual("block", self.decision(second))
+        notes.write_text("two", encoding="utf-8")
+        third = self.turn(work=False)
+        self.assertEqual(
+            "block", self.decision(third),
+            "a content edit inside an existing untracked file is work",
+        )
 
 
 class CompactNoticeTests(Harness):
@@ -1346,6 +1455,45 @@ class PromptSubmitTests(Harness):
             timeout=30,
         )
         self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_the_prompt_records_the_turn_boundary(self) -> None:
+        """The prompt hook writes the fact the continuation budget is scoped
+        to: a `prompt_submitted` event is a direct observation that a new host
+        turn began (this hook only runs because the host submitted a prompt),
+        which is what lets a fresh Kimi turn arrive with a fresh budget
+        without inferring that some previous turn ended."""
+        self.make_loop()
+        self.run_script(
+            {"hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
+        )
+        log = self.cwd / ".goals" / "demo.events.jsonl"
+        self.assertTrue(log.is_file(), "the boundary must be recorded, not implied")
+        events = [json.loads(l) for l in log.read_text().splitlines() if l.strip()]
+        self.assertEqual("prompt_submitted", events[0]["event"])
+
+    def test_the_prompt_carries_the_gate_s_last_decision(self) -> None:
+        """Claude round-1 F-1: Kimi's Stop has no allow-channel in its
+        documented protocol, so green, unknown, ceiling, frozen-spec-changed
+        and not-progressing all end a Kimi turn in silence. The two documented
+        channels are the block and the next UserPromptSubmit - so this hook
+        reads the gate's last decision out of the event log and delivers it
+        with the pointer, bounded and fixed-size whatever the artifact."""
+        self.make_loop(goal=GOAL.replace(f"```\n{GREEN}\n```", f"```\n{RED}\n```"))
+        stop = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_stop.py"), "--host", "kimi"],
+            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(0, stop.returncode, stop.stderr)
+        self.assertEqual("block", json.loads(stop.stdout).get("decision"))
+        result = self.run_script(
+            {"hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
+        )
+        lines = result.stdout.strip().splitlines()
+        self.assertEqual(2, len(lines), "pointer plus verdict, nothing else")
+        self.assertIn("turn 1", lines[1])
+        self.assertIn("red", lines[1])
+        self.assertIn("refused", lines[1])
 
 
 class UnknownSectionTests(Harness):

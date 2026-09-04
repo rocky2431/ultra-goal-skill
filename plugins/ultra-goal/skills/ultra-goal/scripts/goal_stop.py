@@ -352,12 +352,22 @@ def _tree_digest(root: Path) -> str | None:
     that did nothing read as progress. None means there is no work-tree fact
     (no Git, or Git failed), and the caller falls back to the anchor's output
     alone.
+
+    Untracked-but-not-ignored files contribute their *content*, not just
+    their path: `git status --porcelain` names an untracked file and
+    `git diff HEAD` omits it entirely, so a path-only digest was blind to the
+    one remaining kind of work - rewriting a file that was never committed.
+    `git ls-files --others --exclude-standard` respects `.gitignore`, so
+    build directories stay out. Content is hashed up to 1 MiB per file; an
+    edit confined to the tail of a larger untracked file is unseen, which is
+    a named bound, not an accident.
     """
     parts: list[str] = []
     for args in (
         ("rev-parse", "HEAD"),
         ("status", "--porcelain", "--", ":!.goals"),
         ("diff", "HEAD", "--", ":!.goals"),
+        ("ls-files", "--others", "--exclude-standard", "-z", "--", ":!.goals"),
     ):
         try:
             completed = subprocess.run(
@@ -372,6 +382,14 @@ def _tree_digest(root: Path) -> str | None:
         if completed.returncode != 0:
             return None
         parts.append(completed.stdout)
+    for relative in sorted(p for p in parts.pop().split("\0") if p):
+        digest = hashlib.sha256()
+        try:
+            with (root / relative).open("rb") as handle:
+                digest.update(handle.read(1 << 20))
+        except OSError:
+            continue  # vanished or unreadable mid-digest: the path is still counted
+        parts.append(f"{relative}\0{digest.hexdigest()}")
     return hashlib.sha256("\0".join(parts).encode("utf-8", "replace")).hexdigest()[:12]
 
 
@@ -387,6 +405,14 @@ def _stagnant(
     Where no work-tree fact exists on either side (a pre-counter event, or a
     project without Git), the output is the only measurable left, which is
     the rule this replaces and its fallback.
+
+    The comparison base is the *post-anchor* digest the previous check
+    recorded - the state that check left behind. Comparing against a
+    pre-anchor snapshot instead let the previous anchor's own side effects
+    masquerade as model work, so a red anchor that appended to a tracked file
+    defeated this release forever. Events written before that semantics
+    carry a pre-anchor snapshot; a run upgraded mid-flight gets at most one
+    check of that old error, then the new base takes over.
     """
     if previous is None or previous.get("signature") != signature:
         return False
@@ -396,19 +422,52 @@ def _stagnant(
     return previous_tree == tree
 
 
-def _block_streak(checks: list[dict[str, Any]]) -> int:
-    """How many anchor checks in a row this gate has already blocked.
+# Decisions by which this gate let a turn end. Any of them between two blocks
+# means the blocks cannot have been consecutive: the chain broke when the turn
+# did.
+_CHAIN_ENDERS = {
+    "anchor_unavailable",
+    "ceiling_reached",
+    "frozen_spec_changed",
+    "continuation_budget_spent",
+}
 
-    A measurement from this gate's own log. Events without a `blocked` field
-    predate the counter and read as allows, which is the safe direction: a run
-    upgraded mid-flight counts its budget from zero rather than inheriting a
-    streak it cannot see.
+
+def _block_streak(
+    events: list[dict[str, Any]], fresh_chain: bool = False
+) -> int:
+    """How many anchor checks in a row this gate has already blocked - within
+    the host turn that is still running.
+
+    The count is bounded by turn boundaries this gate or its sibling hooks
+    *observed*, never by the bare tail of a persistent log: the host's own
+    counter resets when a turn ends (Kimi's `notifyTurnEnded` is explicit
+    about it), so a tail-counted budget leaks across turns and every second
+    fresh Kimi turn arrived already spent. The observable boundaries are:
+
+    - a `prompt_submitted` event - the registered UserPromptSubmit hook ran,
+      which only happens because the host submitted a new prompt, i.e. a new
+      host turn began (Kimi's channel; a stop-block continuation is host
+      feedback, not a user submission, so it does not write one);
+    - an allow - `blocked: false`, or any recorded decision that ends a turn;
+    - the host's own chain flag, passed in as `fresh_chain` - read only where
+      the host's reference documents the field and its meaning.
+
+    Events without a `blocked` field predate the counter and read as allows,
+    which is the safe direction: a run upgraded mid-flight counts its budget
+    from zero rather than inheriting a streak it cannot see.
     """
+    if fresh_chain:
+        return 0
     streak = 0
-    for check in reversed(checks):
-        if not check.get("blocked"):
+    for entry in reversed(events):
+        kind = entry.get("event")
+        if kind == "anchor_checked":
+            if not entry.get("blocked"):
+                break
+            streak += 1
+        elif kind == "prompt_submitted" or kind in _CHAIN_ENDERS:
             break
-        streak += 1
     return streak
 
 
@@ -526,10 +585,14 @@ def handle(
         )
 
     # Step 7+8: run it. Three outcomes, not two. The work tree is digested
-    # first, before the anchor can dirty it with its own side effects, so
-    # "did anything move" measures the run's work and not the anchor's
-    # footprint.
-    tree_digest = _tree_digest(goal.goals_dir.parent)
+    # on both sides of the anchor: `tree_before` is what changed since the
+    # last check left its state behind (the run's work, free of the previous
+    # anchor's footprint), and `tree_after` - recorded in the event - is the
+    # state THIS check leaves behind, which is what the next check compares
+    # against. Digesting only before the anchor let the anchor's own side
+    # effects pose as model work; digesting only after would hide the work
+    # that landed before it ran.
+    tree_before = _tree_digest(goal.goals_dir.parent)
     try:
         completed = subprocess.run(
             anchor,
@@ -552,6 +615,8 @@ def handle(
     except (OSError, ValueError) as exc:
         exit_code, output, outcome = None, str(exc), "unknown"
 
+    tree_after = _tree_digest(goal.goals_dir.parent)
+
     output_digest = hashlib.sha256(output.encode("utf-8", "replace")).hexdigest()[:12]
     signature = _signature(outcome, exit_code, output_digest)
 
@@ -570,7 +635,7 @@ def handle(
                 "spec_digest": digest,
                 "budget_seconds": budget,
                 "budget_source": "declared" if budget_declared else "default",
-                "tree_digest": tree_digest,
+                "tree_digest": tree_after,
                 "blocked": blocked,
                 "tail": output.splitlines()[-1][:200] if output else "",
             },
@@ -622,7 +687,7 @@ def handle(
     # mid-run progress looks like, so the turn is released only when neither
     # the output nor the work tree moved. Judged before the budget: a stuck
     # run's truest ending is "not progressing", not "budget spent".
-    if _stagnant(checks[-1] if checks else None, signature, tree_digest):
+    if _stagnant(checks[-1] if checks else None, signature, tree_before):
         record(False)
         return _allow(
             f"{goal.slug}: the anchor produced an identical result and the work "
@@ -639,7 +704,10 @@ def handle(
     # anchor may end a turn only by saying so, never silently.
     facts = host_facts(host)
     budget = facts.continuation_budget
-    if budget is not None and _block_streak(checks) >= budget:
+    fresh_chain = (
+        facts.chain_flag is not None and event.get(facts.chain_flag) is False
+    )
+    if budget is not None and _block_streak(events, fresh_chain) >= budget:
         record(False)
         append_event(
             goal,
