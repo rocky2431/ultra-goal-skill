@@ -208,15 +208,27 @@ directly from a Git marketplace.
 
 ## The gate
 
-On a host that exposes the events, three hooks install with the Skill and turn the anchor from
-a sentence in a prompt into something that actually runs.
+On a host that exposes the events, hooks install with the Skill and turn the anchor from
+a sentence in a prompt into something that actually runs. Which hooks register is a
+per-host fact — each manifest registers only events its host documents, so zCode (no
+`PreCompact`) and Codex (no `PostToolUseFailure`) each get their own set, and Kimi's
+`SessionStart`-cannot-inject limitation is answered by a `UserPromptSubmit` pointer line
+rather than pretended away.
 
 | Hook | Does | Can it block? |
 |---|---|---|
-| `Stop` | Runs the anchor every turn | **Yes, in exactly one case**: the anchor ran and was red |
+| `Stop` | Runs the anchor every turn | **Yes, while the anchor is red** — up to the host's continuation budget |
 | `SessionStart` | Re-injects the frozen spec and carried state after a restart | No |
 | `PreCompact` | Records the carried state before the context is emptied | No |
 | `PostToolUseFailure` | Records that a call naming a delegation target failed, so a degraded round cannot read as a clean one | No |
+| `UserPromptSubmit` | Kimi only: a one-line pointer per prompt, that host's documented injection channel | No |
+
+**The loop is the continuation budget.** A host keeps a Stop-blocked turn alive only so
+many times in a row — Claude Code force-ends after 8 consecutive blocks, zCode after 3,
+Kimi triggers a blocking Stop once per turn, Codex documents no cap — so the gate counts
+its own blocks in the event log and releases one *before* the host's cap, ending the turn
+loudly (`continuation_budget_spent`, surfaced by `--audit`) instead of letting the host's
+force-end warning have the last word.
 
 **Three outcomes, not two.** An anchor that cannot run — missing command, not executable,
 timed out — is **unknown**, not failed. A timeout measures elapsed time and has no access to
@@ -224,8 +236,8 @@ success or failure, so reporting it as either is how a mechanical gate starts ly
 lets the turn end and says the result is unverified.
 
 **Seven of the eight steps allow.** Frozen spec changed, ceiling reached, run not
-progressing, anchor unrunnable, anchor green, no anchor, no active goal — all let the turn
-end and say why. It refuses only when it is certain.
+progressing, continuation budget spent, anchor unrunnable, anchor green, no anchor, no
+active goal — all let the turn end and say why. It refuses only when it is certain.
 
 **It also remembers which goal it was pointed at.** On the first turn the gate records a
 digest of `## Intent`, `## Boundary` and `## Anchor`; on every later turn it compares. When

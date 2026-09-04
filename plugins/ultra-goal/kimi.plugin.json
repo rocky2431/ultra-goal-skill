@@ -1,6 +1,6 @@
 {
   "name": "ultra-goal",
-  "version": "2.8.0",
+  "version": "2.9.0",
   "description": "Interview an objective into a grounded goal, emit the runnable artifact, and gate the run on its anchor. On Kimi the Stop gate is tagged --host kimi because this host triggers a blocking Stop at most once per turn, and the UserPromptSubmit hook is the recovery channel: Kimi's SessionStart output is fire-and-forget, so the frozen-spec injection other hosts get on session start arrives here as a one-line pointer on every prompt - a declared degradation, not parity.",
   "keywords": [
     "kimi-code",
