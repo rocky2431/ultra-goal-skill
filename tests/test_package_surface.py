@@ -1569,12 +1569,16 @@ class ReferenceFirstTests(unittest.TestCase):
         self.assertIn("declared property of the file", doc)
 
     def test_the_gate_records_which_sources_disagreed(self) -> None:
-        """A conflict between two authoritative sources is worth keeping."""
+        """A conflict between two authoritative sources is worth keeping -
+        including how it was settled. Emitting both forms was retired after
+        the Codex paired probe showed the mixed payload makes the block
+        inert there, so the docstring must carry the disagreement AND the
+        probe that resolved it, not a resolution that no longer holds."""
         gate = (SKILL_ROOT / "scripts" / "goal_stop.py").read_text(encoding="utf-8")
         self.assertIn("Two authoritative sources disagree", gate)
-        self.assertIn("official hooks reference lists", gate)
-        self.assertIn("running binary's own validator", gate)
-        self.assertIn("satisfying both costs a few bytes", gate)
+        self.assertIn("paired probe", gate)
+        self.assertIn("made the block inert", gate)
+        self.assertIn("belongs to the event-specific schema", gate)
 
     def test_session_start_covers_every_documented_source(self) -> None:
         """`fork` was missing, so a forked session got no injection at all."""

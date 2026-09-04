@@ -207,59 +207,47 @@ def _resolvable(command: str, root: Path) -> bool:
     return shutil.which(head) is not None
 
 
-def _allow(reason: str, context: str | None = None) -> dict[str, Any]:
-    """End the turn, telling the owner why and the model what it may change.
+def _allow(reason: str) -> dict[str, Any]:
+    """End the turn, telling the owner why - and the model nothing.
 
-    `additionalContext` is documented for Stop as "Feedback for the model; the
-    conversation continues so the model can act on it", and it carries exactly
-    the mutable surface - nothing frozen. A reminder about something the run may
-    not change has one effect: it invites the change.
+    An allow used to attach `hookSpecificOutput.additionalContext`, read as
+    "end the turn and tell the model what it owes". On Claude Code 2.1.260
+    that is not what happens: the probe `clean-claude-allow-context` (clean
+    settings, isolated directory) showed a second Stop callback and the model
+    acting on the injected text - the turn did not end. So an allow carries
+    no model context at all, on any path.
+
+    The obligation did not disappear; it moved to where it always belonged:
+    the run's own loop. The skill's standing instructions make important
+    results visible through ordinary tool output before the Stop and write
+    durable state (carry-over, lessons, commits) before a turn is allowed to
+    end. The next injectable event - where one exists at all; Kimi's task and
+    system-triggered turns fire no `UserPromptSubmit`, and `SessionStart` is
+    not guaranteed either - is best-effort recovery and never carries
+    correctness.
     """
-    payload: dict[str, Any] = {"systemMessage": f"[ultra-goal] {reason}"}
-    if context:
-        payload["hookSpecificOutput"] = {
-            "hookEventName": "Stop",
-            "additionalContext": context,
-        }
-    return payload
+    return {"systemMessage": f"[ultra-goal] {reason}"}
 
 
-def _deny(reason: str, context: str | None = None) -> dict[str, Any]:
-    """Refuse to let the turn end, in every documented form at once.
+def _deny(reason: str) -> dict[str, Any]:
+    """Refuse to let the turn end: the top-level block form, and only it.
 
-    Two authoritative sources disagree about how a Stop hook blocks, and both
-    were read directly rather than assumed:
+    Two authoritative sources disagree about how a Stop hook blocks, and this
+    gate once answered by emitting both in one payload. Codex 0.150.1 settled
+    that answer with a paired probe: the mixed payload (top-level
+    `decision: block` plus nested `hookSpecificOutput.permissionDecision`)
+    made the block inert - one Stop callback, no continuation - while the
+    same probe sending only the top-level form blocked correctly. Codex's
+    reference documents top-level `{"decision":"block","reason"}` and exit 2
+    plus stderr for Stop; it does not list `permissionDecision` there. The
+    error belongs to the event-specific schema, not to the field name: the
+    same nested field is legitimate on other events.
 
-    - The official hooks reference lists, for Stop,
-      `hookSpecificOutput.permissionDecision: "allow|deny"` alongside
-      `additionalContext` and `systemMessage`.
-    - The running binary's own validator, when it rejected a malformed payload,
-      printed a schema in which Stop's `hookSpecificOutput` carries only
-      `hookEventName` and `additionalContext`, with `decision: "approve"|"block"`
-      and `reason` at the top level.
-
-    I changed this once on the strength of the second source alone and broke a
-    field that the first source documents. So it now emits both, and says why:
-    when the sources conflict, satisfying both costs a few bytes, while picking
-    one costs the only hard power in the design. The docs also record a third
-    route - exit code 2 - which this deliberately does not use, because exiting
-    non-zero would discard the JSON that carries the reason.
-
-    Which one the host honours is still a claim until a live run settles it. The
-    observable is simple: a denied turn does not end.
+    So the deny is exactly the top-level pair, and the reason carries
+    everything the blocked turn needs to hear - it is the only channel a
+    deny has.
     """
-    payload: dict[str, Any] = {
-        "decision": "block",
-        "reason": reason,
-        "hookSpecificOutput": {
-            "hookEventName": "Stop",
-            "permissionDecision": "deny",
-            "permissionDecisionReason": reason,
-        },
-    }
-    if context:
-        payload["hookSpecificOutput"]["additionalContext"] = context
-    return payload
+    return {"decision": "block", "reason": reason}
 
 
 def _obligation(found: dict[str, str], goal: ActiveGoal) -> str | None:
@@ -300,7 +288,7 @@ def _obligation(found: dict[str, str], goal: ActiveGoal) -> str | None:
         return None
 
     parts = [
-        "Before this turn ends, in `" + goal.goal_path.name + "`:",
+        "Before you try to end this turn again, in `" + goal.goal_path.name + "`:",
     ]
     if present:
         parts.append(
@@ -589,8 +577,7 @@ def handle(
         )
         return _allow(
             f"{goal.slug}: ceiling of {ceiling} turns reached without meeting the "
-            f"goal. Stopping. Report what is left rather than claiming success.{source}",
-            _obligation(found, goal),
+            f"goal. Stopping. Report what is left rather than claiming success.{source}"
         )
 
     # Step 6: is the anchor even runnable? Answered by looking, not by inference.
@@ -692,8 +679,7 @@ def handle(
         return _allow(
             f"{goal.slug}: the anchor could not run ({detail}), so whether the work "
             "landed is unknown - not failed. Stopping. Say it is unverified rather "
-            "than guessing either way.",
-            _obligation(found, goal),
+            "than guessing either way."
         )
 
     if outcome == "green":
@@ -716,8 +702,7 @@ def handle(
         )
         record(False)
         return _allow(
-            f"{goal.slug}: anchor `{anchor}` passed on turn {turn}.{left}",
-            _obligation(found, goal),
+            f"{goal.slug}: anchor `{anchor}` passed on turn {turn}.{left}"
         )
 
     # Step 5: red, but is anything changing? The anchor's output alone cannot
@@ -731,8 +716,7 @@ def handle(
             f"{goal.slug}: the anchor produced an identical result and the work "
             f"tree did not move since the last check (turn {turn}), so the run is "
             "not progressing. Stopping. Report what is blocking it instead of "
-            "retrying.",
-            _obligation(found, goal),
+            "retrying."
         )
 
     # Red and moving. How much longer may this turn be held? The host's
@@ -773,7 +757,7 @@ def handle(
                 " The host's own cap is CLAUDE_CODE_STOP_HOOK_BLOCK_CAP (default 8); "
                 "the owner can raise it to continue more per turn."
             )
-        return _allow(message, _obligation(found, goal))
+        return _allow(message)
 
     # `of {ceiling}` printed "of None" for a run the owner declared unbounded.
     # It says nothing at all there instead: a run without a ceiling should never
@@ -796,8 +780,11 @@ def handle(
             "rewrite `### Lessons` and `### Next`, and continue on the next prompt - "
             "the ceiling still binds on the event log's count."
         )
+    obligation = _obligation(found, goal)
+    if obligation:
+        deny_reason += "\n" + obligation
     record(True)
-    return _deny(deny_reason, _obligation(found, goal))
+    return _deny(deny_reason)
 
 
 if __name__ == "__main__":

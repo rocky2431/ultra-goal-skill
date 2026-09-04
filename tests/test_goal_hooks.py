@@ -316,14 +316,10 @@ class AnchorGateTests(Harness):
         return json.loads(result.stdout) if result.stdout.strip() else {}
 
     def decision(self, payload: dict) -> str | None:
-        """Blocked is blocked, whichever documented form the host reads.
-
-        Two authoritative sources disagree: the official hooks reference lists
-        `hookSpecificOutput.permissionDecision` for Stop, while the running
-        binary's own validator printed a schema with only `additionalContext`
-        there and `decision`/`reason` at the top level. The gate emits both, so
-        this normalises both to one word rather than betting on either.
-        """
+        """Blocked is blocked: the top-level `decision` is the one form every
+        probe-verified host honours (the nested Stop fields made the block
+        inert on Codex 0.150.1 and were removed). The nested read remains
+        only as a normalizer for historical payloads."""
         top = payload.get("decision")
         if top == "block":
             return "block"
@@ -349,18 +345,17 @@ class AnchorGateTests(Harness):
     def test_red_anchor_denies_the_stop(self) -> None:
         payload = self.stop(RED)
         self.assertEqual("block", self.decision(payload))
-        # Both documented forms, because the two sources disagree and picking
-        # one costs the only hard power in the design.
+        # The top-level pair only: the nested Stop fields this used to emit
+        # made the block inert on Codex 0.150.1 (paired probe,
+        # evidence.json), so emitting "both forms" was spending the only
+        # hard power in the design to buy nothing.
         self.assertEqual("block", payload["decision"])
-        self.assertEqual(
-            "deny", payload["hookSpecificOutput"]["permissionDecision"]
-        )
+        self.assertNotIn("hookSpecificOutput", payload)
         reason = payload["reason"]
-        self.assertEqual(
-            reason, payload["hookSpecificOutput"]["permissionDecisionReason"]
-        )
+        self.assertNotIn("hookSpecificOutput", payload)
         self.assertIn("still failing", reason)
-        # The refusal must also say what to do next, since Stop cannot inject context.
+        # The refusal must also say what to do next: the reason is the only
+        # channel a deny has, so the obligation rides it.
         self.assertIn("### Lessons", reason)
         self.assertIn("## Verification", reason)
         self.assertEqual("red", self.events()[-1]["outcome"])
@@ -943,42 +938,34 @@ class StopContractTests(Harness):
         self.assertEqual(0, result.returncode, result.stderr)
         return json.loads(result.stdout) if result.stdout.strip() else {}
 
-    def test_blocking_satisfies_both_documented_forms(self) -> None:
-        """Emitting both is the answer to two sources disagreeing.
-
-        I changed this once on the strength of one source and broke a field the
-        other documents. The cost of satisfying both is a few bytes; the cost of
-        picking wrong is the only hard power in the design.
-        """
+    def test_blocking_is_the_top_level_pair_only(self) -> None:
+        """The contract changed after the Codex paired probe: emitting both
+        forms in one payload made the block inert there, so "satisfying both"
+        was spending the only hard power in the design to buy nothing. The
+        deny is now exactly `{"decision": "block", "reason"}`."""
         payload = self.stop(RED)
         self.assertEqual("block", payload["decision"])
         self.assertIn("still failing", payload["reason"])
-        nested = payload["hookSpecificOutput"]
-        self.assertEqual("Stop", nested["hookEventName"])
-        self.assertEqual("deny", nested["permissionDecision"])
+        self.assertNotIn("hookSpecificOutput", payload)
 
     def test_a_blocked_turn_is_also_told_what_it_owes(self) -> None:
-        """The turn most in need of the mutable surface is the one being held."""
-        context = self.stop(RED)["hookSpecificOutput"]["additionalContext"]
+        """The turn most in need of the mutable surface is the one being
+        held, and the reason is the only channel a deny has."""
+        reason = self.stop(RED)["reason"]
         for probe in ("### Next", "### Lessons"):
-            self.assertIn(probe, context, probe)
+            self.assertIn(probe, reason, probe)
 
-    def test_an_ending_turn_is_reminded_of_what_it_may_change(self) -> None:
+    def test_an_ending_turn_gets_no_model_context_at_all(self) -> None:
+        """The contract changed: an allow that attaches `additionalContext`
+        does not end the turn on Claude Code 2.1.260 (probe
+        clean-claude-allow-context), so the reminder toward the model moved
+        into the skill's standing instructions and the allow is
+        owner-facing only."""
         payload = self.stop(GREEN)
-        context = payload["hookSpecificOutput"]["additionalContext"]
-        self.assertEqual("Stop", payload["hookSpecificOutput"]["hookEventName"])
-        for probe in ("### Next", "### Lessons", "### State"):
-            self.assertIn(probe, context, probe)
+        self.assertEqual({"systemMessage"}, set(payload))
+        self.assertIn("passed on turn", payload["systemMessage"])
 
-    def test_the_reminder_never_carries_a_frozen_section(self) -> None:
-        """The owner's rule cuts both ways: a frozen section named in a
-        reminder is an invitation to edit it."""
-        context = self.stop(GREEN)["hookSpecificOutput"]["additionalContext"]
-        for frozen in ("## Intent", "## Boundary", "## Anchor", "## Means"):
-            self.assertNotIn(frozen, context, frozen)
-        self.assertIn("are frozen", context)
-
-    def test_the_reminder_counts_open_acceptance_lines_without_quoting_them(
+    def test_the_owner_line_counts_open_acceptance_lines_without_quoting_them(
         self,
     ) -> None:
         """A hook inlines only what it alone possesses. How many lines are open
@@ -990,14 +977,12 @@ class StopContractTests(Harness):
             "## Carry-over",
             "## Acceptance\n\n- [x] already true\n- [ ] not yet true\n\n## Carry-over",
         )
-        context = self.stop(GREEN, goal)["hookSpecificOutput"]["additionalContext"]
-        self.assertIn("1 line(s) still open", context)
-        self.assertNotIn("not yet true", context)
-        self.assertNotIn("already true", context)
-        # And it says where they are.
-        self.assertIn("demo.goal.md", context)
+        message = self.stop(GREEN, goal)["systemMessage"]
+        self.assertIn("`## Acceptance` line(s) are still open", message)
+        self.assertNotIn("not yet true", message)
+        self.assertNotIn("already true", message)
 
-    def test_the_reminder_is_the_same_size_whatever_the_artifact(self) -> None:
+    def test_the_owner_line_is_the_same_size_whatever_the_artifact(self) -> None:
         """The reason for the rule: an 80-node graph must not make the per-turn
         payload 80 lines long."""
         small = GOAL.replace(
@@ -1009,10 +994,131 @@ class StopContractTests(Harness):
             + "\n".join(f"- [ ] line {i}" for i in range(80))
             + "\n\n## Carry-over",
         )
-        a = self.stop(GREEN, small)["hookSpecificOutput"]["additionalContext"]
-        b = self.stop(GREEN, big)["hookSpecificOutput"]["additionalContext"]
+        a = self.stop(GREEN, small)["systemMessage"]
+        b = self.stop(GREEN, big)["systemMessage"]
         self.assertLess(abs(len(a) - len(b)), 40)
-        self.assertIn("80 line(s) still open", b)
+        self.assertIn("80 `## Acceptance` line(s) are still open", b)
+
+
+class StopPayloadContractTests(Harness):
+    """What an allow and a deny may carry, pinned to probe evidence.
+
+    Two confirmed defects, both reproduced live (evidence.json,
+    2026-09-04-ultra-goal-review):
+
+    - **Allow + `additionalContext` continues the turn** (probe
+      `clean-claude-allow-context`, Claude Code 2.1.260, clean settings): a
+      Stop that allows while attaching `hookSpecificOutput.additionalContext`
+      produced a second Stop callback and the model acting on the injected
+      text. So an allow must carry no model context at all - the obligation
+      moved into the run's own loop, the skill's standing instructions, where
+      important results are made visible by ordinary tool output before the
+      Stop and written to durable state before an allow.
+    - **The mixed `_deny` payload kills the block on Codex** (paired probe,
+      codex-cli 0.150.1): top-level `decision: block` plus nested
+      `hookSpecificOutput.permissionDecision` made the block inert, while the
+      top-level-only control blocked fine. Codex's reference documents
+      top-level `{"decision":"block","reason"}` and exit 2 + stderr for Stop;
+      it does not list `permissionDecision` there. The error belongs to the
+      event-specific schema, not to the field name - the same field is
+      legitimate on other events.
+    """
+
+    def stop(self, anchor: str) -> dict:
+        # A fresh events log per call: subTests share one temp dir, and an
+        # anchor that differs across calls would read as a moved goalpost.
+        log = self.cwd / ".goals" / "demo.events.jsonl"
+        if log.is_file():
+            log.unlink()
+        self.make_loop(goal=GOAL.replace(f"```\n{GREEN}\n```", f"```\n{anchor}\n```"))
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_stop.py")],
+            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            capture_output=True, text=True, timeout=60,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        return json.loads(result.stdout) if result.stdout.strip() else {}
+
+    def kimi_turns(self, count: int) -> list[dict]:
+        payloads = []
+        for _ in range(count):
+            result = subprocess.run(
+                [sys.executable, str(SCRIPTS / "goal_stop.py"), "--host", "kimi"],
+                input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+                capture_output=True, text=True, timeout=60,
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+            payloads.append(json.loads(result.stdout))
+        return payloads
+
+    def test_every_allow_path_is_silent_toward_the_model(self) -> None:
+        for anchor, needle in (
+            (GREEN, "passed on turn"),
+            ("this-command-does-not-exist-42 --run", "unknown - not failed"),
+            (f"{GREEN}\n{GREEN}", "holds 2 commands"),
+        ):
+            with self.subTest(path=needle):
+                payload = self.stop(anchor)
+                self.assertNotIn(
+                    "hookSpecificOutput", payload,
+                    "an allow that injects context does not end the turn on "
+                    "Claude Code 2.1.260 - it says stop while not letting stop",
+                )
+                self.assertNotIn("additionalContext", json.dumps(payload))
+                self.assertIn(needle, payload["systemMessage"])
+
+    def test_the_ceiling_allow_carries_no_model_context(self) -> None:
+        self.make_loop()
+        log = self.cwd / ".goals" / "demo.events.jsonl"
+        log.write_text("".join(
+            json.dumps({"event": "anchor_checked", "turn": n, "outcome": "red",
+                        "signature": f"red:1:sig{n}"}) + "\n"
+            for n in range(1, 5)
+        ), encoding="utf-8")
+        payload = self.kimi_turns(1)[0]
+        self.assertIn("ceiling of 4 turns", payload["systemMessage"])
+        self.assertNotIn("hookSpecificOutput", payload)
+
+    def test_the_budget_spent_allow_carries_no_model_context(self) -> None:
+        self.make_loop(goal=GOAL.replace(f"```\n{GREEN}\n```", f"```\n{RED}\n```"))
+        # Work committed before each stop, so the second release is the
+        # spent budget rather than the not-progressing rule.
+        subprocess.run(["git", "init", "-q", "."], cwd=str(self.cwd), check=True,
+                       capture_output=True)
+        for args in (("config", "user.email", "t@e.st"),
+                     ("config", "user.name", "t")):
+            subprocess.run(["git", *args], cwd=str(self.cwd), check=True,
+                           capture_output=True)
+        for _ in range(2):
+            with open(self.cwd / "src.txt", "a", encoding="utf-8") as handle:
+                handle.write("work\n")
+            subprocess.run(["git", "add", "-A"], cwd=str(self.cwd), check=True,
+                           capture_output=True)
+            subprocess.run(["git", "commit", "-qm", "wip"], cwd=str(self.cwd),
+                           check=True, capture_output=True)
+            payload = self.kimi_turns(1)[0]
+            self.assertNotIn("hookSpecificOutput", payload)
+        self.assertIn("continuation budget", payload["systemMessage"])
+
+    def test_a_deny_is_exactly_the_top_level_form(self) -> None:
+        payload = self.stop(RED)
+        self.assertEqual(
+            {"decision", "reason"}, set(payload),
+            "the nested Stop fields make the block inert on Codex 0.150.1; "
+            "the top-level form is the one both probe-verified hosts honour",
+        )
+        self.assertEqual("block", payload["decision"])
+        self.assertIn("still failing", payload["reason"])
+
+    def test_the_obligation_rides_the_deny_reason(self) -> None:
+        """The blocked turn is the one that needs the obligation, and a deny
+        has exactly one channel - the reason. It names the mutable surface
+        and the challenge route without quoting any frozen body."""
+        reason = self.stop(RED)["reason"]
+        for probe in ("### Lessons", "### Next", "frozen"):
+            self.assertIn(probe, reason, probe)
+        for frozen in ("## Intent", "## Boundary", "## Anchor"):
+            self.assertNotIn(frozen, reason, frozen)
 
 
 class UnboundedCeilingTests(Harness):
