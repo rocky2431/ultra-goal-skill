@@ -25,8 +25,10 @@ persist". Their answer was a context reset with a structured handoff; on a stron
 they were able to drop the resets entirely, because the model largely stopped doing it.
 
 For a goal this matters because it produces a *premature success*, not a visible failure.
-The mechanical answer is already here and worth recognising as such: the gate refuses the
-stop while the anchor is red, so ending the turn early is not something the run can choose.
+The mechanical answer is already here and worth recognising as such: a completion claim
+cannot pass while the anchor is red, and the run's standing instructions make each turn's
+results visible and durable before it ends — an unclaimed wrap-up leaves the record
+plainly unfinished instead of quietly closed.
 `## Acceptance` is the other half — what is left is written down rather than remembered, so
 "nearly done" has to be checked against a list instead of felt.
 

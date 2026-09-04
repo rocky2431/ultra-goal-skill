@@ -1,0 +1,49 @@
+{
+ "probes": "round-4 post-fix positives, same class as the plan's evidence.json receipts",
+ "date": "2026-09-05",
+ "hosts": {
+  "claude": "2.1.260 (/Users/rocky243/.local/share/claude/versions/2.1.260), --print --no-session-persistence --setting-sources project",
+  "codex": "codex-cli 0.150.1 (/Users/rocky243/.local/bin/codex), exec --ephemeral"
+ },
+ "method": "each probe registers the real goal_stop.py (copied, with goal_hooks.py) behind a logging wrapper in an isolated throwaway directory, arms a real goal there, and records what the host actually did; the driver is probes-round-4.py in this directory",
+ "isolation_note": "claude probes must pass --setting-sources project: user-scope hooks on this machine (hindsight memory injection among them) otherwise reach every --print session and derail the probe model - without it the first probe observed a tool-using model reading the copied gate source instead of obeying the probe",
+ "results": [
+  {
+   "probe": "clean-claude-allow-no-context",
+   "ok": true,
+   "exit": 0,
+   "stop_callbacks": 1,
+   "gate_payload_keys": [
+    "systemMessage"
+   ],
+   "visible": [
+    "PROBE_INITIAL"
+   ]
+  },
+  {
+   "probe": "clean-codex-deny-toplevel",
+   "ok": true,
+   "exit": 0,
+   "stop_callbacks": 2,
+   "chain_flags": [
+    false,
+    true
+   ],
+   "deny_form": [
+    "decision",
+    "reason"
+   ],
+   "visible": [
+    "PROBE_CORRECTED"
+   ]
+  },
+  {
+   "probe": "clean-claude-dual-session",
+   "ok": true,
+   "exit": 0,
+   "stop_callbacks": 1,
+   "gate_output": "''",
+   "events_file_created": false
+  }
+ ]
+}

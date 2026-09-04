@@ -350,7 +350,7 @@ Name the refusal, name the cheap alternative, and go back to the relevant questi
 | One optimized metric, alone | Optimized hard enough, it stops measuring what it once did | Pair it with a counter-metric that catches the cheap way to win |
 | Nodes added for sophistication | Every extra agent is another failure point and 3-10x the tokens | Ship the loop; promote to a graph when it provably breaks |
 | **False consensus** — two agents both say "looks fine" | That is one opinion reported twice, and a loop cannot tell it from verification | A critic that audits the *review*, sorting each point into agreement / evidence-backed disagreement / concern-based disagreement |
-| **Wrapping up because the context feels full** | Named *context anxiety*: a model begins closing out as it nears what it *believes* is its limit, so the run ends on a feeling rather than on the anchor. Compaction does not fix it — continuity is preserved, the sense of pressure is not | The gate is the mechanical answer: it refuses the stop while the anchor is red. State the turn out loud, and treat "running low" as a reason to write carry-over, never as a reason to declare done |
+| **Wrapping up because the context feels full** | Named *context anxiety*: a model begins closing out as it nears what it *believes* is its limit, so the run ends on a feeling rather than on the anchor. Compaction does not fix it — continuity is preserved, the sense of pressure is not | The gate is the mechanical backstop: a completion claim cannot pass while the anchor is red, and the run's standing instructions make results visible and durable before any turn ends. State the turn out loud, and treat "running low" as a reason to write carry-over, never as a reason to declare done |
 | **An anchor that only tests the code** | A unit suite is green when the code compiles and the product is still broken; this is the single most common way a loop finishes proud and wrong | Make the anchor drive the running thing — build plus start plus one real interaction |
 | **A verdict with no receipt** — "tests pass", "the anchor is green" | The log the gate writes is the evidence; a sentence is a claim, and after a compaction the run cannot tell its own claims from its evidence either | Report the turn and the exit code seen, and let `--audit` compare them |
 | **The reviewer gets the author's argument** | Handed an explanation of why the work is right, a reviewer reviews the explanation; this is context contagion, and it survives changing vendors | Give the reviewer the frozen artifact, the criteria, and the anchor's output — nothing about the author's confidence |
@@ -471,7 +471,7 @@ Checked against the four ways a single loop fails, plus the way a graph of loops
 | Blindness upward — the loop cannot question its target | `## Intent` is frozen; question 9 sends target-level divergence back to the owner |
 | Conflict — independent loops undermine each other | one operating loop per artifact, so there is no collision surface |
 | Measurement decay — nobody watches the watcher | the anchor runs for real every turn, and reports *unknown* when it cannot |
-| **Context anxiety — the run closes out on a feeling** | the gate refuses the stop while the anchor is red, so ending the turn early is not available; `## Acceptance` makes what is left explicit rather than a memory |
+| **Context anxiety — the run closes out on a feeling** | a completion claim cannot pass while the anchor is red, and an unclaimed turn end leaves the durable state visibly unfinished; `## Acceptance` makes what is left explicit rather than a memory |
 | Circularity — everything confirms everything, nothing touches reality | the anchor is the one node whose verdict passes through no model at all |
 
 ## Compile one artifact
@@ -528,8 +528,8 @@ state file would.
 python3 scripts/validate_artifact.py .goals --audit
 ```
 
-Puts each turn's committed verdict beside the verdict the gate measured for that turn, and
-names every row where they disagree. This is the reverse-tracing view: on a run that went
+Puts each measured attempt's committed verdict beside the verdict the gate measured for
+it, and names every row where they disagree. This is the reverse-tracing view: on a run that went
 wrong, the first row where claim and measurement part company is where to start reading.
 It reads Git history and the event log; it runs nothing.
 
