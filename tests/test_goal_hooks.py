@@ -1186,6 +1186,18 @@ class ContinuationBudgetTests(Harness):
         for name, fact in facts.items():
             with self.subTest(host=name):
                 self.assertTrue(fact.source.strip(), "a budget without a source is a guess")
+        # The chain flag is read only where the host's reference documents
+        # the field AND its meaning; a name alone is not semantics, and
+        # Kimi's constant camelCase value carries none.
+        self.assertEqual(
+            {
+                "claude": "stop_hook_active",
+                "codex": "stop_hook_active",
+                "zcode": None,
+                "kimi": None,
+            },
+            {name: fact.chain_flag for name, fact in facts.items()},
+        )
 
     def test_an_unknown_host_gets_the_most_conservative_budget(self) -> None:
         """A host the table has never heard of must not inherit Claude's 8."""

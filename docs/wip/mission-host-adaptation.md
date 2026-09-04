@@ -458,6 +458,193 @@ existing `CLAIM_UNWITNESSED`.
   shape (objection 1 above records the settlement condition).
 - **No edit to any section of this envelope but §8.1.**
 
+**Round 2.** Four implementation commits (`434d2c2..3a108e6`): `1ad2d64`
+(Codex F2 + F3 + Claude F-1 — the turn-scoped budget and the stagnation
+sensor), `0da0a96` (Codex F1 + F4 — the command contract and the review
+baseline), `f15a003` (Claude F-4 + Codex F5 + F6 — the Kimi manifest, the
+shipped documents, the installer tag), `3a108e6` (v2.9.1, all eight sites).
+Not pushed, not installed, not published.
+
+#### Round-2 test command and its real output
+
+```
+$ pytest -q
+347 passed in 48.24s
+$ pytest -q
+347 passed in 27.24s
+```
+
+(332 at round 1; +15 tests, every one written failing-first.) Also run,
+real output: `claude plugin validate plugins/ultra-goal --strict` →
+`✔ Validation passed`.
+
+#### Codex F2: the observable fact, and why it is observed rather than inferred
+
+The scoping fact for Kimi is the **`prompt_submitted` event written by this
+plugin's own registered `UserPromptSubmit` hook**. A host turn on Kimi begins
+with a user prompt; the hook runs because and only because the host submitted
+one, so the event is the invocation itself recorded — nothing is inferred
+about when some previous turn ended. Kimi's reference lists UserPromptSubmit
+among the three flow-affecting events
+(moonshotai.github.io/kimi-code/en/customization/hooks), and its 0.40.1
+binary resets the one-block guard in `notifyTurnEnded` (re-verified here:
+`strings -a ~/.kimi-code/bin/kimi | grep -c stopHookContinuationUsed` → `10`;
+`notifyTurnEnded` present). Two further boundaries are observed the same way:
+an allow written by the gate itself (an allow ends every host's chain), and
+`stop_hook_active` read as a boundary **only** where its semantics are
+documented in words — Claude Code ("check stop_hook_active … while it's
+true", hooks reference + 2.1.260 cap message) and Codex ("Whether this turn
+was already continued by Stop", learn.chatgpt.com/docs/hooks). zCode's
+reference names the field in Stop's input table but spells no meaning, and
+Kimi passes camelCase `stopHookActive` constant-false by construction (it is
+read only inside the `!used` guard) — reading either as "fresh chain" would
+be inference from a name, so neither is read, and that residual is named
+below.
+
+#### Round-2 answers, one line per finding
+
+- **Codex F1 (Kimi cannot arm `$1`) — agreement.** `$ARGUMENTS` everywhere
+  in `goal-run.md` (documented by Claude Code, zCode and Kimi; Claude Code's
+  `$1` is its *second* argument, so the old file bound the slug
+  deterministically on zCode alone), the validator tries all four documented
+  plugin-root variables, and where none reaches command execution — Kimi's
+  reference documents none — it declares "not machine-validated" loudly
+  instead of half-expanding a path. `pytest -q
+  tests/test_package_surface.py::AuditFixTests::test_the_command_binds_the_slug_through_the_documented_placeholder
+  tests/test_package_surface.py::AuditFixTests::test_the_validator_step_degrades_loudly_when_no_root_reaches_it
+  tests/test_package_surface.py::ArmingRangeContractTests::test_the_expanded_prompt_binds_the_slug_end_to_end`
+  → `3 passed`; the last drives the real fenced command with Kimi's
+  documented substitution and shows `.goals/active` receives exactly `demo`.
+- **Codex F2 (budget leaks across host turns) — agreement.** Streak scoped
+  to observed boundaries (above). `pytest -q
+  tests/test_goal_hooks.py::ContinuationBudgetTests` → `18 passed`, including
+  `test_two_fresh_kimi_turns_each_get_their_one_block` (both fresh turns
+  block, no `continuation_budget_spent` event) and
+  `test_a_stop_reporting_a_fresh_chain_resets_the_streak`; same-turn re-entry
+  stays bounded in `test_kimi_blocks_at_most_once`.
+- **Codex F3 (stagnation sensor, both directions) — agreement.** The
+  comparison base is now the post-anchor state the previous check recorded,
+  and untracked-not-ignored content is hashed (1 MiB per file, `.goals`
+  excluded). `pytest -q
+  tests/test_goal_hooks.py::ContinuationBudgetTests::test_a_mutating_anchor_cannot_pose_as_progress
+  tests/test_goal_hooks.py::ContinuationBudgetTests::test_edits_inside_an_existing_untracked_file_are_progress`
+  → `2 passed` (both failed before the change).
+- **Codex F4 (baseline `none` errors; re-arm empties the diff) —
+  agreement.** Baseline line is `-s`-guarded (write-once); review and critic
+  branch `none`/missing into "no review range can be formed — report the
+  review as unavailable", and check `merge-base --is-ancestor` before
+  diffing. The ancestor check lives at review time, not arming time, because
+  at arming the baseline is HEAD and trivially an ancestor — it can only
+  stop being one later. `pytest -q
+  tests/test_package_surface.py::ArmingRangeContractTests` → `4 passed`
+  (write-once across a commit, none-branch executable output, non-ancestor
+  reported, slug bound end to end).
+- **Codex F5 (mutually exclusive evidence contracts in shipped docs) —
+  agreement.** SKILL.md, README and agent-modes.md now state one contract:
+  order declared; failure measured where the host fires
+  `PostToolUseFailure` (Claude Code, zCode, Kimi → `role_unavailable` →
+  `ROUND_DEGRADED`); Codex documents no such event and the run's report is
+  the only record there; adequacy is always a claim; and UserPromptSubmit's
+  Kimi registration is separated from the unbuilt wrong-activation proposal.
+  Codex's own search rerun on this tree returns consistent contracts only
+  (`rg -n -C 1 'UserPromptSubmit.*not registered|UserPromptSubmit.*Kimi
+  only|declared and reported, not measured|role_unavailable|ROUND_DEGRADED'
+  README.md plugins/ultra-goal/skills/ultra-goal/SKILL.md
+  plugins/ultra-goal/skills/ultra-goal/references/agent-modes.md
+  plugins/ultra-goal/skills/ultra-goal/scripts/validate_artifact.py` →
+  hits, all stating the same contract). `pytest -q
+  tests/test_package_surface.py::RolesByStageTests::test_the_degradation_contract_is_the_same_everywhere`
+  → `1 passed`.
+- **Codex F6 (receipt claims host tags the code does not emit) —
+  agreement.** `HOOK_ARGS` is keyed by script name as `_hook_command` looks
+  it up, so the generated registration now really carries `--host claude`;
+  `pytest -q
+  tests/test_hook_registration.py::RegistrationTests::test_the_registered_stop_command_names_its_host`
+  → `1 passed`. The round-1 receipt errors are corrected below.
+- **Claude F-1 (Kimi's Stop has no allow-channel; five steps end in
+  silence) — agreement.** The reviewer's own addendum names the documented
+  repair and it is built: `goal_prompt_submit.py` now carries the gate's
+  last decision from the event log on the next prompt, fixed-size, beside
+  the pointer; `_allow` gains no undocumented `message` field, per the same
+  addendum's warning. `pytest -q
+  tests/test_goal_hooks.py::PromptSubmitTests` → `6 passed`, including
+  `test_the_prompt_carries_the_gate_s_last_decision` (pointer plus verdict,
+  two lines, bounded).
+- **Claude F-4 (Kimi's SessionStart cannot deliver by design) —
+  agreement.** SessionStart is dropped from `kimi.plugin.json` (four events
+  remain; the manifest's own description says why), rather than given the
+  pre-compact treatment — `goal_pre_compact.py` earns its place by writing
+  an event, and `goal_session_start.py` has nothing to record. `pytest -q
+  tests/test_package_surface.py::HostManifestTests::test_kimi_hooks_name_the_same_events_as_the_claude_manifest
+  tests/test_package_surface.py::PerHostHookRegistrationTests::test_kimi_registers_four_events_all_documented`
+  → `2 passed`.
+- **Claude F-5 (one docstring spoke of one `stop_hook_active` spelling) —
+  agreement.** `run_hook`'s docstring and the `HOSTS` entries now name both
+  spellings and which hosts' references document meaning; the `HOSTS`
+  citation test now also pins exactly which hosts' chain flags are read
+  (`pytest -q
+  tests/test_goal_hooks.py::ContinuationBudgetTests::test_every_host_budget_carries_a_citation`
+  → `1 passed`).
+- **Claude F-6 (`codex plugin read` not reproducible) — agreement.**
+  Re-verified here: `codex --version` → `codex-cli 0.150.1`; `codex plugin
+  read --path plugins/ultra-goal` → `error: unrecognized subcommand 'read'`
+  (subcommands: add, list, marketplace, remove, help). The claim originates
+  at line 100 of the external capability document this mission cites and is
+  **retired from this repository's evidence set**: nothing in the repo
+  repeats it (`rg 'plugin/read|plugin read|原生插件' README.md plugins/`
+  → no hits), and no load-bearing Codex fact rests on it — the manifest
+  semantics come from developers.openai.com/plugins/build/plugins and the
+  event table from learn.chatgpt.com/docs/hooks. The "2 hooks" count also
+  cannot describe this tree's three-event `codex.json`.
+- **Claude's withdrawn F-2, F-3, F-7 — no change.** ZCODE_PLUGIN_ROOT
+  discrimination, Codex's manifest-replaces-discovery split, and Claude
+  Code's hooks-are-additional merge stand as round 1 left them; a withdrawn
+  finding is not a soft request.
+
+#### Round-1 receipt corrections (Codex F6's second half)
+
+- Round 1 said Kimi's events were "tagged `--host kimi`". Wrong twice: the
+  manifest held **five** events and only Stop carried the tag. The tag is
+  correct as design (only the gate is host-sensitive; the recovery hooks
+  take no `--host`) — the receipt was not. Kimi now registers four events,
+  still with Stop alone tagged.
+- Round 1 said the installer "tags `--host claude`". It did not —
+  `HOOK_ARGS` was keyed by event name and never matched (F6 above). Now it
+  does, and a test holds it.
+
+#### New and carried unverified claims, named
+
+1. **zCode's `stop_hook_active` semantics.** Its reference lists the field
+   among Stop's inputs but documents no meaning; it is not read as a
+   boundary. Residual: a zCode Stop chain ended without an observed allow
+   (owner interrupt mid-chain) carries its tail into the next turn, so a
+   fresh chain can park one block early (budget 2). Settled by zCode
+   documenting the field's meaning, or one live zCode run.
+2. **Codex's command-argument contract.** Neither codex reference page
+   reachable here documents a command-body placeholder, so `$ARGUMENTS` on
+   Codex commands is unverified (Claude Code, zCode and Kimi each document
+   it). Codex's own plugin manifest declares the commands file; live
+   invocation settles it.
+3. **The prompt marker's live delivery on Kimi.** The reference documents
+   UserPromptSubmit; the binary implements `$ARGUMENTS` and the per-turn
+   Stop guard (re-verified here by `strings`); no live Kimi session ran
+   this hook. Also unverified: whether Kimi fires UserPromptSubmit for the
+   internally-appended Stop continuation — if it did, the marker is
+   harmless on Kimi (one Stop per turn means no same-turn budget to
+   mis-scope), but it is unmeasured.
+4. **The 1 MiB untracked-content bound** in the tree digest: an edit
+   confined past the first mebibyte of an untracked file is invisible to
+   the sensor. The release it could cause is loud ("not progressing" plus
+   the obligation text), not silent.
+5. **Upgraded-mid-flight stagnation base.** Events written before this
+   round carry pre-anchor digests; a mutating anchor can hide stagnation
+   for at most one check after the upgrade, then the new base takes over.
+6. Carried unchanged from round 1: Codex's `None` budget, zCode's union
+   semantics, Claude Code's manifest-hooks-additional (binary-read), the
+   `${ZCODE_PLUGIN_ROOT:+…}` expansion under zCode's real command
+   invocation, no live four-host run, no live baseline-diff review round,
+   Kimi's plugin-hook working directory.
+
 ### 8.2 Claude Code — review rounds
 
 _(Claude Code writes here, and in `docs/wip/reviews/claude-round-N.md`)_
