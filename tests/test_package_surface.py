@@ -654,7 +654,8 @@ class HygieneTests(unittest.TestCase):
         hook_scripts = sorted(p.name for p in scripts.glob("goal_*.py"))
         self.assertEqual(
             ["goal_hooks.py", "goal_pre_compact.py", "goal_prompt_submit.py",
-             "goal_session_start.py", "goal_stop.py", "goal_tool_failure.py"],
+             "goal_session_start.py", "goal_stop.py", "goal_tool_failure.py",
+             "goal_turn_started.py"],
             hook_scripts,
         )
         for name in hook_scripts:
@@ -1090,9 +1091,13 @@ class PerHostHookRegistrationTests(unittest.TestCase):
       SessionStart, PreCompact and Stop - but no PostToolUseFailure - and its
       manifest `hooks` field REPLACES the default file location.
     - Kimi (moonshotai.github.io/kimi-code/en/customization/hooks) documents
-      all four of our events plus UserPromptSubmit, and only PreToolUse, Stop
-      and UserPromptSubmit can affect the flow - SessionStart output is
-      fire-and-forget there, which is why the prompt-submit hook exists.
+      all five of our events plus UserPromptSubmit and TurnStarted, and only
+      PreToolUse, Stop and UserPromptSubmit can affect the flow - SessionStart
+      output is fire-and-forget there, which is why the prompt-submit hook
+      exists. TurnStarted is observation-only too, but it is the reference's
+      only event that fires for every new turn whatever its origin (user,
+      task, system_trigger) and the only one carrying turn_id, which is what
+      scoping the budget to the host turn needed.
 
     So the shared hooks/hooks.json - which Claude Code and zCode both
     auto-discover - may only carry events BOTH document: Stop, SessionStart,
@@ -1117,7 +1122,7 @@ class PerHostHookRegistrationTests(unittest.TestCase):
             "UserPromptSubmit", "PreToolUse", "Stop", "PostToolUse",
             "PostToolUseFailure", "PermissionRequest", "SessionStart", "SessionEnd",
             "SubagentStart", "SubagentStop", "Interrupt", "PreCompact",
-            "PostCompact", "Notification",
+            "PostCompact", "Notification", "TurnStarted",
         },
     }
 
@@ -1177,16 +1182,18 @@ class PerHostHookRegistrationTests(unittest.TestCase):
         )
         self.assertEqual(["./hooks/claude.json"], manifest["hooks"])
 
-    def test_kimi_registers_four_events_all_documented(self):
-        """Claude round-1 F-4: Kimi's SessionStart registration could not do
-        its job by design - its reference makes the event observation-only,
-        with the return value ignored - so it is dropped. What remains is
-        exactly what Kimi can use: the shared core minus SessionStart, plus
-        PreCompact (recorded evidence) and UserPromptSubmit (the documented
-        recovery channel). Five hooks still ship; Kimi registers four."""
+    def test_kimi_registers_five_events_all_documented(self):
+        """Claude round-1 F-4 dropped Kimi's undeliverable SessionStart;
+        Codex round-2 F2 added TurnStarted. What remains is exactly what Kimi
+        can use: the shared core minus SessionStart, plus PreCompact (recorded
+        evidence), UserPromptSubmit (the documented recovery channel) and
+        TurnStarted (the host's own turn boundary with turn_id - the
+        reference's only event that fires for every new turn whatever its
+        origin). Six hooks still ship; Kimi registers five."""
         hooks = self.load("plugins/ultra-goal/kimi.plugin.json")["hooks"]
         self.assertEqual(
-            {"Stop", "PreCompact", "PostToolUseFailure", "UserPromptSubmit"},
+            {"Stop", "PreCompact", "PostToolUseFailure", "UserPromptSubmit",
+             "TurnStarted"},
             {h["event"] for h in hooks},
         )
         self.assertLessEqual(
@@ -1196,6 +1203,12 @@ class PerHostHookRegistrationTests(unittest.TestCase):
         # where a Kimi user will read it.
         manifest_text = (PLUGIN_ROOT / "kimi.plugin.json").read_text("utf-8")
         self.assertIn("SessionStart is not registered", manifest_text)
+        # TurnStarted is registered through its own script, observation-only.
+        commands = {h["command"] for h in hooks}
+        self.assertTrue(
+            any("goal_turn_started.py" in c for c in commands),
+            commands,
+        )
 
     def test_the_shared_stop_entry_tags_zcode_through_its_documented_env_var(self):
         """One file serves two hosts, so the Stop entry must tell the gate
@@ -1395,6 +1408,37 @@ class RolesByStageTests(unittest.TestCase):
         ):
             with self.subTest(path=path.name, contract="stated"):
                 self.assertIn("role_unavailable", path.read_text(encoding="utf-8"))
+
+    def test_a_succeeded_delegation_with_no_artifact_is_named(self) -> None:
+        """The round-2 incident no hook can see: a delegated review returned
+        exit 0, status success, and no file. `PostToolUseFailure` fires on
+        failures only, and the success-side events fire once per tool call and
+        are deliberately unregistered, so a degraded round read as a clean
+        one. The decision is stated where the contract lives - the only real
+        detector is the expected artifact's absence - and the detector is
+        placed where the run consumes the round and where the owner audits
+        it."""
+        contract = (
+            REPO_ROOT / "README.md",
+            SKILL_ROOT / "SKILL.md",
+            SKILL_ROOT / "references" / "agent-modes.md",
+        )
+        for path in contract:
+            with self.subTest(path=path.name):
+                text = path.read_text(encoding="utf-8")
+                self.assertIn(
+                    "a call that *succeeds* while writing no file", text
+                )
+                self.assertIn(
+                    "the round's evidence is the file the role was told to write",
+                    text,
+                )
+        run = (PLUGIN_ROOT / "commands" / "goal-run.md").read_text("utf-8")
+        self.assertIn(
+            "check the file exists before you treat the round as done", run
+        )
+        audit = (SKILL_ROOT / "scripts" / "validate_artifact.py").read_text("utf-8")
+        self.assertIn("REVIEW_UNEVIDENCED", audit)
 
     def test_degradation_is_written_by_a_hook_and_read_by_the_audit(self) -> None:
         """Deleted once for the right reason and the wrong fact.
@@ -1794,20 +1838,50 @@ class AuditFixTests(unittest.TestCase):
         self.assertNotIn("$1", command, "no host-neutral meaning; a model guess")
         self.assertIn("$ARGUMENTS", command)
 
-    def test_the_validator_step_degrades_loudly_when_no_root_reaches_it(self) -> None:
-        """Kimi's plugin reference documents no environment variable for
-        command execution at all (`KIMI_PLUGIN_ROOT` is a hook-process
-        variable), so the validator step cannot assume a reachable root on
-        every host. Where none resolves, the command says so and demands the
-        run declare it, instead of failing with a half-expanded path and
-        letting the model improvise."""
+    def test_the_validator_step_refuses_to_arm_when_no_root_reaches_it(self) -> None:
+        """Codex round-2 F1: the round-2 `else` branch said "Arming
+        continues" when no plugin root reached command execution, which
+        converted the hard precondition into a declared downgrade - an
+        artifact the validator would refuse could arm the gate, proven by
+        driving the real fences. The branch now refuses, and the fence gained
+        Kimi's documented managed-install default as a real candidate
+        (`$KIMI_CODE_HOME/plugins/managed/<id>/`, `~/.kimi-code` when unset -
+        moonshotai.github.io/kimi-code/en/customization/plugins), so the
+        refusal fires only where no documented path exists at all."""
         command = (PLUGIN_ROOT / "commands" / "goal-run.md").read_text(encoding="utf-8")
         for root in (
             "CLAUDE_PLUGIN_ROOT", "ZCODE_PLUGIN_ROOT", "KIMI_PLUGIN_ROOT",
-            "PLUGIN_ROOT",
+            "PLUGIN_ROOT", "${KIMI_CODE_HOME:-$HOME/.kimi-code}/plugins/managed/ultra-goal",
         ):
             self.assertIn(root, command)
-        self.assertIn("not machine-validated", command)
+        self.assertIn("arming refused", command)
+        self.assertNotIn("Arming continues", command)
+        self.assertNotIn("not machine-validated", command)
+        # And both refusals are mechanical, not prose the model may talk
+        # itself past: a validator error stops the script, and the
+        # unreachable branch exits without writing the marker.
+        self.assertIn(
+            'python3 "$validator" .goals/$ARGUMENTS.goal.md || exit 1', command
+        )
+
+    def test_the_validation_and_arming_are_one_fence(self) -> None:
+        """The round-2 defect was structural as well as textual: validation
+        and arming were two fences, so anything that ran the second could skip
+        the first. One fence cannot arm unvalidated."""
+        command = (PLUGIN_ROOT / "commands" / "goal-run.md").read_text(encoding="utf-8")
+        fences = re.findall(r"```bash\n(.*?)```", command, re.S)
+        validating = [f for f in fences if "validate_artifact.py" in f]
+        # `> .goals/active` is the write; `rm .goals/active` is the escape
+        # hatch at the end of the file and is not an arming step.
+        arming = [f for f in fences if "> .goals/active" in f]
+        self.assertEqual(
+            1, len(validating), "exactly one fence may validate, and it must arm"
+        )
+        self.assertEqual(
+            validating, arming,
+            "the fence that validates is the fence that arms: no separate "
+            "arming step may exist to run alone",
+        )
 
     def test_the_reviewer_sees_the_whole_run_not_the_last_commit(self) -> None:
         review = (PLUGIN_ROOT / "skills" / "review" / "SKILL.md").read_text(
@@ -1832,7 +1906,7 @@ class AuditFixTests(unittest.TestCase):
         self.assertIn("status --porcelain", critic)
 
     def test_the_gate_table_counts_the_hooks_that_ship(self) -> None:
-        """Five hooks ship; which ones register is a per-host fact, because an
+        """Six hooks ship; which ones register is a per-host fact, because an
         event a host does not document is an error or a dead gate. The union
         of the three hook files plus Kimi's inline list is the full set."""
         skill = skill_text()
@@ -1847,12 +1921,13 @@ class AuditFixTests(unittest.TestCase):
         }
         self.assertEqual(
             {"Stop", "SessionStart", "PreCompact", "PostToolUseFailure",
-             "UserPromptSubmit"},
+             "UserPromptSubmit", "TurnStarted"},
             events,
         )
-        self.assertIn("five hooks ship with this Skill", skill)
+        self.assertIn("six hooks ship with this Skill", skill)
         self.assertIn("| `PostToolUseFailure` |", skill)
         self.assertIn("| `UserPromptSubmit` |", skill)
+        self.assertIn("| `TurnStarted` |", skill)
         # And the table says which host each extra registration is for.
         self.assertIn("Kimi only", skill)
 
@@ -1871,47 +1946,157 @@ class ArmingRangeContractTests(unittest.TestCase):
     def fences(self, text: str) -> list[str]:
         return re.findall(r"```bash\n(.*?)```", text, re.S)
 
-    def run_sh(self, script: str, cwd: Path) -> subprocess.CompletedProcess:
+    def arming_fence(self) -> str:
+        """The one fence that validates and arms, slug bound the way every
+        host documents it."""
+        fence = next(
+            f for f in self.fences(self.command_text())
+            if "validate_artifact.py" in f and ".goals/active" in f
+        )
+        return fence.replace("$ARGUMENTS", "demo")
+
+    def sandbox_env(self, cwd: Path, **extra: str) -> dict[str, str]:
+        """A hermetic command-execution environment: no plugin-root variable
+        reaches it, and `$HOME` is a directory the test owns, so Kimi's
+        managed-install default resolves inside the sandbox rather than
+        against whatever this machine happens to have installed."""
+        import os
+
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(cwd)}
+        env.update(extra)
+        return env
+
+    def run_sh(
+        self, script: str, cwd: Path, env: dict[str, str] | None = None
+    ) -> subprocess.CompletedProcess:
         return subprocess.run(
             ["sh", "-c", script], cwd=str(cwd), capture_output=True, text=True,
-            timeout=60,
+            timeout=60, env=env,
         )
 
     def test_the_expanded_prompt_binds_the_slug_end_to_end(self) -> None:
         """The settlement Codex asked for, as far as a no-install mission can
         run it: expand `$ARGUMENTS` the way Kimi, Claude Code and zCode each
         document, and the rendered prompt names the artifact, leaves no `$1`,
-        and arms `.goals/active` with exactly the slug."""
+        and arms `.goals/active` with exactly the slug - through the real
+        validate-then-arm fence, with a validator the sandbox provides."""
         expanded = self.command_text().replace("$ARGUMENTS", "demo")
         self.assertIn("demo", expanded)
         self.assertNotIn("$1", expanded)
         with tempfile.TemporaryDirectory() as tmp:
             cwd = Path(tmp)
             (cwd / ".goals").mkdir()
-            arming = next(f for f in self.fences(expanded) if "baseline" in f)
-            result = self.run_sh(arming, cwd)
+            (cwd / ".goals" / "demo.goal.md").write_text("# Goal\n", "utf-8")
+            root = cwd / "pluginroot" / "skills" / "ultra-goal" / "scripts"
+            root.mkdir(parents=True)
+            (root / "validate_artifact.py").write_text("", "utf-8")
+            fence = next(
+                f for f in self.fences(expanded) if "validate_artifact.py" in f
+            )
+            result = self.run_sh(
+                fence, cwd, env=self.sandbox_env(cwd, PLUGIN_ROOT=str(cwd / "pluginroot"))
+            )
             self.assertEqual("", result.stderr, result.stderr)
             self.assertEqual(
                 "demo\n", (cwd / ".goals" / "active").read_text(encoding="utf-8")
             )
             self.assertTrue((cwd / ".goals" / "demo.baseline").is_file())
 
+    def test_an_invalid_artifact_cannot_arm_when_no_root_reaches_the_command(
+        self,
+    ) -> None:
+        """Codex round-2 F1, reproduced as the refusal it must now be: on a
+        host whose command execution carries no plugin-root variable (Kimi's
+        reference documents none for bodies), the round-2 fence printed
+        "Arming continues" and `armed= demo` against an artifact the
+        validator refuses. Driven with the same invalid artifact and no
+        reachable root, the fence must exit non-zero and leave no marker."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            goals = cwd / ".goals"
+            goals.mkdir()
+            (goals / "demo.goal.md").write_text("invalid\n", "utf-8")
+            (goals / "demo.decisions.md").write_text("invalid\n", "utf-8")
+            result = self.run_sh(self.arming_fence(), cwd, env=self.sandbox_env(cwd))
+            self.assertEqual(1, result.returncode, result.stdout)
+            self.assertIn("arming refused", result.stdout)
+            self.assertIn("validate_artifact.py", result.stdout)
+            self.assertFalse(
+                (goals / "active").exists(),
+                "a refused validation must not leave an armed gate behind",
+            )
+
+    def test_the_documented_kimi_install_default_validates_and_gates_arming(
+        self,
+    ) -> None:
+        """The refusal keeps Kimi's primary path usable by giving it a real
+        validation path first: local installs are copied to
+        `$KIMI_CODE_HOME/plugins/managed/<id>/` (documented), the plugin's id
+        is `ultra-goal`, and `KIMI_CODE_HOME` defaults to `~/.kimi-code`. A
+        validator found there decides arming: its error stops the script
+        before `.goals/active` is written; its pass arms."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            goals = cwd / ".goals"
+            goals.mkdir()
+            (goals / "demo.goal.md").write_text("# Goal\n", "utf-8")
+            scripts = (
+                cwd / "home" / ".kimi-code" / "plugins" / "managed" / "ultra-goal"
+                / "skills" / "ultra-goal" / "scripts"
+            )
+            scripts.mkdir(parents=True)
+            (scripts / "validate_artifact.py").write_text(
+                "raise SystemExit(1)\n", "utf-8"
+            )
+            home = cwd / "home"
+            refused = self.run_sh(
+                self.arming_fence(), cwd, env=self.sandbox_env(home)
+            )
+            self.assertEqual(1, refused.returncode, refused.stdout)
+            self.assertFalse((goals / "active").exists())
+            (scripts / "validate_artifact.py").write_text("", "utf-8")
+            armed = self.run_sh(self.arming_fence(), cwd, env=self.sandbox_env(home))
+            self.assertEqual(0, armed.returncode, armed.stdout)
+            self.assertEqual(
+                "demo\n", (goals / "active").read_text(encoding="utf-8")
+            )
+
+    def test_the_real_validator_stops_arming_on_errors_only(self) -> None:
+        """Through the plugin's own validator, not a stub: an invalid pair of
+        artifacts is an error and must refuse to arm; the fence's contract is
+        the validator's - errors stop, advisories do not."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            goals = cwd / ".goals"
+            goals.mkdir()
+            (goals / "demo.goal.md").write_text("invalid\n", "utf-8")
+            (goals / "demo.decisions.md").write_text("invalid\n", "utf-8")
+            result = self.run_sh(
+                self.arming_fence(), cwd,
+                env=self.sandbox_env(cwd, PLUGIN_ROOT=str(PLUGIN_ROOT)),
+            )
+            self.assertEqual(1, result.returncode)
+            self.assertFalse((goals / "active").exists())
+
     def test_arming_twice_cannot_move_the_baseline(self) -> None:
         """The empty-diff defect, reproduced and refused: re-running the
         documented arming command used to rewrite the baseline to the current
         HEAD, handing the reviewer an empty range for a 26-file change."""
-        arming = next(
-            f for f in self.fences(self.command_text()) if "baseline" in f
-        ).replace("$ARGUMENTS", "demo")
         with tempfile.TemporaryDirectory() as tmp:
             cwd = Path(tmp)
             (cwd / ".goals").mkdir()
+            (cwd / ".goals" / "demo.goal.md").write_text("# Goal\n", "utf-8")
+            root = cwd / "pluginroot" / "skills" / "ultra-goal" / "scripts"
+            root.mkdir(parents=True)
+            (root / "validate_artifact.py").write_text("", "utf-8")
+            env = self.sandbox_env(cwd, PLUGIN_ROOT=str(cwd / "pluginroot"))
+            arming = self.arming_fence()
             for args in (
                 ("init", "-q", "."), ("config", "user.email", "t@e.st"),
                 ("config", "user.name", "t"),
             ):
                 subprocess.run(["git", *args], cwd=str(cwd), capture_output=True)
-            self.run_sh(arming, cwd)
+            self.run_sh(arming, cwd, env=env)
             first = (cwd / ".goals" / "demo.baseline").read_text(encoding="utf-8")
             (cwd / "work.txt").write_text("one turn of work\n", encoding="utf-8")
             subprocess.run(
@@ -1920,7 +2105,7 @@ class ArmingRangeContractTests(unittest.TestCase):
             subprocess.run(
                 ["git", "commit", "-qm", "wip"], cwd=str(cwd), capture_output=True
             )
-            self.run_sh(arming, cwd)
+            self.run_sh(arming, cwd, env=env)
             self.assertEqual(
                 first,
                 (cwd / ".goals" / "demo.baseline").read_text(encoding="utf-8"),

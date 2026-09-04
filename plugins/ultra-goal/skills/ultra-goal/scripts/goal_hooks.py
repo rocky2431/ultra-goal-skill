@@ -111,21 +111,29 @@ HOSTS: dict[str, HostFacts] = {
     "zcode": HostFacts(
         2,
         "host cap 3 consecutive continuations (zCode hooks reference)",
-        # Its reference lists stop_hook_active among Stop's input fields but
-        # spells no semantics for it, so treating a value as a chain boundary
-        # would be inference from a name. Not read; the streak resets on an
-        # observed allow instead, and the residual (an interrupted chain
-        # carrying its tail into the next) is a named, bounded gap.
+        # Declared degradation, and both halves are the reference's fault: it
+        # lists stop_hook_active among Stop's input fields but spells no
+        # semantics for it, and its exactly-seven event list includes no turn
+        # boundary at all - so this host offers neither a readable chain flag
+        # nor a turn identity, and the streak resets only on facts this gate
+        # itself observed (an allow, or a chain-ender). What the run loses,
+        # named: a blocked chain that ends without one of those - an owner
+        # interrupt, an error, a session end - carries its tail into the next
+        # turn, which can park one block early (budget 2, so one block of it
+        # already spent). The release is loud and names its reason; what is
+        # never claimed is a turn-scoped budget this host cannot observe.
         chain_flag=None,
     ),
-    # Kimi triggers a blocking Stop only while `!stopHookContinuationUsed` and
-    # resets that flag when the turn ends (0.40.1 binary: runStepLoop,
-    # notifyTurnEnded) - one continuation per host turn is the mechanical max,
-    # and its reference documents no cap at all. The turn boundary is observed
-    # instead through this plugin's registered UserPromptSubmit hook, whose
-    # prompt_submitted event marks each new host turn. The binary does pass a
-    # stopHookActive input, but camelCase and constant-false by construction
-    # (it is only read inside the !used guard), so it carries no information.
+    # Kimi triggers a blocking Stop only while `!stopHookContinuationUsed`
+    # (0.40.1 binary: the flag is a local of runStepLoop, one call per host
+    # turn, so one continuation per turn is the mechanical max) - its
+    # reference documents no cap at all. The turn boundary is the host's own
+    # TurnStarted event (registered: goal_turn_started.py), which fires for
+    # every new turn whatever its origin - user, task or system_trigger -
+    # and carries turn_id; the reference's UserPromptSubmit means only that a
+    # user sent a message. The binary passes a stopHookActive input too, but
+    # constant-false by construction (it is only read inside the !used
+    # guard), so it carries no information.
     "kimi": HostFacts(
         1,
         "host triggers a blocking Stop at most once per turn (Kimi 0.40.1 binary)",

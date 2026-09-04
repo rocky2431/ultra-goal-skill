@@ -613,7 +613,12 @@ class AuditTests(Harness):
         self.log({"event": "anchor_checked", "turn": 1, "outcome": "green",
                   "exit_code": 0, "spec_digest": self.digest()})
         self.claim(1, "green")
-        self.assertEqual([], self.audit_codes())
+        # Nothing about the turns - the one finding left is the review
+        # artifact this fixture never wrote (GOOD_GOAL declares
+        # `## Verification`), which is the new contract: a begun run that
+        # declares a reviewer owes a review file, and its absence is an
+        # advisory, not a verdict on the turns.
+        self.assertEqual(["REVIEW_UNEVIDENCED"], self.audit_codes())
 
     def test_a_claim_the_gate_contradicts_is_reported(self) -> None:
         self.log({"event": "anchor_checked", "turn": 1, "outcome": "red",
@@ -647,7 +652,9 @@ class AuditTests(Harness):
                   "exit_code": 1, "spec_digest": self.digest()})
         self.claim(1, "green")
         self.claim(1, "red")
-        self.assertEqual([], self.audit_codes())
+        # No CLAIM_CONTRADICTED: the amended commit is the claim audited, and
+        # REVIEW_UNEVIDENCED is the same fixture artifact as its neighbour.
+        self.assertEqual(["REVIEW_UNEVIDENCED"], self.audit_codes())
 
     def test_claims_with_no_event_log_at_all_are_reported_as_ungated(self) -> None:
         self.claim(1, "green")
@@ -682,6 +689,41 @@ class AuditTests(Harness):
                   "exit_code": 0, "spec_digest": digest})
         self.claim(1, "green")
         self.assertNotIn("FROZEN_SPEC_CHANGED", self.audit_codes())
+
+    def test_a_declared_review_with_no_artifact_is_reported(self) -> None:
+        """A delegated round can succeed and produce nothing: the round-2
+        review of this very mission returned exit 0, status success, and no
+        file. No hook can see that - PostToolUseFailure fires on failures
+        only, and the one event that fires on success is deliberately not
+        registered - so the only real detector is the expected artifact's
+        absence, and `--audit` is where the owner must meet it. A run that
+        declares a reviewer round owes a review file; missing is unevidenced,
+        not clean."""
+        self.log({"event": "anchor_checked", "turn": 1, "outcome": "red",
+                  "exit_code": 1, "spec_digest": self.digest()})
+        self.claim(1, "red")
+        codes = self.audit_codes()
+        self.assertIn("REVIEW_UNEVIDENCED", codes)
+        severity = {f.code: f.severity for f in va.audit_artifact(self.artifact)[1]}
+        self.assertEqual("advisory", severity["REVIEW_UNEVIDENCED"])
+
+    def test_a_review_artifact_on_disk_settles_the_finding(self) -> None:
+        self.log({"event": "anchor_checked", "turn": 1, "outcome": "red",
+                  "exit_code": 1, "spec_digest": self.digest()})
+        self.claim(1, "red")
+        work = self.dir / ".work"
+        work.mkdir(exist_ok=True)
+        (work / "demo-review.md").write_text(
+            "# Review: demo - round 1\n\n## Findings\n- none\n", encoding="utf-8"
+        )
+        self.assertNotIn("REVIEW_UNEVIDENCED", self.audit_codes())
+
+    def test_a_run_that_never_started_owes_no_review_yet(self) -> None:
+        """The finding names a round that came due and left nothing. Before
+        the first check or claim there is no run, and a mid-run audit of a run
+        that has not proposed completion has no review to owe - the guard is
+        the run having begun, nothing smarter."""
+        self.assertNotIn("REVIEW_UNEVIDENCED", self.audit_codes())
 
     def test_no_history_is_itself_the_finding(self) -> None:
         outside = Path(tempfile.mkdtemp())

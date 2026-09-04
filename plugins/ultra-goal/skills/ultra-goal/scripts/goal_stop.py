@@ -433,6 +433,24 @@ _CHAIN_ENDERS = {
 }
 
 
+def _current_turn_id(events: list[dict[str, Any]]) -> Any | None:
+    """The host turn this Stop belongs to, where a host names its turns.
+
+    Kimi's TurnStarted fires for every new turn whatever its origin and
+    carries `turn_id`; its Stop input carries no turn identity (0.40.1
+    binary: `inputData: {stopHookActive: ...}` and nothing else), so the
+    latest `turn_started` row is the strongest identity available. Hosts
+    with no turn event (everyone else) get None, and the budget is scoped by
+    boundaries instead. Turn ids are per-session ordinals; two concurrent
+    sessions in one repository could collide on them - a named bound, not a
+    solved one.
+    """
+    for entry in reversed(events):
+        if entry.get("event") == "turn_started":
+            return entry.get("turn_id")
+    return None
+
+
 def _block_streak(
     events: list[dict[str, Any]], fresh_chain: bool = False
 ) -> int:
@@ -441,32 +459,47 @@ def _block_streak(
 
     The count is bounded by turn boundaries this gate or its sibling hooks
     *observed*, never by the bare tail of a persistent log: the host's own
-    counter resets when a turn ends (Kimi's `notifyTurnEnded` is explicit
-    about it), so a tail-counted budget leaks across turns and every second
-    fresh Kimi turn arrived already spent. The observable boundaries are:
+    counter resets when a turn ends, so a tail-counted budget leaks across
+    turns and every second fresh turn arrived already spent. The observable
+    boundaries are:
 
-    - a `prompt_submitted` event - the registered UserPromptSubmit hook ran,
-      which only happens because the host submitted a new prompt, i.e. a new
-      host turn began (Kimi's channel; a stop-block continuation is host
-      feedback, not a user submission, so it does not write one);
+    - a `turn_started` event - the host's own TurnStarted hook ran, which is
+      the host saying a new turn began, whatever began it (Kimi's channel:
+      the reference names user, task and system_trigger origins, so this is
+      the one boundary that covers turns no user prompt opened, and it
+      carries the host's `turn_id`);
+    - a `prompt_submitted` event - the registered UserPromptSubmit hook ran.
+      A user prompt is one origin of a turn, not the boundary itself, but
+      the row is still an observation and still breaks the tail on hosts
+      where no turn event exists;
     - an allow - `blocked: false`, or any recorded decision that ends a turn;
     - the host's own chain flag, passed in as `fresh_chain` - read only where
       the host's reference documents the field and its meaning.
 
-    Events without a `blocked` field predate the counter and read as allows,
-    which is the safe direction: a run upgraded mid-flight counts its budget
-    from zero rather than inheriting a streak it cannot see.
+    Where a `turn_started` row carries a `turn_id`, the count is additionally
+    keyed by it: checks from a different host turn do not count, however the
+    log is ordered. Events without a `turn_id` predate the counter and read
+    as a boundary, which is the safe direction: a run upgraded mid-flight
+    counts its budget from zero rather than inheriting a streak it cannot
+    see.
     """
     if fresh_chain:
         return 0
+    turn_id = _current_turn_id(events)
     streak = 0
     for entry in reversed(events):
         kind = entry.get("event")
         if kind == "anchor_checked":
             if not entry.get("blocked"):
                 break
+            if turn_id is not None and entry.get("turn_id") != turn_id:
+                break
             streak += 1
-        elif kind == "prompt_submitted" or kind in _CHAIN_ENDERS:
+        elif (
+            kind == "turn_started"
+            or kind == "prompt_submitted"
+            or kind in _CHAIN_ENDERS
+        ):
             break
     return streak
 
@@ -619,27 +652,32 @@ def handle(
 
     output_digest = hashlib.sha256(output.encode("utf-8", "replace")).hexdigest()[:12]
     signature = _signature(outcome, exit_code, output_digest)
+    # Which host turn this check happened in, where the host names its turns:
+    # one anchor check is one turn by the gate's count, but several checks can
+    # share a host turn this gate kept alive, and `--audit` can only tell
+    # those apart if the identity travels with the measurement.
+    turn_id = _current_turn_id(events)
 
     def record(blocked: bool) -> None:
-        append_event(
-            goal,
-            {
-                "ts": datetime.now(timezone.utc).isoformat(),
-                "event": "anchor_checked",
-                "turn": turn,
-                "anchor": anchor,
-                "outcome": outcome,
-                "exit_code": exit_code,
-                "output_digest": output_digest,
-                "signature": signature,
-                "spec_digest": digest,
-                "budget_seconds": budget,
-                "budget_source": "declared" if budget_declared else "default",
-                "tree_digest": tree_after,
-                "blocked": blocked,
-                "tail": output.splitlines()[-1][:200] if output else "",
-            },
-        )
+        entry: dict[str, Any] = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "event": "anchor_checked",
+            "turn": turn,
+            "anchor": anchor,
+            "outcome": outcome,
+            "exit_code": exit_code,
+            "output_digest": output_digest,
+            "signature": signature,
+            "spec_digest": digest,
+            "budget_seconds": budget,
+            "budget_source": "declared" if budget_declared else "default",
+            "tree_digest": tree_after,
+            "blocked": blocked,
+            "tail": output.splitlines()[-1][:200] if output else "",
+        }
+        if turn_id is not None:
+            entry["turn_id"] = turn_id
+        append_event(goal, entry)
 
     if outcome == "unknown":
         if exit_code is None:

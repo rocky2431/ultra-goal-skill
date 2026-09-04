@@ -223,6 +223,7 @@ the pointer and the gate's last decision instead.
 | `PreCompact` | Records the carried state before the context is emptied | No |
 | `PostToolUseFailure` | Records that a call naming a delegation target failed, so a degraded round cannot read as a clean one (no such event on Codex — the run's report is the only record there) | No |
 | `UserPromptSubmit` | Kimi only: one fixed-size line per prompt — artifact pointer plus the gate's last decision — that host's documented channel for both | No |
+| `TurnStarted` | Kimi only: records the host's own turn boundary (`turn_id`, `origin_kind`) for every new turn whatever its origin — a user prompt is one origin of a turn, not the boundary itself | No |
 
 **The loop is the continuation budget.** A host keeps a Stop-blocked turn alive only so
 many times in a row — Claude Code force-ends after 8 consecutive blocks, zCode after 3,
@@ -230,6 +231,18 @@ Kimi triggers a blocking Stop once per turn, Codex documents no cap — so the g
 its own blocks in the event log and releases one *before* the host's cap, ending the turn
 loudly (`continuation_budget_spent`, surfaced by `--audit`) instead of letting the host's
 force-end warning have the last word.
+
+**The budget is scoped to the host turn by an observed boundary — and zCode has none.**
+The count resets at a fact the host or the gate observed: Claude Code's and Codex's
+documented `stop_hook_active`, Kimi's `TurnStarted` (fires for every new turn whatever
+its origin, and carries `turn_id`), an allow, or a chain-ender the gate itself wrote.
+zCode's reference lists `stop_hook_active` among Stop's inputs with no word of semantics
+and its seven events include no turn boundary, so there the streak resets only on the
+gate's own facts: a blocked chain that ends without one (an interrupt, an error, a
+session end) carries its tail into the next turn, which can park one block early. A
+declared gap — reading the undocumented field or treating a user prompt as the turn
+boundary would be a proxy that looks grounded, which is the mistake this design made
+twice before refusing it.
 
 **Three outcomes, not two.** An anchor that cannot run — missing command, not executable,
 timed out — is **unknown**, not failed. A timeout measures elapsed time and has no access to
@@ -442,6 +455,15 @@ finding was deleted. The hooks reference settled that a *host* observes the fail
 which is why the finding exists again with a hook writing it. Codex documents no such
 event, so there the run's report is the only record — a declared loss, not parity. Whether
 the fallback was *adequate* stays a claim on every host, which is the last row above.
+
+And a call that *succeeds* while writing no file is a degradation **no hook can measure**:
+the failure event fires on failures only, and the success-side events fire once per tool
+call and are deliberately not registered — a round that returned success and produced
+nothing reads as a clean one from inside the plugin (it happened to a review round on
+this project). The only real detector is the expected artifact's absence — the round's evidence is the file the role was told to write — so the run does not count a round until
+that file exists, and `--audit` reports a declared reviewer with no review file as
+`REVIEW_UNEVIDENCED`. A review that returned success and left nothing is a missing
+review, not a pass.
 
 `fallback: none` is a legitimate answer and says the run stops rather than degrading; silence
 does not. And a review that could not happen is a **missing review, not a red anchor** — the

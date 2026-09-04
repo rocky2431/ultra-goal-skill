@@ -1123,17 +1123,41 @@ class ContinuationBudgetTests(Harness):
         return json.loads(result.stdout) if result.stdout.strip() else {}
 
     def prompt(self) -> str:
-        """One user prompt, the way a host turn actually begins.
+        """One user prompt, the way a user-origin host turn begins.
 
-        On Kimi the UserPromptSubmit hook fires for it, and that invocation is
-        the observable fact a fresh host turn exists - the plugin's own hook
-        saw it, nothing is inferred.
+        On Kimi the UserPromptSubmit hook fires for it. That invocation is an
+        observed fact, but round 2 over-claimed it: a user prompt is one origin
+        of a host turn, not the turn boundary itself - Kimi also begins turns
+        from tasks and system triggers, which submit no prompt at all.
         """
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_prompt_submit.py")],
             input=json.dumps(
                 {"hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
             ),
+            capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        return result.stdout
+
+    def turn_started(self, turn_id: str = "t1",
+                     origin_kind: str = "user") -> str:
+        """One TurnStarted invocation, the way EVERY Kimi host turn begins.
+
+        Kimi's reference separates "the user sent a message" (UserPromptSubmit)
+        from "a new turn began" (TurnStarted, payload turn_id + origin_kind,
+        origins user/task/system_trigger), and the 0.40.1 binary fires it from
+        startTurn for every new turn - including task- and system-triggered
+        ones that no user prompt opens. The stop-hook continuation is not one:
+        the block appends its reason inside the running runStepLoop call, whose
+        local guard is exactly the one-block-per-turn budget.
+        """
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "goal_turn_started.py")],
+            input=json.dumps({
+                "hook_event_name": "TurnStarted", "cwd": str(self.cwd),
+                "turn_id": turn_id, "origin_kind": origin_kind,
+            }),
             capture_output=True, text=True, timeout=30,
         )
         self.assertEqual(0, result.returncode, result.stderr)
@@ -1227,13 +1251,14 @@ class ContinuationBudgetTests(Harness):
 
     def test_two_fresh_kimi_turns_each_get_their_one_block(self) -> None:
         """Codex round-1 F2: the host resets its Stop guard when a turn ends
-        (0.40.1 binary: notifyTurnEnded clears stopHookContinuationUsed), so a
-        budget counted from the persistent tail of the run log alternates
-        block/allow across fresh turns - every second turn inheriting a spent
-        budget it never spent. The scoping fact must be one the hook observes:
-        on Kimi every host turn begins with a user prompt, and this plugin's
-        registered UserPromptSubmit hook fires for it, so a `prompt_submitted`
-        event is a direct observation of a new turn, not an inference."""
+        (0.40.1 binary: the guard is a local of runStepLoop, one call per
+        turn), so a budget counted from the persistent tail of the run log
+        alternates block/allow across fresh turns - every second turn
+        inheriting a spent budget it never spent. The scoping fact must be one
+        the hook observes: on Kimi every host turn begins with a user prompt,
+        and this plugin's registered UserPromptSubmit hook fires for it, so a
+        `prompt_submitted` event is a direct observation of a new turn, not an
+        inference."""
         self.prompt()
         first = self.turn(host="kimi")
         self.assertEqual("block", self.decision(first))
@@ -1247,6 +1272,69 @@ class ContinuationBudgetTests(Harness):
             [],
             [e for e in self.events() if e["event"] == "continuation_budget_spent"],
             "neither turn parked: neither spent more than its one block",
+        )
+
+    def test_a_non_user_origin_turn_gets_its_own_budget(self) -> None:
+        """Codex round-2 F2, the part prompt_submitted could never cover: a
+        task- or system-triggered turn submits no prompt, so no
+        `prompt_submitted` row exists to reset the streak, and the turn
+        inherits the log's tail with its one-block budget already spent. The
+        boundary must be the host's own turn event: Kimi's TurnStarted fires
+        for every new turn whatever its origin and carries turn_id, so a
+        `turn_started` row is the host saying a fresh turn exists."""
+        self.make_loop()
+        self.turn_started("t1", origin_kind="user")
+        first = self.turn(host="kimi")
+        self.assertEqual("block", self.decision(first))
+        self.turn_started("t2", origin_kind="system_trigger")
+        second = self.turn(host="kimi")
+        self.assertEqual(
+            "block", self.decision(second),
+            "a turn no user prompt began still arrives with a fresh budget",
+        )
+        self.assertEqual(
+            [],
+            [e for e in self.events() if e["event"] == "continuation_budget_spent"],
+            "neither turn parked: each spent exactly its one block",
+        )
+
+    def test_turn_identity_scopes_the_streak_within_a_turn(self) -> None:
+        """The host's turn_id is not decoration: checks are grouped by the
+        turn they belong to, so a second check in the SAME turn still parks
+        (Kimi honors one block per turn) while the next turn - of any origin -
+        starts from zero. Two fresh task-origin turns each blocking once, and
+        only the same-turn continuation parking, is the whole contract."""
+        self.make_loop()
+        self.turn_started("t1", origin_kind="task")
+        self.assertEqual("block", self.decision(self.turn(host="kimi")))
+        self.turn_started("t2", origin_kind="task")
+        self.assertEqual("block", self.decision(self.turn(host="kimi")))
+        parked = self.turn(host="kimi")
+        self.assertIsNone(
+            self.decision(parked),
+            "the continuation inside turn t2 parks on the spent budget",
+        )
+        checks = [e for e in self.events() if e["event"] == "anchor_checked"]
+        self.assertEqual(
+            ["t1", "t2", "t2"], [c.get("turn_id") for c in checks],
+            "each check carries the host turn it happened in",
+        )
+
+    def test_the_gate_records_the_host_turn_identity_on_each_check(self) -> None:
+        """Codex round-2 F2's closure asked for the host-provided turn
+        identity, not just a better reset: the event log must carry which host
+        turn each anchor check belongs to, or `--audit` cannot tell a run that
+        parked twice in one host turn from one that blocked once in each of
+        two."""
+        self.make_loop()
+        self.turn_started("t9", origin_kind="user")
+        self.turn(host="kimi")
+        checks = [e for e in self.events() if e["event"] == "anchor_checked"]
+        self.assertEqual(1, len(checks))
+        self.assertEqual("t9", checks[0].get("turn_id"))
+        rows = [e for e in self.events() if e["event"] == "turn_started"]
+        self.assertEqual(
+            ("t9", "user"), (rows[0].get("turn_id"), rows[0].get("origin_kind"))
         )
 
     def test_a_stop_reporting_a_fresh_chain_resets_the_streak(self) -> None:

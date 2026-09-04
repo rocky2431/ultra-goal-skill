@@ -265,17 +265,22 @@ lost, read it and resume from the first unanswered question instead of starting 
    Recommend it wherever the work is delegated; it costs one extra file and the discipline
    of judging before listening.
 
-   **Then a `fallback:` per role.** An agent runs out of quota, a target does not answer, a
-   process dies: try the role, then its fallback, then continue as this session alone. A run
-   that stops because a reviewer was out of quota has turned an optional check into a single
-   point of failure.
-   **The fallback order is declared; the failure is measured where the host allows it.**
-   `PostToolUseFailure` fires after a failed tool call, which is a host-observed fact, so on
-   the hosts that register it (Claude Code, zCode, Kimi) a call naming a delegation target
-   writes `role_unavailable` and `--audit` surfaces it as `ROUND_DEGRADED`. Codex documents
-   no such event, so there the run's report is the only record — a declared loss, not
-   parity. Whether the fallback was *adequate* is never measured; ask the run to say that
-   out loud, and treat the answer as the claim it is.
+**Then a `fallback:` per role.** An agent runs out of quota, a target does not answer, a
+process dies: try the role, then its fallback, then continue as this session alone. A run
+that stops because a reviewer was out of quota has turned an optional check into a single
+point of failure.
+**The fallback order is declared; the failure is measured where the host allows it.**
+`PostToolUseFailure` fires after a failed tool call, which is a host-observed fact, so on
+the hosts that register it (Claude Code, zCode, Kimi) a call naming a delegation target
+writes `role_unavailable` and `--audit` surfaces it as `ROUND_DEGRADED`. Codex documents
+no such event, so there the run's report is the only record — a declared loss, not
+parity. Whether the fallback was *adequate* is never measured; ask the run to say that
+out loud, and treat the answer as the claim it is. And a call that *succeeds* while writing no file is invisible to every hook registered here — the failure event sees
+failures only, and the success-side events fire once per tool call and stay unregistered
+on purpose — so the round's evidence is the file the role was told to write: the run does
+not count a round until that file exists, and `--audit` reports a declared reviewer with
+no review file as `REVIEW_UNEVIDENCED`. A review that returned success and left nothing
+is a missing review, not a pass; it happened to a review round on this project.
 
    **Never settle any of this silently.** A review that turned out to be a second opinion
    from its own model, with no row saying so, cannot be told apart afterwards from one that
@@ -633,7 +638,7 @@ those boundaries is drawn where it is.
 
 ## The gate: what the hooks do, and what they cost
 
-On a host that exposes the events, five hooks ship with this Skill and register on install.
+On a host that exposes the events, six hooks ship with this Skill and register on install.
 They turn the anchor from a sentence in a prompt into a gate that actually runs. Which of
 them register is a per-host fact, not a constant: **each manifest registers only events its
 host documents**, because an event a host does not support is either an error or silence,
@@ -650,6 +655,7 @@ all.
 | `PreCompact` | Records the carried state and the fact of the compaction into the event log | No |
 | `PostToolUseFailure` | Records `role_unavailable` when a delegated role's call fails, so a degraded round cannot read as a clean one — on Codex, which documents no such event, the run's report is the only record | No |
 | `UserPromptSubmit` | Kimi only: one fixed-size line per prompt — the artifact pointer plus the gate's last decision from the event log — because that host's `SessionStart` cannot inject and its Stop has no allow-channel to speak through | No |
+| `TurnStarted` | Kimi only: records the host's own turn boundary — `turn_id` and `origin_kind` — for every new turn whatever its origin. A user prompt is one origin of a turn, not the boundary itself; without this row, a task- or system-triggered turn would inherit a spent budget no turn of its own spent | No |
 
 **The loop is the continuation budget, and the budget is a per-host fact with a citation.**
 A host keeps a Stop-blocked turn alive only so many times in a row: Claude Code forces
@@ -661,6 +667,19 @@ backstop, not the budget. When the budget is spent the turn ends **loudly**: red
 named, a `continuation_budget_spent` event written for `--audit`, and the commit subject
 carrying the gate's turn number. A run may therefore end a turn with a red anchor in
 exactly three ways — budget spent, not progressing, ceiling — and each one says so.
+
+**The budget is scoped to the host turn by an observed boundary, and one host has none.**
+The count resets at a boundary the host or this plugin observed: Claude Code's and Codex's
+`stop_hook_active` (documented field *and* meaning), Kimi's `TurnStarted` with its
+`turn_id` (fires for every new turn whatever its origin — user, task or system trigger),
+and on every host an allow or a chain-ender written by the gate itself. zCode documents
+neither: its reference lists `stop_hook_active` among Stop's inputs without a word of
+semantics, and its seven events include no turn boundary at all — so there the streak
+resets only on facts the gate itself wrote, and a blocked chain that ends without one of
+those (an owner interrupt, an error, a session end) carries its tail into the next turn,
+which can park one block early. That is a declared gap, stated here because a proxy that
+*looks* grounded — reading the undocumented field, or treating a user prompt as the turn
+boundary — is the mistake this design has made twice already.
 
 **Three outcomes, not two.** An anchor that cannot run — command missing, not executable,
 timed out — is **unknown**, not failed. Folding unknown into either verdict is how a
@@ -731,6 +750,15 @@ prompt against the artifact's `## Handoff` block — stays unbuilt everywhere: t
 instruction-level fix comes first and has not been shown to fail, and the trigger to build
 it remains a real session where a pasted goal line pulled this Skill into an interview
 anyway.
+
+`TurnStarted` is Kimi-only too, and it is not a recovery channel but a boundary: the
+budget could not be scoped to the host turn without it, because a user prompt is one
+origin of a turn and not the boundary itself. It fires once per host turn whatever began
+it, writes one event carrying the host's `turn_id` and `origin_kind`, and pays the same
+early-exit cost as every other hook in a project without `.goals/active`. Registering the
+same event on a host whose turns arrive another way would be a proxy, not a fact — which
+is why zCode, whose seven events include no turn boundary, gets the declared gap above
+instead.
 
 ### Wide latitude, zero trust in self-report
 

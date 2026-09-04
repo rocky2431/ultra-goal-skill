@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from goal_hooks import (  # noqa: E402
     ANCHOR_BUDGET_CEILING,
     frozen_digest,
+    sections,
 )
 
 
@@ -1407,6 +1408,41 @@ def audit_artifact(path: Path) -> tuple[dict[str, object], list[Finding]]:
                 "advisory",
             )
         )
+
+    # The degradation no hook can see: a delegated round that SUCCEEDED and
+    # wrote nothing. PostToolUseFailure fires on failures only, and the
+    # success-side events fire once per tool call and are deliberately not
+    # registered, so from inside the plugin that round reads as a clean one -
+    # it happened to a review round on this project. The only real detector
+    # is the expected artifact's absence, and this is where the owner looks.
+    # Advisories are not verdicts: a run that has not yet proposed completion
+    # owes no review file, and the guard is the run having begun, nothing
+    # smarter. Rounds delegated to a target that writes elsewhere are beyond
+    # this check by construction - the report is the only record there.
+    if checks or claims:
+        try:
+            spec = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            spec = ""
+        if (sections(spec).get("verification") or "").strip():
+            slug = slug_of(path)
+            review = path.parent / ".work" / f"{slug}-review.md"
+            if not review.is_file():
+                out.append(
+                    Finding(
+                        str(path),
+                        "REVIEW_UNEVIDENCED",
+                        "this run declares a reviewer round but no review artifact exists "
+                        f"at {path.parent.name}/.work/{slug}-review.md: "
+                        "a delegation that returns success without writing its file is "
+                        "invisible to every hook (the failure event fires on failures "
+                        "only), so the file is the round's only evidence here - its "
+                        "absence means the round is unevidenced, not clean. If the "
+                        "reviewer wrote elsewhere, say so; otherwise treat the round as "
+                        "degraded",
+                        "advisory",
+                    )
+                )
 
     # Turns that ended on the host's continuation budget rather than on the
     # anchor. Hook-written, so this is a measurement: a run whose turns keep

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""UserPromptSubmit hook: Kimi's recovery channel, and the turn boundary.
+"""UserPromptSubmit hook: Kimi's recovery channel, and a user-origin boundary.
 
 Kimi's reference makes every event but PreToolUse, Stop and UserPromptSubmit
 observation-only, so two things this plugin needs have no other path there:
@@ -11,13 +11,17 @@ observation-only, so two things this plugin needs have no other path there:
   in silence.
 
 UserPromptSubmit is the documented alternative for both: its returned text is
-appended to the context, and it fires for every user prompt - which is also
-what makes it the observable fact a new host turn began (Kimi resets its own
-one-block Stop guard exactly then). So this hook does two jobs, each one
-observation, neither one inference:
+appended to the context, and it fires for every user prompt. So this hook
+does two jobs, each one an observation, neither one inference:
 
-1. it records a `prompt_submitted` event, which is where the Stop gate scopes
-   the continuation budget to the host turn (see `goal_stop._block_streak`);
+1. it records a `prompt_submitted` event. Round 2 called this the turn
+   boundary; Codex round 2 corrected that: a user prompt is one ORIGIN of a
+   host turn, not the boundary itself - task- and system-triggered turns
+   submit no prompt, and they inherit the log's tail with their budget
+   already spent. The turn boundary is now the host's own TurnStarted
+   (`goal_turn_started.py`, registered on Kimi); this row remains a boundary
+   for user-origin turns and a defense where no turn event exists, because
+   the invocation itself is still an observed fact.
 2. it prints the artifact pointer plus, when the event log holds one, the
    gate's last decision - the verdict a silent Kimi turn ended on, delivered
    on the next prompt because that is the only channel left.

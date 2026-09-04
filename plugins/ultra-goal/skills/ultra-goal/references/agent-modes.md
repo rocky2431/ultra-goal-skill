@@ -182,6 +182,16 @@ last row. Saying which half you hold is the point - a `ROUND_DEGRADED` finding n
 could produce would be worse than none, because it reads as coverage, and so would a
 "measured" verdict about adequacy nothing can measure.
 
+There is one degradation no hook can measure at all, named here because a review round on
+this project produced it: a call that *succeeds* while writing no file. The
+failure event fires on failures only, and the success-side events fire once per tool call
+and are deliberately not registered, so from inside the plugin a degraded round reads as
+a clean one. The only real detector is the expected artifact's absence - the round's evidence is the file the role was told to write - and it lives where the round is
+consumed: the run does not count a round until the file exists, and `--audit` reports a
+declared reviewer with no review file as `REVIEW_UNEVIDENCED`. For rounds delegated to a
+target that writes somewhere else, even that cannot see the artifact; the report is the
+only record there, which is exactly the Codex row above.
+
 Degrading to the main session alone is **always** the last resort and always allowed. A run
 that stops because a reviewer was out of quota has turned an optional check into a single
 point of failure - and a review that cannot happen is a missing review, not a red anchor.

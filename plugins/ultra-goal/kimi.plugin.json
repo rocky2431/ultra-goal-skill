@@ -1,7 +1,7 @@
 {
   "name": "ultra-goal",
   "version": "2.9.1",
-  "description": "Interview an objective into a grounded goal, emit the runnable artifact, and gate the run on its anchor. On Kimi the Stop gate is tagged --host kimi because this host triggers a blocking Stop at most once per turn, and UserPromptSubmit is the recovery channel: Kimi's reference makes every event but PreToolUse, Stop and UserPromptSubmit observation-only, so SessionStart is not registered here at all - a registration whose return value the host ignores would read as context recovery that cannot happen - and the injection other hosts get on session start arrives instead as one fixed-size line per prompt carrying the artifact pointer and the gate's last decision. A declared degradation, not parity.",
+  "description": "Interview an objective into a grounded goal, emit the runnable artifact, and gate the run on its anchor. On Kimi the Stop gate is tagged --host kimi because this host triggers a blocking Stop at most once per turn. UserPromptSubmit is the recovery channel: Kimi's reference makes every event but PreToolUse, Stop and UserPromptSubmit observation-only, so SessionStart is not registered here at all - a registration whose return value the host ignores would read as context recovery that cannot happen - and the injection other hosts get on session start arrives instead as one fixed-size line per prompt carrying the artifact pointer and the gate's last decision. TurnStarted is the turn boundary: it fires for every new turn whatever its origin (user, task, system_trigger) and carries turn_id, which a user prompt does not prove, so the continuation budget is scoped to the host turn through it. A declared degradation, not parity.",
   "keywords": [
     "kimi-code",
     "goal",
@@ -36,6 +36,11 @@
     {
       "event": "UserPromptSubmit",
       "command": "python3 ./skills/ultra-goal/scripts/goal_prompt_submit.py",
+      "timeout": 10
+    },
+    {
+      "event": "TurnStarted",
+      "command": "python3 ./skills/ultra-goal/scripts/goal_turn_started.py",
       "timeout": 10
     }
   ],
