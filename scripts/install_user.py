@@ -15,7 +15,7 @@ import tempfile
 from typing import Any
 
 
-VERSION = "2.8.0"
+VERSION = "2.11.0"
 PACKAGE = "ultra-goal"
 MARKER_NAME = ".ultra-goal-managed.json"
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -39,7 +39,16 @@ HOOK_EVENTS = {
     "PreCompact": "goal_pre_compact.py",
 }
 HOOK_MATCHERS = {"SessionStart": "^(startup|resume|clear|compact)$"}
-HOOK_TIMEOUTS = {"Stop": 200}
+# 600 is the hooks reference's documented default for a command hook; 200 was
+# a number picked in isolation and it capped every anchor under four minutes -
+# a 540s anchor would be permanently `unknown`, held by a limit nobody chose.
+HOOK_TIMEOUTS = {"Stop": 600}
+# The Stop registration names its host so the gate spends the right
+# continuation budget; this installer only ever writes Claude Code's
+# settings.json, so the tag is fixed. Keyed by script name because that is
+# what _hook_command looks up - keyed by event name it was dead
+# configuration, and the tag silently never landed (Codex round-1 F6).
+HOOK_ARGS = {"goal_stop.py": "--host claude"}
 HOOK_HOSTS = ("claude",)
 # Matched against a normalised command string: a registration written on
 # Windows carries backslashes, and comparing them raw made every identity check
@@ -188,9 +197,20 @@ def _hook_command(home: Path, host: str, script: str) -> str:
     `sys.executable` rather than a bare `python3`: the latter is absent on most
     Windows installs, and a hook whose interpreter does not exist is a gate that
     fails silently - the exact outcome this Skill refuses elsewhere.
+
+    The script's existence is checked before anything runs, and the interpreter
+    is `exec`ed: both are for exit 2, which every host reads as a deliberate
+    block. A missing script used to make Python exit 2 - a broken install
+    blocking turns - and any non-zero status must be the hook's own decision,
+    never the launcher's accident. A missing script is a fail-open allow.
     """
     target = _skill_destination(home, host) / "scripts" / script
-    return f'"{sys.executable}" "{target}"'
+    args = HOOK_ARGS.get(script, "")
+    suffix = f" {args}" if args else ""
+    return (
+        f'P="{target}"; [ -f "$P" ] || exit 0; '
+        f'exec "{sys.executable}" "$P"{suffix}'
+    )
 
 
 def _load_settings(path: Path) -> dict[str, Any]:

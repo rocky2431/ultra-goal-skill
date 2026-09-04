@@ -588,6 +588,15 @@ class AuditTests(Harness):
             "\n".join(_json.dumps(e) for e in entries) + "\n", encoding="utf-8"
         )
 
+    def arm(self, digest: str | None = None) -> None:
+        """Write the arming-time spec baseline, exactly as `goal_run.py arm`
+        does: since round 5 the audit derives the run's authorized baseline
+        from this file and never from the first anchor check - a run can
+        write the log, so the first row found there laundered whatever it
+        said (round-4 F3)."""
+        text = digest if digest is not None else self.digest()
+        (self.dir / "demo.spec.baseline").write_text(text + "\n", "utf-8")
+
     def claim(self, turn: int, verdict: str, touch_artifact: bool = False) -> None:
         if touch_artifact:
             self.artifact.write_text(
@@ -610,10 +619,16 @@ class AuditTests(Harness):
         return sorted({f.code for f in findings})
 
     def test_agreeing_claim_and_measurement_report_nothing(self) -> None:
+        self.arm()
         self.log({"event": "anchor_checked", "turn": 1, "outcome": "green",
                   "exit_code": 0, "spec_digest": self.digest()})
         self.claim(1, "green")
-        self.assertEqual([], self.audit_codes())
+        # Nothing about the turns - the one finding left is the review
+        # artifact this fixture never wrote (GOOD_GOAL declares
+        # `## Verification`), which is the new contract: a begun run that
+        # declares a reviewer owes a review file, and its absence is an
+        # advisory, not a verdict on the turns.
+        self.assertEqual(["REVIEW_UNEVIDENCED"], self.audit_codes())
 
     def test_a_claim_the_gate_contradicts_is_reported(self) -> None:
         self.log({"event": "anchor_checked", "turn": 1, "outcome": "red",
@@ -643,11 +658,14 @@ class AuditTests(Harness):
         self.assertEqual("green", rows[1]["measured"])
 
     def test_a_later_commit_for_the_same_turn_wins(self) -> None:
+        self.arm()
         self.log({"event": "anchor_checked", "turn": 1, "outcome": "red",
                   "exit_code": 1, "spec_digest": self.digest()})
         self.claim(1, "green")
         self.claim(1, "red")
-        self.assertEqual([], self.audit_codes())
+        # No CLAIM_CONTRADICTED: the amended commit is the claim audited, and
+        # REVIEW_UNEVIDENCED is the same fixture artifact as its neighbour.
+        self.assertEqual(["REVIEW_UNEVIDENCED"], self.audit_codes())
 
     def test_claims_with_no_event_log_at_all_are_reported_as_ungated(self) -> None:
         self.claim(1, "green")
@@ -656,10 +674,51 @@ class AuditTests(Harness):
         self.assertNotIn("CLAIM_UNWITNESSED", codes)
 
     def test_a_moved_frozen_spec_is_reported(self) -> None:
+        """The comparison is armed-digest-file versus artifact-on-disk now -
+        never the first digest found in the event log, which the run can
+        write (round-4 F3: a laundered first row made the audit bless it)."""
+        self.arm()
         self.log({"event": "anchor_checked", "turn": 1, "outcome": "green",
                   "exit_code": 0, "spec_digest": "not-the-current-digest"})
         self.claim(1, "green")
+        # The log row's digest is deliberately wrong and must not matter.
+        # Move the artifact for real: edit a frozen section after arming.
+        self.artifact.write_text(
+            self.artifact.read_text(encoding="utf-8").replace(
+                "## Intent", "## Intent (edited)"),
+            encoding="utf-8",
+        )
         self.assertIn("FROZEN_SPEC_CHANGED", self.audit_codes())
+        audit = va.audit_artifact(self.artifact)[0]
+        self.assertEqual(self.digest_of_good_goal_armed(), audit["spec_digest_armed"])
+
+    def digest_of_good_goal_armed(self) -> str:
+        return va.frozen_digest(GOOD_GOAL)
+
+    def test_a_run_with_attempts_and_no_armed_baseline_is_reported(self) -> None:
+        """Round-4 F3, audit half: completion attempts with no arming-time
+        baseline mean the run was never verifiable against the owner's spec -
+        the gate refuses such claims, and the audit names the gap instead of
+        quietly deriving a baseline from the log."""
+        self.log({"event": "anchor_checked", "turn": 1, "outcome": "green",
+                  "exit_code": 0, "spec_digest": self.digest()})
+        self.claim(1, "green")
+        self.assertIn("SPEC_BASELINE_MISSING", self.audit_codes())
+
+    def test_a_turn_parked_on_the_continuation_budget_is_reported(self) -> None:
+        """A budget-spent release is the gate's own measurement of a run that
+        keeps ending its host turns with the anchor still red. `--audit`
+        surfaces it as an advisory: it is not a verdict on the work, but a run
+        whose every turn parks is not advancing even when every turn works."""
+        self.log({"event": "anchor_checked", "turn": 1, "outcome": "red",
+                  "exit_code": 1, "spec_digest": self.digest(), "blocked": True},
+                 {"event": "continuation_budget_spent", "turn": 2, "host": "kimi",
+                  "budget": 1, "outcome": "red", "exit_code": 1})
+        self.claim(2, "red")
+        codes = self.audit_codes()
+        self.assertIn("CONTINUATION_BUDGET_SPENT", codes)
+        severity = {f.code: f.severity for f in va.audit_artifact(self.artifact)[1]}
+        self.assertEqual("advisory", severity["CONTINUATION_BUDGET_SPENT"])
 
     def test_an_unchanged_frozen_spec_is_not_reported(self) -> None:
         digest = va.frozen_digest(self.artifact.read_text(encoding="utf-8"))
@@ -667,6 +726,41 @@ class AuditTests(Harness):
                   "exit_code": 0, "spec_digest": digest})
         self.claim(1, "green")
         self.assertNotIn("FROZEN_SPEC_CHANGED", self.audit_codes())
+
+    def test_a_declared_review_with_no_artifact_is_reported(self) -> None:
+        """A delegated round can succeed and produce nothing: the round-2
+        review of this very mission returned exit 0, status success, and no
+        file. No hook can see that - PostToolUseFailure fires on failures
+        only, and the one event that fires on success is deliberately not
+        registered - so the only real detector is the expected artifact's
+        absence, and `--audit` is where the owner must meet it. A run that
+        declares a reviewer round owes a review file; missing is unevidenced,
+        not clean."""
+        self.log({"event": "anchor_checked", "turn": 1, "outcome": "red",
+                  "exit_code": 1, "spec_digest": self.digest()})
+        self.claim(1, "red")
+        codes = self.audit_codes()
+        self.assertIn("REVIEW_UNEVIDENCED", codes)
+        severity = {f.code: f.severity for f in va.audit_artifact(self.artifact)[1]}
+        self.assertEqual("advisory", severity["REVIEW_UNEVIDENCED"])
+
+    def test_a_review_artifact_on_disk_settles_the_finding(self) -> None:
+        self.log({"event": "anchor_checked", "turn": 1, "outcome": "red",
+                  "exit_code": 1, "spec_digest": self.digest()})
+        self.claim(1, "red")
+        work = self.dir / ".work"
+        work.mkdir(exist_ok=True)
+        (work / "demo-review.md").write_text(
+            "# Review: demo - round 1\n\n## Findings\n- none\n", encoding="utf-8"
+        )
+        self.assertNotIn("REVIEW_UNEVIDENCED", self.audit_codes())
+
+    def test_a_run_that_never_started_owes_no_review_yet(self) -> None:
+        """The finding names a round that came due and left nothing. Before
+        the first check or claim there is no run, and a mid-run audit of a run
+        that has not proposed completion has no review to owe - the guard is
+        the run having begun, nothing smarter."""
+        self.assertNotIn("REVIEW_UNEVIDENCED", self.audit_codes())
 
     def test_no_history_is_itself_the_finding(self) -> None:
         outside = Path(tempfile.mkdtemp())

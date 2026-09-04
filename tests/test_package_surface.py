@@ -273,7 +273,20 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("Read the Carry-over section", handoff)
         self.assertIn("Rewrite the Carry-over section", handoff)
         self.assertIn("### Next", goal)
-        self.assertIn("Commit once per turn as `goal(weekly-dep-upgrade) turn", handoff)
+        # The fallback prompt must carry the completion-candidate contract: a
+        # run that never learns to write `.candidate` can never be judged, and
+        # a template that stamps `[anchor: ...]` on every turn teaches the
+        # retired per-turn gate (round-4 F7).
+        self.assertIn(
+            "short line to .goals/weekly-dep-upgrade.candidate", handoff
+        )
+        self.assertIn("goal(weekly-dep-upgrade): <summary>", handoff)
+        self.assertIn(
+            "goal(weekly-dep-upgrade) turn <N>: <summary> "
+            "[anchor: green|red|unknown]",
+            handoff,
+        )
+        self.assertNotIn("Commit once per turn", handoff)
         self.assertIn("Next gets the single objective", handoff)
 
     def test_behaviour_evals_cover_the_whole_lifecycle(self) -> None:
@@ -310,9 +323,9 @@ class SkillContractTests(unittest.TestCase):
             "an_unrunnable_anchor_is_unknown_not_failed",
             "the_target_level_divergence_stops_the_loop",
             "hook_pollution_is_answered_inside_the_hook",
-            "the_gate_never_denies_twice_on_an_identical_result",
+            "an_identical_failure_never_releases_the_claim",
             "worker_transcripts_are_not_the_record",
-            "post_tool_use_is_not_registered_yet",
+            "post_tool_use_has_one_narrow_job",
             "domain_split_reviewers_become_a_triad",
             "false_consensus_is_named_when_two_agents_agree",
             "the_critic_audits_the_review_not_the_code",
@@ -355,7 +368,7 @@ class SkillContractTests(unittest.TestCase):
         # Goal mode is a convenience now, not the mechanism: the gate is.
         self.assertIn("**That something is this\nSkill's own Stop hook**", skill)
         self.assertIn(
-            "### The gate is the loop, so a host's goal mode is no longer needed", skill
+            "### The gate judges completion, so a host's goal mode is no longer needed", skill
         )
         self.assertIn("**`/ultra-goal:goal-run <slug>`**", skill)
         self.assertIn("cannot do the one that\nmatters", skill)
@@ -382,7 +395,7 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("/goal ", handoff)
         self.assertIn("You have not met this goal until you have actually", handoff)
         self.assertIn("do not claim completion from reasoning about the code", handoff)
-        self.assertIn("Stop after 6 turns even if unmet", handoff)
+        self.assertIn("Stop after 6 completion attempts even if\nunmet", handoff)
         # A1: the turn must be said out loud, or the ceiling is estimated by feel.
         self.assertIn("which `## Acceptance` lines this turn is for", handoff)
         # A3: all three refusals reach the pasted text, not just the document.
@@ -396,7 +409,7 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("`/ultra-goal:goal-run weekly-dep-upgrade`", handoff)
         self.assertIn("arm the gate", handoff)
         self.assertIn("Where the plugin is absent, paste the text below", handoff)
-        self.assertIn("> .goals/active", handoff)
+        self.assertIn("goal_run.py arm weekly-dep-upgrade", handoff)
         for gone in ("crontab", "runner.sh"):
             self.assertNotIn(gone, handoff)
 
@@ -497,8 +510,10 @@ class GateAndDocumentSystemTests(unittest.TestCase):
         skill = skill_text()
         self.assertIn("## The gate: what the hooks do, and what they cost", skill)
         self.assertIn("**Three outcomes, not two.**", skill)
-        self.assertIn("**Seven of the eight steps allow.**", skill)
-        self.assertIn("**A moved goalpost allows on purpose.**", skill)
+        # The steps-count sentence changed with the completion contract: the
+        # gate refuses only a refusable claim, everything else allows.
+        self.assertIn("**Every path but one lets the turn end.**", skill)
+        self.assertIn("**A moved goalpost closes the run.**", skill)
         self.assertIn("`rm .goals/active`", skill)
         self.assertIn("ULTRA_GOAL_HOOKS_DISABLED=1", skill)
         # PostToolUse's absence is a decision with a stated trigger to revisit.
@@ -633,12 +648,18 @@ class HygieneTests(unittest.TestCase):
         `.goals/active`, no work. That early exit is pinned by
         tests/test_goal_hooks.py, which is now the load-bearing test.
         """
+        # The scan covers what ships (the plugin tree, the installer, tests,
+        # README) - not docs/wip/, the working-notes directory whose whole job
+        # is citing absolute local paths to evidence. The mission envelope
+        # itself carries two such paths by design, and red-ing the suite on
+        # the owner's own notes guards nothing that installs anywhere.
         files = [
             path
             for path in REPO_ROOT.rglob("*")
             if path.is_file()
             and ".git" not in path.relative_to(REPO_ROOT).parts
             and "__pycache__" not in path.relative_to(REPO_ROOT).parts
+            and path.relative_to(REPO_ROOT).parts[:2] != ("docs", "wip")
         ]
         relative = {path.relative_to(REPO_ROOT).as_posix() for path in files}
         self.assertFalse(any(path.endswith(".mcp.json") for path in relative))
@@ -647,12 +668,16 @@ class HygieneTests(unittest.TestCase):
         scripts = SKILL_ROOT / "scripts"
         hook_scripts = sorted(p.name for p in scripts.glob("goal_*.py"))
         self.assertEqual(
-            ["goal_hooks.py", "goal_pre_compact.py", "goal_session_start.py",
-             "goal_stop.py", "goal_tool_failure.py"],
+            ["goal_hooks.py", "goal_pre_compact.py", "goal_prompt_submit.py",
+             "goal_run.py", "goal_session_start.py", "goal_stop.py",
+             "goal_tool_failure.py", "goal_tool_success.py",
+             "goal_turn_started.py"],
             hook_scripts,
         )
         for name in hook_scripts:
-            if name == "goal_hooks.py":
+            # goal_hooks is the shared plumbing and goal_run is the owner's
+            # arming fence, not a host hook: neither routes through run_hook.
+            if name in ("goal_hooks.py", "goal_run.py"):
                 continue
             source = (scripts / name).read_text(encoding="utf-8")
             self.assertIn("run_hook(", source, name)
@@ -660,18 +685,23 @@ class HygieneTests(unittest.TestCase):
         manifest = json.loads(
             (PLUGIN_ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8")
         )
+        # The shared file is auto-discovered by Claude Code and zCode alike,
+        # so it carries only the events both document.
         self.assertEqual(
-            ["Stop", "SessionStart", "PreCompact", "PostToolUseFailure"],
+            ["Stop", "SessionStart", "PostToolUseFailure", "PostToolUse"],
             list(manifest["hooks"]),
         )
         # PostToolUseFailure earns its place: it fires only on a *failed* tool
         # call, so its cost does not scale with tool use the way PostToolUse
         # would - and it is the only host-observed view of a failed delegation.
         self.assertIn("PostToolUseFailure", manifest["description"] or "")
-        # PostToolUse is deliberately absent: it fires once per tool call, so its
-        # cost is a Python start per call, and its value duplicates SessionStart
-        # injection plus the goal text's own instruction to read carry-over.
-        self.assertNotIn("PostToolUse", manifest["hooks"])
+        # PostToolUse is present with ONE narrow job: recording a delegation
+        # target's recovery - the positive observation a turn boundary cannot
+        # substitute for. Its cost is bounded by running the delegation
+        # detection on the invocation text before anything else, so an
+        # ordinary tool call stops at one string check and writes nothing.
+        self.assertIn("PostToolUse", manifest["hooks"])
+        self.assertIn("goal_tool_success.py", json.dumps(manifest))
         self.assertNotIn("UserPromptSubmit", manifest["hooks"])
         for groups in manifest["hooks"].values():
             for group in groups:
@@ -1031,24 +1061,256 @@ class HostManifestTests(unittest.TestCase):
             "plugins/ultra-goal/kimi.plugin.json")["skills"])
 
     def test_kimi_hooks_name_the_same_events_as_the_claude_manifest(self) -> None:
+        """Rewritten for the per-host contract: hosts register what they
+        document AND can use. Kimi's reference makes every event but
+        PreToolUse, Stop and UserPromptSubmit observation-only, so a Kimi
+        SessionStart registration is one that cannot deliver anything by
+        design (Claude round-1 F-4) - it is deliberately absent, and the rest
+        of the shared core must still reach Kimi so the files cannot drift
+        apart silently."""
         hooks = self.load("plugins/ultra-goal/kimi.plugin.json")["hooks"]
-        self.assertEqual(
-            ["Stop", "SessionStart", "PreCompact", "PostToolUseFailure"],
-            [h["event"] for h in hooks],
-        )
         manifest = json.loads(
             (PLUGIN_ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8")
         )
-        self.assertEqual(list(manifest["hooks"]), [h["event"] for h in hooks])
+        kimi_events = {h["event"] for h in hooks}
+        self.assertNotIn(
+            "SessionStart", kimi_events,
+            "Kimi ignores SessionStart output; registering it reads as context "
+            "recovery that cannot happen",
+        )
+        self.assertLessEqual(
+            set(manifest["hooks"]) - {"SessionStart"}, kimi_events,
+            "the shared core must reach every host that documents it",
+        )
+
 
     def test_claude_code_hooks_use_the_variable_claude_code_substitutes(self) -> None:
         """`$PLUGIN_ROOT` is not the name Claude Code expands, so a plugin
         install would have pointed every hook at nothing."""
         text = (PLUGIN_ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8")
-        self.assertIn("${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}", text)
+        # Round-4 F2: under zCode only ZCODE_PLUGIN_ROOT is set, and a chain
+        # that never consulted it turned every path into /skills/... and
+        # silently loaded nothing - so the chain must name it.
+        self.assertIn('R=\\"${CLAUDE_PLUGIN_ROOT}\\"', text)
+        self.assertIn('R=\\"${ZCODE_PLUGIN_ROOT}\\"', text)
+        self.assertIn('R=\\"${PLUGIN_ROOT}\\"', text)
         self.assertNotIn('"$PLUGIN_ROOT/', text)
         self.assertIn("%CLAUDE_PLUGIN_ROOT%", text)
 
+
+class PerHostHookRegistrationTests(unittest.TestCase):
+    """Every manifest registers only events its host documents.
+
+    Verified 2026-09-04 against each vendor's reference, not against a working
+    example:
+
+    - Claude Code (code.claude.com/docs/en/hooks) documents Stop, SessionStart,
+      PreCompact and PostToolUseFailure, and its manifest `hooks` field holds
+      ADDITIONAL files on top of the auto-discovered hooks/hooks.json ("The
+      standard hooks.json is loaded automatically, so manifest.hooks should
+      only reference additional hook files" - read from the 2.1.260 binary).
+    - zCode (zcode.z.ai/en/docs/hooks) documents exactly seven events:
+      SessionStart, UserPromptSubmit, PreToolUse, PermissionRequest,
+      PostToolUse, PostToolUseFailure, Stop - no PreCompact - and discovers
+      hooks/hooks.json automatically regardless of the manifest.
+    - Codex (learn.chatgpt.com/docs/hooks) documents twelve events including
+      SessionStart, PreCompact and Stop - but no PostToolUseFailure - and its
+      manifest `hooks` field REPLACES the default file location.
+    - Kimi (moonshotai.github.io/kimi-code/en/customization/hooks) documents
+      all five of our events plus UserPromptSubmit and TurnStarted, and only
+      PreToolUse, Stop and UserPromptSubmit can affect the flow - SessionStart
+      output is fire-and-forget there, which is why the prompt-submit hook
+      exists. TurnStarted is observation-only too, but it is the reference's
+      only event that fires for every new turn whatever its origin (user,
+      task, system_trigger) and the only one carrying turn_id, which is what
+      scoping the budget to the host turn needed.
+
+    So the shared hooks/hooks.json - which Claude Code and zCode both
+    auto-discover - may only carry events BOTH document: Stop, SessionStart,
+    PostToolUseFailure.
+    """
+
+    DOCUMENTED = {
+        "claude": {
+            "SessionStart", "UserPromptSubmit", "PreToolUse", "PermissionRequest",
+            "PostToolUse", "PostToolUseFailure", "Stop", "PreCompact",
+        },
+        "zcode": {
+            "SessionStart", "UserPromptSubmit", "PreToolUse", "PermissionRequest",
+            "PostToolUse", "PostToolUseFailure", "Stop",
+        },
+        "codex": {
+            "PreToolUse", "PermissionRequest", "PostToolUse", "PreCompact",
+            "PostCompact", "UserPromptSubmit", "SubagentStop", "Stop", "Interrupt",
+            "SessionStart", "SubagentStart", "SessionEnd",
+        },
+        "kimi": {
+            "UserPromptSubmit", "PreToolUse", "Stop", "PostToolUse",
+            "PostToolUseFailure", "PermissionRequest", "SessionStart", "SessionEnd",
+            "SubagentStart", "SubagentStop", "Interrupt", "PreCompact",
+            "PostCompact", "Notification", "TurnStarted",
+        },
+    }
+
+    def load(self, relative: str) -> dict:
+        return json.loads((REPO_ROOT / relative).read_text(encoding="utf-8"))
+
+    def hook_file(self, relative: str) -> dict:
+        return json.loads((PLUGIN_ROOT / relative).read_text(encoding="utf-8"))
+
+    def events_of(self, manifest: dict) -> set[str]:
+        if "hooks" in manifest and isinstance(manifest["hooks"], list):
+            return {h["event"] for h in manifest["hooks"]}  # Kimi's flat array
+        return set(manifest["hooks"])
+
+    def test_the_shared_hook_file_carries_only_events_claude_and_zcode_document(self):
+        shared = self.hook_file("hooks/hooks.json")
+        events = self.events_of(shared)
+        self.assertEqual(
+            {"Stop", "SessionStart", "PostToolUseFailure", "PostToolUse"}, events,
+            "Claude Code and zCode both auto-discover this file; an event either "
+            "does not document is an error or a dead gate. PostToolUse joined in "
+            "round 5: it is the positive half of worker recovery, and both hosts "
+            "document it",
+        )
+        for host in ("claude", "zcode"):
+            self.assertLessEqual(events, self.DOCUMENTED[host], host)
+
+    def test_precompact_lives_in_claude_and_codex_files_only(self):
+        """zCode has no PreCompact event at all, so it cannot be in the shared
+        file; Claude Code reaches it through its manifest's ADDITIONAL hook
+        files, Codex through its manifest's replaced hook list."""
+        claude_extra = self.hook_file("hooks/claude.json")
+        self.assertEqual({"PreCompact"}, self.events_of(claude_extra))
+        self.assertLessEqual(
+            self.events_of(claude_extra), self.DOCUMENTED["claude"]
+        )
+        codex = self.hook_file("hooks/codex.json")
+        self.assertEqual(
+            {"Stop", "SessionStart", "PreCompact"}, self.events_of(codex)
+        )
+        self.assertLessEqual(self.events_of(codex), self.DOCUMENTED["codex"])
+
+    def test_codex_manifest_replaces_discovery_with_its_own_file(self):
+        """Codex's manifest hooks field overrides the default location, so it
+        must name the file it wants - otherwise it would auto-discover the
+        shared file and inherit PostToolUseFailure, which it does not
+        document."""
+        manifest = json.loads(
+            (PLUGIN_ROOT / ".codex-plugin" / "plugin.json").read_text("utf-8")
+        )
+        self.assertEqual(["./hooks/codex.json"], manifest["hooks"])
+
+    def test_claude_manifest_adds_its_extra_file_to_discovery(self):
+        """Claude Code's manifest hooks are ADDITIONAL files, so naming only
+        the PreCompact file is correct: the shared file is still
+        auto-discovered."""
+        manifest = json.loads(
+            (PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text("utf-8")
+        )
+        self.assertEqual(["./hooks/claude.json"], manifest["hooks"])
+
+    def test_kimi_registers_six_events_all_documented(self):
+        """Claude round-1 F-4 dropped Kimi's undeliverable SessionStart;
+        Codex round-2 F2 added TurnStarted; round 5 added PostToolUse so
+        worker recovery is a positive observation on Kimi too. What remains
+        is exactly what Kimi can use: the shared core minus SessionStart,
+        plus PreCompact (recorded evidence), UserPromptSubmit (the documented
+        recovery channel) and TurnStarted (the host's own turn boundary with
+        turn_id - the reference's only event that fires for every new turn
+        whatever its origin). Seven hooks ship; Kimi registers six."""
+        hooks = self.load("plugins/ultra-goal/kimi.plugin.json")["hooks"]
+        self.assertEqual(
+            {"Stop", "PreCompact", "PostToolUseFailure", "PostToolUse",
+             "UserPromptSubmit", "TurnStarted"},
+            {h["event"] for h in hooks},
+        )
+        self.assertLessEqual(
+            {h["event"] for h in hooks}, self.DOCUMENTED["kimi"]
+        )
+        # And the dropped registration is named as dropped, with its reason,
+        # where a Kimi user will read it.
+        manifest_text = (PLUGIN_ROOT / "kimi.plugin.json").read_text("utf-8")
+        self.assertIn("SessionStart is not registered", manifest_text)
+        # TurnStarted is registered through its own script, observation-only.
+        commands = {h["command"] for h in hooks}
+        self.assertTrue(
+            any("goal_turn_started.py" in c for c in commands),
+            commands,
+        )
+
+    def test_the_shared_stop_entry_tags_zcode_through_its_documented_env_var(self):
+        """One file serves two hosts, so the Stop entry must tell the gate
+        which budget to spend. zCode documents ${ZCODE_PLUGIN_ROOT} for its
+        hook commands and Claude Code does not set it, so the expansion adds
+        `--host zcode` only under zCode; everywhere else the default host
+        (claude) applies."""
+        text = (PLUGIN_ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8")
+        # The tag follows the root that actually resolved: under zCode alone
+        # the chain falls through to ZCODE_PLUGIN_ROOT and tags the host; the
+        # tag must not fire when CLAUDE_PLUGIN_ROOT supplied the root.
+        self.assertIn(
+            '{ R=\\"${ZCODE_PLUGIN_ROOT}\\"; H=\\"--host zcode\\"; }', text)
+
+    def test_codex_and_kimi_tag_their_own_stop_entries(self):
+        codex = (PLUGIN_ROOT / "hooks" / "codex.json").read_text(encoding="utf-8")
+        self.assertIn("--host codex", codex)
+        kimi = (PLUGIN_ROOT / "kimi.plugin.json").read_text(encoding="utf-8")
+        self.assertIn("--host kimi", kimi)
+
+    def test_kimi_stop_timeout_matches_the_gate_it_runs(self):
+        """200s would kill a hook whose anchor budget ceiling is 570s: every
+        long anchor permanently `unknown`, held by a limit nobody chose - the
+        clock-cap defect the shared manifest already fixed for itself."""
+        hooks = self.load("plugins/ultra-goal/kimi.plugin.json")["hooks"]
+        stop = next(h for h in hooks if h["event"] == "Stop")
+        self.assertEqual(600, stop["timeout"])
+
+    def test_the_prompt_submit_hook_is_kimi_only(self):
+        """Kimi's SessionStart output is fire-and-forget, so the documented
+        injection alternative is UserPromptSubmit. No other host needs it:
+        theirs inject from SessionStart."""
+        script = PLUGIN_ROOT / "skills" / "ultra-goal" / "scripts" / "goal_prompt_submit.py"
+        self.assertTrue(script.is_file())
+        for relative in ("hooks/hooks.json", "hooks/claude.json", "hooks/codex.json"):
+            text = (PLUGIN_ROOT / relative).read_text(encoding="utf-8")
+            self.assertNotIn("goal_prompt_submit", text, relative)
+        kimi = (PLUGIN_ROOT / "kimi.plugin.json").read_text(encoding="utf-8")
+        self.assertIn("goal_prompt_submit.py", kimi)
+
+    def test_codex_handlers_carry_the_windows_override_codex_documents(self):
+        """Codex's hooks reference documents the field verbatim - "`commandWindows`
+        is an optional Windows-only command override" - and `hooks/codex.json`
+        carried it on none of its three handlers, so a Windows Codex would have
+        been handed a POSIX shell string. Found by walking every manifest for
+        the field rather than by reading the one file that had it.
+
+        Every guard is also asserted in both directions, because the round-4
+        miss on this exact field was checking the POSIX command and never
+        opening `commandWindows`: with the script absent the guard exits before
+        any interpreter, with it present the interpreter is reached.
+        """
+        codex = self.load("plugins/ultra-goal/hooks/codex.json")
+        events = []
+        for event, matchers in codex["hooks"].items():
+            for matcher in matchers:
+                for entry in matcher["hooks"]:
+                    with self.subTest(event=event):
+                        windows = entry.get("commandWindows")
+                        self.assertIsNotNone(windows, event)
+                        # The guard comes first and leaves on a missing script.
+                        self.assertTrue(
+                            windows.startswith("if not exist "), windows)
+                        self.assertIn("exit 0 &", windows)
+                        # And the interpreter is reachable behind it.
+                        self.assertIn("py -3 ", windows)
+                        self.assertIn(r"%CLAUDE_PLUGIN_ROOT%", windows)
+                    events.append(event)
+        self.assertEqual(["Stop", "SessionStart", "PreCompact"], events)
+        # The host tag travels on the Windows branch too, or a Windows Codex
+        # would be gated with another host's continuation budget.
+        stop = codex["hooks"]["Stop"][0]["hooks"][0]["commandWindows"]
+        self.assertTrue(stop.endswith("--host codex"), stop)
 
 class RolesByStageTests(unittest.TestCase):
     """Roles are settled per stage, and most stages are not a choice.
@@ -1097,6 +1359,13 @@ class RolesByStageTests(unittest.TestCase):
         )
         self.assertIn('`decision: "block"`', skill)
         self.assertIn("a frozen section it does mention is an invitation to edit", skill)
+        # The completion contract and the probe results behind it.
+        self.assertIn("**The anchor runs at exactly one moment: a completion candidate.**", skill)
+        self.assertIn("**An allow carries no model context, and that is a probe result", skill)
+        self.assertIn("**Two axes, never conflated.**", skill)
+        for disposition in ("input_required", "blocked_retryable",
+                            "budget_exhausted", "unachievable"):
+            self.assertIn(disposition, skill)
 
     def test_an_unbounded_ceiling_is_declarable(self) -> None:
         goal = (SKILL_ROOT / "assets" / "goal-package.md").read_text(encoding="utf-8")
@@ -1155,33 +1424,99 @@ class RolesByStageTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("## What the gate says, and to whom", doc)
-        self.assertIn("**what the gate reminds you of should\nbe exactly what you may change.**", doc)
-        # The corrected belief is recorded where it can be read later.
-        self.assertIn("which is the **PreToolUse** shape", doc)
         self.assertIn(
-            "a claim until something outside the emitter agrees with it", doc
+            "what the gate reminds the run of is exactly what it may change", doc)
+        # The corrected belief is recorded where it can be read later - both
+        # halves of it: the mixed payload was inert on Codex 0.150.1, and
+        # deleting the nested form globally broke Kimi 0.40.1 (round-4 F8).
+        self.assertIn(
+            "One\nStop output cannot be shared across vendors", doc)
+        self.assertIn(
+            "a claim until something outside the emitter", doc
         )
 
     def test_degradation_says_which_half_it_actually_has(self) -> None:
-        """An earlier draft promised a mechanical check that cannot exist.
-
-        It said a degraded round would appear in the event log and be surfaced
-        by `--audit`. Nothing could write that event: the only thing able to
-        observe a failed delegation is the run that attempted it, and a run's
-        statements are claims - `events.jsonl` is hook-written precisely so it
-        is not. The finding and the constant are gone; the honest weaker
-        version is documented in their place.
-        """
+        """Rewritten for Codex round-1 F5: this passage used to pin the
+        contract as "declared and reported, not measured", which was true
+        only while no hook could observe a failed delegation. The hooks
+        reference documents PostToolUseFailure, so the failure IS measured on
+        the hosts that register it, and the document now states the split in
+        one place: order declared, failure measured where the event exists,
+        adequacy always a claim."""
         doc = self.reference()
         self.assertIn("## Declared degradation", doc)
         self.assertIn("| who to fall back to | the **owner**, at design time", doc)
         self.assertIn("a **claim**, not evidence", doc)
-        self.assertIn("declared and reported**, not measured", doc)
+        # The one contract, both halves, in this document.
+        self.assertIn("declared; the failure is measured", doc)
+        self.assertIn("no such event", doc)
+        # The stale absolutes are gone - they contradicted the hook and the
+        # audit finding that does get produced.
+        self.assertNotIn("declared and reported**, not measured", doc)
+        self.assertNotIn("no code could ever produce", doc)
         # The reason a fake check is worse than no check, stated.
         self.assertIn("because it reads as coverage", doc)
         self.assertIn(
             "a review that cannot happen is a missing review, not a red anchor", doc
         )
+
+    def test_the_degradation_contract_is_the_same_everywhere(self) -> None:
+        """Codex round-1 F5: SKILL.md, the README and agent-modes.md all
+        carried a verdict on whether role failure is measured, and no two of
+        them agreed with the validator. The search that found the
+        contradictions must now come back consistent."""
+        stale = (
+            "UserPromptSubmit is not registered",
+            "Nothing could write that event",
+            "finding that no code could ever produce",
+        )
+        for path in (
+            REPO_ROOT / "README.md",
+            SKILL_ROOT / "SKILL.md",
+            SKILL_ROOT / "references" / "agent-modes.md",
+        ):
+            with self.subTest(path=path.name):
+                text = path.read_text(encoding="utf-8")
+                for phrase in stale:
+                    self.assertNotIn(phrase, text)
+        for path in (
+            REPO_ROOT / "README.md",
+            SKILL_ROOT / "SKILL.md",
+            SKILL_ROOT / "references" / "agent-modes.md",
+        ):
+            with self.subTest(path=path.name, contract="stated"):
+                self.assertIn("role_unavailable", path.read_text(encoding="utf-8"))
+
+    def test_a_succeeded_delegation_with_no_artifact_is_named(self) -> None:
+        """The round-2 incident no hook can see: a delegated review returned
+        exit 0, status success, and no file. `PostToolUseFailure` fires on
+        failures only, and the success-side events fire once per tool call and
+        are deliberately unregistered, so a degraded round read as a clean
+        one. The decision is stated where the contract lives - the only real
+        detector is the expected artifact's absence - and the detector is
+        placed where the run consumes the round and where the owner audits
+        it."""
+        contract = (
+            REPO_ROOT / "README.md",
+            SKILL_ROOT / "SKILL.md",
+            SKILL_ROOT / "references" / "agent-modes.md",
+        )
+        for path in contract:
+            with self.subTest(path=path.name):
+                text = path.read_text(encoding="utf-8")
+                self.assertIn(
+                    "a call that *succeeds* while writing no file", text
+                )
+                self.assertIn(
+                    "the round's evidence is the file the role was told to write",
+                    text,
+                )
+        run = (PLUGIN_ROOT / "commands" / "goal-run.md").read_text("utf-8")
+        self.assertIn(
+            "check the file exists before you treat the round as done", run
+        )
+        audit = (SKILL_ROOT / "scripts" / "validate_artifact.py").read_text("utf-8")
+        self.assertIn("REVIEW_UNEVIDENCED", audit)
 
     def test_degradation_is_written_by_a_hook_and_read_by_the_audit(self) -> None:
         """Deleted once for the right reason and the wrong fact.
@@ -1244,9 +1579,10 @@ class RolesByStageTests(unittest.TestCase):
         command = (PLUGIN_ROOT / "commands" / "goal-run.md").read_text(
             encoding="utf-8"
         )
-        self.assertIn("> .goals/active", command)
+        self.assertIn('arm "$ARGUMENTS"', command)
         self.assertIn("validate_artifact.py", command)
         self.assertIn("You are the run, not its designer.", command)
+        self.assertIn("disarm $ARGUMENTS", command)
         self.assertIn("rm .goals/active", command)
         for manifest in (".claude-plugin/plugin.json", ".codex-plugin/plugin.json",
                          "kimi.plugin.json"):
@@ -1312,12 +1648,21 @@ class ReferenceFirstTests(unittest.TestCase):
         self.assertIn("declared property of the file", doc)
 
     def test_the_gate_records_which_sources_disagreed(self) -> None:
-        """A conflict between two authoritative sources is worth keeping."""
+        """A conflict between two authoritative sources is worth keeping -
+        including how it was settled. Emitting both forms was retired after
+        the Codex paired probe showed the mixed payload makes the block
+        inert there, so the docstring must carry the disagreement AND the
+        probe that resolved it, not a resolution that no longer holds."""
         gate = (SKILL_ROOT / "scripts" / "goal_stop.py").read_text(encoding="utf-8")
         self.assertIn("Two authoritative sources disagree", gate)
-        self.assertIn("official hooks reference lists", gate)
-        self.assertIn("running binary's own validator", gate)
-        self.assertIn("satisfying both costs a few bytes", gate)
+        self.assertIn("paired probe", gate)
+        self.assertIn("made the block inert", gate)
+        # Round-4 F8: the settlement has two halves - Codex blocks on the
+        # top-level pair, Kimi solely on the nested one - so the deny builds
+        # the asking host's own shape instead of picking one for everyone.
+        self.assertIn("blocks solely on", gate)
+        self.assertIn("Kimi 0.40.1", gate)
+        self.assertIn("the one shape the asking host reads", gate)
 
     def test_session_start_covers_every_documented_source(self) -> None:
         """`fork` was missing, so a forked session got no injection at all."""
@@ -1486,7 +1831,19 @@ class AuditFixTests(unittest.TestCase):
     def test_no_undocumented_hook_fields(self) -> None:
         """`additionalContextLimit` is not in the hooks reference. The script's
         CONTEXT_LIMIT is what actually bounds the injection, so the manifest
-        field was either ignored or grounds to reject the whole entry."""
+        field was either ignored or grounds to reject the whole entry.
+
+        `commandWindows` is the one field in this allowlist that neither
+        consumer of this shared file documents: Claude Code's hooks reference
+        lists `shell: "powershell"` as its Windows knob and no
+        `commandWindows`, and zCode's lists ten handler fields and no
+        `commandWindows` either. It is here on a measurement rather than a
+        reading - both hosts load this file with the field present (zCode
+        bisected directly: a config carrying it still loads and still fires the
+        hook) - so on these two hosts the field is inert decoration, and it is
+        the real Windows mechanism only in `hooks/codex.json`, whose reference
+        does document it verbatim. That asymmetry is the whole reason this
+        entry is annotated instead of silently allowlisted."""
         documented = {
             "type", "command", "commandWindows", "timeout", "statusMessage",
             "shell", "url", "headers", "prompt", "agent", "once",
@@ -1498,16 +1855,23 @@ class AuditFixTests(unittest.TestCase):
                         self.assertEqual(set(), set(hook) - documented)
                         self.assertNotIn("additionalContextLimit", hook)
 
-    def test_every_hook_runs_without_python3_on_path(self) -> None:
-        """`commandWindows` is not in the hooks reference, so it cannot be the
-        only Windows path - and `python3` is usually absent there. `|| python`
-        fires only when the first name is not found, because these hooks exit 0
-        whenever they actually run."""
+    def test_every_hook_selects_its_interpreter_and_execs_once(self) -> None:
+        """`commandWindows` is in neither consumer's hooks reference, so it
+        cannot be the only Windows path - and `python3` is usually absent there. The old
+        `|| python` fallback was retired: it re-ran the hook on a deliberate
+        exit 2 with stdin drained and swallowed the block (plan defect 1.2,
+        reproduced). The replacement selects the interpreter first, `exec`s it
+        once, and checks the script exists - a missing script is a fail-open
+        allow, never an exit-2 block (defect 1.3)."""
         for event, entries in self._hooks().items():
             for entry in entries:
                 for hook in entry["hooks"]:
                     with self.subTest(event=event):
-                        self.assertIn("|| python ", hook["command"])
+                        self.assertIn("command -v python3", hook["command"])
+                        self.assertIn("exec python3 ", hook["command"])
+                        self.assertIn("exec python ", hook["command"])
+                        self.assertIn('|| exit 0', hook["command"])
+                        self.assertNotIn("|| python ", hook["command"])
 
     def test_the_stop_clock_is_the_documented_default(self) -> None:
         """200 was a number I picked, and it capped every anchor in this design
@@ -1535,7 +1899,11 @@ class AuditFixTests(unittest.TestCase):
         text: two forks per red turn against a template that says the anchor is
         the intermediate check."""
         gate = (SKILL_ROOT / "scripts" / "goal_stop.py").read_text(encoding="utf-8")
-        self.assertIn("run when you propose completion, not on every red turn", gate)
+        # The message is wrapped across adjacent literals; join them so the
+        # pin checks the sentence the run reads, not the line breaks.
+        joined = re.sub(r'"\s*\n\s*f?"', "", gate)
+        self.assertIn(
+            "run when you propose completion, not on every red attempt", joined)
         self.assertIn(
             "**Review runs at proposed completion**",
             (SKILL_ROOT / "assets" / "goal-package.md").read_text(encoding="utf-8"),
@@ -1546,18 +1914,415 @@ class AuditFixTests(unittest.TestCase):
         never enforce looked in `--audit` exactly like a run not yet started."""
         gate = (SKILL_ROOT / "scripts" / "goal_stop.py").read_text(encoding="utf-8")
         self.assertIn('"event": "anchor_unavailable"', gate)
-        self.assertIn("must not advance the turn count or the ceiling", gate)
+        joined = gate.replace('"\n        # advance', "# advance").replace(
+            "must not\n        # advance", "must not advance")
+        # Round 5: the candidate was still consumed, so the event counts as
+        # an attempt - refusing to count it was the round-4 ceiling bypass.
+        self.assertIn('"event": "anchor_unavailable"', gate)
+        self.assertIn("but the candidate\n        # was consumed, so it counts as an attempt",
+                      gate)
 
     def test_arming_makes_the_gitignore_claim_true(self) -> None:
         """Three documents called `.goals/.work/` gitignored and nothing wrote
         the rule, so `git add -A` committed the reviewer's intermediates."""
         command = (PLUGIN_ROOT / "commands" / "goal-run.md").read_text(encoding="utf-8")
-        self.assertIn(".goals/.gitignore", command)
-        self.assertIn("'.work/' 'active'", command)
+        self.assertIn("`.goals/.gitignore`", command)
+        fence_src = (PLUGIN_ROOT / "skills" / "ultra-goal" / "scripts" /
+                     "goal_run.py").read_text(encoding="utf-8")
+        self.assertIn(
+            'IGNORE_ENTRIES = (".work/", "active", "*.candidate")', fence_src,
+            "the arming fence writes the rule; a document claiming it alone was "
+            "the original defect",
+        )
+
+    def test_arming_records_where_the_review_diff_starts(self) -> None:
+        """The reviewer used to be handed `git diff HEAD` - uncommitted work
+        only - while the run commits once per turn, so at proposed completion
+        the reviewer saw almost nothing and could honestly report 'no
+        findings', which the run then treated as coverage. Arming records the
+        starting revision - and Codex round-1 F4 made it write-once: the line
+        is guarded by `-s`, so re-running the arming command on an active run
+        cannot move the range to HEAD and shrink a whole change into an
+        empty diff."""
+        command = (PLUGIN_ROOT / "commands" / "goal-run.md").read_text(encoding="utf-8")
+        fence_src = (PLUGIN_ROOT / "skills" / "ultra-goal" / "scripts" /
+                     "goal_run.py").read_text(encoding="utf-8")
+        self.assertIn("rev-parse", fence_src)
+        # Write-once moved into the fence: re-running arming on an active run
+        # must not move the range to HEAD and shrink a whole change into an
+        # empty diff - and round 5 added the second write-once baseline, the
+        # authorized spec digest the gate compares every Stop against.
+        self.assertIn('def _write_once', fence_src)
+        self.assertIn('GIT_BASELINE_SUFFIX = ".baseline"', fence_src)
+        self.assertIn('SPEC_BASELINE_SUFFIX', fence_src)
+        self.assertIn("spec.baseline", command)
+
+    def test_the_command_binds_the_slug_through_the_documented_placeholder(self) -> None:
+        """Codex round-1 F1: Kimi's command loader expands only `$ARGUMENTS`,
+        and Claude Code's reference defines `$1` as the *second* argument
+        (0-indexed shorthand), so a `$1` slug bound deterministically on
+        zCode alone. `$ARGUMENTS` is the one token documented by Claude Code
+        ("All arguments passed when invoking the skill"), zCode ("$ARGUMENTS
+        stands for all user-provided arguments") and Kimi ("Whatever you type
+        after the command replaces $ARGUMENTS in the body") alike."""
+        command = (PLUGIN_ROOT / "commands" / "goal-run.md").read_text(encoding="utf-8")
+        self.assertNotIn("$1", command, "no host-neutral meaning; a model guess")
+        self.assertIn("$ARGUMENTS", command)
+
+    def test_the_validator_step_refuses_to_arm_when_no_root_reaches_it(self) -> None:
+        """Codex round-2 F1: the round-2 `else` branch said "Arming
+        continues" when no plugin root reached command execution, which
+        converted the hard precondition into a declared downgrade - an
+        artifact the validator would refuse could arm the gate, proven by
+        driving the real fences. The branch now refuses, and the fence gained
+        Kimi's documented managed-install default as a real candidate
+        (`$KIMI_CODE_HOME/plugins/managed/<id>/`, `~/.kimi-code` when unset -
+        moonshotai.github.io/kimi-code/en/customization/plugins), so the
+        refusal fires only where no documented path exists at all."""
+        command = (PLUGIN_ROOT / "commands" / "goal-run.md").read_text(encoding="utf-8")
+        for root in (
+            "CLAUDE_PLUGIN_ROOT", "ZCODE_PLUGIN_ROOT", "KIMI_PLUGIN_ROOT",
+            "PLUGIN_ROOT", "${KIMI_CODE_HOME:-$HOME/.kimi-code}/plugins/managed/ultra-goal",
+        ):
+            self.assertIn(root, command)
+        self.assertIn("arming refused", command)
+        self.assertNotIn("Arming continues", command)
+        self.assertNotIn("not machine-validated", command)
+        # The refusal is mechanical, not prose the model may talk itself
+        # past: the fence execs the arming program and inherits its exit
+        # status, and a validation error inside it stops arming before the
+        # marker exists - there is no `||` for a second chance to swallow.
+        self.assertIn('exec python3 "$runner" arm "$ARGUMENTS"', command)
+        self.assertNotIn("|| exit 1\nprintf", command)
+
+    def test_the_validation_and_arming_are_one_fence(self) -> None:
+        """The round-2 defect was structural as well as textual: validation
+        and arming were two fences, so anything that ran the second could skip
+        the first. One fence cannot arm unvalidated."""
+        command = (PLUGIN_ROOT / "commands" / "goal-run.md").read_text(encoding="utf-8")
+        fences = re.findall(r"```bash\n(.*?)```", command, re.S)
+        # The arming fence is the one that runs `goal_run.py arm`: validation
+        # happens inside that call (a function whose exception is the
+        # refusal), so the write-once baselines and the marker are written by
+        # the same program that validated - there is no second fence.
+        arming = [f for f in fences if 'arm "$ARGUMENTS"' in f]
+        self.assertEqual(1, len(arming), "exactly one fence may arm")
+        self.assertIn("goal_run.py", arming[0])
+        self.assertIn("disarm", command,
+                      "the checked disarm is documented beside the arm")
+
+    def test_the_reviewer_sees_the_whole_run_not_the_last_commit(self) -> None:
+        review = (PLUGIN_ROOT / "skills" / "review" / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(".goals/$1.baseline", review)
+        # With no baseline (a run started before this existed, or no Git), the
+        # reviewer still gets the old view - but says so instead of mistaking
+        # it for the whole change.
+        self.assertIn("HEAD", review)
+        # Untracked files never appear in a diff; they are listed instead.
+        self.assertIn("status --porcelain", review)
+        # Uncommitted work that predates arming also lands in the range, so
+        # the reviewer still attributes by the boundary.
+        self.assertIn("## Boundary", review)
+
+    def test_the_critic_audits_the_same_range_the_reviewer_saw(self) -> None:
+        critic = (PLUGIN_ROOT / "skills" / "critic" / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(".goals/$1.baseline", critic)
+        self.assertIn("status --porcelain", critic)
 
     def test_the_gate_table_counts_the_hooks_that_ship(self) -> None:
+        """Six hooks ship; which ones register is a per-host fact, because an
+        event a host does not document is an error or a dead gate. The union
+        of the three hook files plus Kimi's inline list is the full set."""
         skill = skill_text()
-        shipped = len(self._hooks())
-        self.assertEqual(4, shipped)
-        self.assertIn("four hooks ship with this Skill", skill)
+        events: set[str] = set()
+        for relative in ("hooks/hooks.json", "hooks/claude.json", "hooks/codex.json"):
+            events |= set(json.loads((PLUGIN_ROOT / relative).read_text("utf-8"))["hooks"])
+        events |= {
+            h["event"]
+            for h in json.loads(
+                (PLUGIN_ROOT / "kimi.plugin.json").read_text("utf-8")
+            )["hooks"]
+        }
+        self.assertEqual(
+            {"Stop", "SessionStart", "PreCompact", "PostToolUseFailure",
+             "PostToolUse", "UserPromptSubmit", "TurnStarted"},
+            events,
+        )
+        self.assertIn("seven hooks ship with this Skill", skill)
         self.assertIn("| `PostToolUseFailure` |", skill)
+        self.assertIn("| `PostToolUse` |", skill)
+        self.assertIn("| `UserPromptSubmit` |", skill)
+        self.assertIn("| `TurnStarted` |", skill)
+        # And the table says which host each extra registration is for.
+        self.assertIn("Kimi only", skill)
+
+
+class ArmingRangeContractTests(unittest.TestCase):
+    """Codex round-1 F4, executed rather than pinned: the review baseline is
+    write-once, its `none` fallback has an honest branch a reviewer can
+    actually run, and a baseline that fell out of history is reported instead
+    of diffed against blindly. Each test drives the real fenced commands from
+    the shipped files, with the slug substituted exactly the way the hosts
+    document it."""
+
+    def command_text(self) -> str:
+        return (PLUGIN_ROOT / "commands" / "goal-run.md").read_text(encoding="utf-8")
+
+    def fences(self, text: str) -> list[str]:
+        return re.findall(r"```bash\n(.*?)```", text, re.S)
+
+    def arming_fence(self) -> str:
+        """The one fence that validates and arms, slug bound the way every
+        host documents it."""
+        fence = next(
+            f for f in self.fences(self.command_text())
+            if 'arm "$ARGUMENTS"' in f
+        )
+        return fence.replace("$ARGUMENTS", "demo")
+
+    STUB_VALIDATOR = (
+        "class _Report:\n"
+        "    findings = []\n"
+        "def validate_paths(paths):\n"
+        "    return _Report()\n"
+    )
+
+    def stage_fence(self, scripts_dir: Path, stub_validator: bool = True) -> None:
+        """Stage the real arming fence: goal_run.py and its shared plumbing
+        are always the shipped files; the validator is real when the test
+        wants the validator's own contract, a passing stub otherwise."""
+        scripts_dir.mkdir(parents=True, exist_ok=True)
+        for name in ("goal_run.py", "goal_hooks.py"):
+            shutil.copy2(SKILL_ROOT / "scripts" / name, scripts_dir / name)
+        if stub_validator:
+            (scripts_dir / "validate_artifact.py").write_text(
+                self.STUB_VALIDATOR, encoding="utf-8"
+            )
+        else:
+            shutil.copy2(
+                SKILL_ROOT / "scripts" / "validate_artifact.py",
+                scripts_dir / "validate_artifact.py",
+            )
+
+    def sandbox_env(self, cwd: Path, **extra: str) -> dict[str, str]:
+        """A hermetic command-execution environment: no plugin-root variable
+        reaches it, and `$HOME` is a directory the test owns, so Kimi's
+        managed-install default resolves inside the sandbox rather than
+        against whatever this machine happens to have installed."""
+        import os
+
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(cwd)}
+        env.update(extra)
+        return env
+
+    def run_sh(
+        self, script: str, cwd: Path, env: dict[str, str] | None = None
+    ) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["sh", "-c", script], cwd=str(cwd), capture_output=True, text=True,
+            timeout=60, env=env,
+        )
+
+    def test_the_expanded_prompt_binds_the_slug_end_to_end(self) -> None:
+        """The settlement Codex asked for, as far as a no-install mission can
+        run it: expand `$ARGUMENTS` the way Kimi, Claude Code and zCode each
+        document, and the rendered prompt names the artifact, leaves no `$1`,
+        and arms `.goals/active` with exactly the slug - through the real
+        validate-then-arm fence, with a validator the sandbox provides."""
+        expanded = self.command_text().replace("$ARGUMENTS", "demo")
+        self.assertIn("demo", expanded)
+        self.assertNotIn("$1", expanded)
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            (cwd / ".goals").mkdir()
+            (cwd / ".goals" / "demo.goal.md").write_text("# Goal\n", "utf-8")
+            (cwd / ".goals" / "demo.decisions.md").write_text("# Decisions\n", "utf-8")
+            root = cwd / "pluginroot" / "skills" / "ultra-goal" / "scripts"
+            self.stage_fence(root)
+            fence = next(
+                f for f in self.fences(expanded) if 'arm "demo"' in f
+            )
+            result = self.run_sh(
+                fence, cwd, env=self.sandbox_env(cwd, PLUGIN_ROOT=str(cwd / "pluginroot"))
+            )
+            self.assertEqual("", result.stderr, result.stderr)
+            self.assertEqual(
+                "demo\n", (cwd / ".goals" / "active").read_text(encoding="utf-8")
+            )
+            self.assertTrue((cwd / ".goals" / "demo.baseline").is_file())
+            # Round-4 F3: the authorized spec baseline is written before the
+            # marker exists, so no Stop - not even a first candidate - can
+            # author its own baseline.
+            self.assertRegex(
+                (cwd / ".goals" / "demo.spec.baseline").read_text("utf-8"),
+                r"^[0-9a-f]{12}\n$",
+            )
+            self.assertIn(
+                "*.candidate",
+                (cwd / ".goals" / ".gitignore").read_text("utf-8"),
+            )
+
+    def test_an_invalid_artifact_cannot_arm_when_no_root_reaches_the_command(
+        self,
+    ) -> None:
+        """Codex round-2 F1, reproduced as the refusal it must now be: on a
+        host whose command execution carries no plugin-root variable (Kimi's
+        reference documents none for bodies), the round-2 fence printed
+        "Arming continues" and `armed= demo` against an artifact the
+        validator refuses. Driven with the same invalid artifact and no
+        reachable root, the fence must exit non-zero and leave no marker."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            goals = cwd / ".goals"
+            goals.mkdir()
+            (goals / "demo.goal.md").write_text("invalid\n", "utf-8")
+            (goals / "demo.decisions.md").write_text("invalid\n", "utf-8")
+            result = self.run_sh(self.arming_fence(), cwd, env=self.sandbox_env(cwd))
+            self.assertEqual(1, result.returncode, result.stdout)
+            self.assertIn("arming refused", result.stdout)
+            self.assertIn("validate_artifact.py", result.stdout)
+            self.assertFalse(
+                (goals / "active").exists(),
+                "a refused validation must not leave an armed gate behind",
+            )
+
+    def test_the_documented_kimi_install_default_validates_and_gates_arming(
+        self,
+    ) -> None:
+        """The refusal keeps Kimi's primary path usable by giving it a real
+        validation path first: local installs are copied to
+        `$KIMI_CODE_HOME/plugins/managed/<id>/` (documented), the plugin's id
+        is `ultra-goal`, and `KIMI_CODE_HOME` defaults to `~/.kimi-code`. A
+        validator found there decides arming: its error stops the script
+        before `.goals/active` is written; its pass arms."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            goals = cwd / ".goals"
+            goals.mkdir()
+            (goals / "demo.goal.md").write_text("# Goal\n", "utf-8")
+            (goals / "demo.decisions.md").write_text("# Decisions\n", "utf-8")
+            scripts = (
+                cwd / "home" / ".kimi-code" / "plugins" / "managed" / "ultra-goal"
+                / "skills" / "ultra-goal" / "scripts"
+            )
+            self.stage_fence(scripts)
+            # A validator that fails hard decides arming: its SystemExit is
+            # not caught by the fence, which is the point.
+            (scripts / "validate_artifact.py").write_text(
+                "raise SystemExit(1)\n", "utf-8"
+            )
+            home = cwd / "home"
+            refused = self.run_sh(
+                self.arming_fence(), cwd, env=self.sandbox_env(home)
+            )
+            self.assertEqual(1, refused.returncode, refused.stdout)
+            self.assertFalse((goals / "active").exists())
+            self.stage_fence(scripts)
+            armed = self.run_sh(self.arming_fence(), cwd, env=self.sandbox_env(home))
+            self.assertEqual(0, armed.returncode, armed.stdout)
+            self.assertEqual(
+                "demo\n", (goals / "active").read_text(encoding="utf-8")
+            )
+
+    def test_the_real_validator_stops_arming_on_errors_only(self) -> None:
+        """Through the plugin's own validator, not a stub: an invalid pair of
+        artifacts is an error and must refuse to arm; the fence's contract is
+        the validator's - errors stop, advisories do not."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            goals = cwd / ".goals"
+            goals.mkdir()
+            (goals / "demo.goal.md").write_text("invalid\n", "utf-8")
+            (goals / "demo.decisions.md").write_text("invalid\n", "utf-8")
+            result = self.run_sh(
+                self.arming_fence(), cwd,
+                env=self.sandbox_env(cwd, PLUGIN_ROOT=str(PLUGIN_ROOT)),
+            )
+            self.assertEqual(1, result.returncode)
+            self.assertFalse((goals / "active").exists())
+
+    def test_arming_twice_cannot_move_the_baseline(self) -> None:
+        """The empty-diff defect, reproduced and refused: re-running the
+        documented arming command used to rewrite the baseline to the current
+        HEAD, handing the reviewer an empty range for a 26-file change."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            (cwd / ".goals").mkdir()
+            (cwd / ".goals" / "demo.goal.md").write_text("# Goal\n", "utf-8")
+            (cwd / ".goals" / "demo.decisions.md").write_text("# Decisions\n", "utf-8")
+            root = cwd / "pluginroot" / "skills" / "ultra-goal" / "scripts"
+            self.stage_fence(root)
+            env = self.sandbox_env(cwd, PLUGIN_ROOT=str(cwd / "pluginroot"))
+            arming = self.arming_fence()
+            for args in (
+                ("init", "-q", "."), ("config", "user.email", "t@e.st"),
+                ("config", "user.name", "t"),
+            ):
+                subprocess.run(["git", *args], cwd=str(cwd), capture_output=True)
+            self.run_sh(arming, cwd, env=env)
+            first = (cwd / ".goals" / "demo.baseline").read_text(encoding="utf-8")
+            (cwd / "work.txt").write_text("one turn of work\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "add", "-A"], cwd=str(cwd), capture_output=True
+            )
+            subprocess.run(
+                ["git", "commit", "-qm", "wip"], cwd=str(cwd), capture_output=True
+            )
+            self.run_sh(arming, cwd, env=env)
+            self.assertEqual(
+                first,
+                (cwd / ".goals" / "demo.baseline").read_text(encoding="utf-8"),
+                "a re-arm must not narrow the review range to nothing",
+            )
+
+    def review_fence(self) -> str:
+        text = (PLUGIN_ROOT / "skills" / "review" / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        return next(f for f in self.fences(text) if "baseline" in f).replace(
+            "$1", "demo"
+        )
+
+    def test_a_none_baseline_reports_the_review_unavailable(self) -> None:
+        """`git diff none` is a fatal error, so the old fallback wording -
+        'your diff covers uncommitted work only' - described a command that
+        could not run. The branch now says the range cannot be formed and the
+        review must be reported unavailable, which is executable and true."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            goals = cwd / ".goals"
+            goals.mkdir()
+            (goals / "demo.baseline").write_text("none\n", encoding="utf-8")
+            (goals / "demo.goal.md").write_text("# Goal\n", encoding="utf-8")
+            result = self.run_sh(self.review_fence(), cwd)
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertIn("no review range can be formed", result.stdout)
+            self.assertIn("unavailable", result.stdout)
+
+    def test_a_baseline_outside_history_is_reported(self) -> None:
+        """A rebase under an armed run strands the recorded revision; the
+        reviewer must say the range is unreliable instead of silently
+        diffing against whatever Git makes of it."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            goals = cwd / ".goals"
+            goals.mkdir()
+            (goals / "demo.baseline").write_text("a" * 40 + "\n", encoding="utf-8")
+            (goals / "demo.goal.md").write_text("# Goal\n", encoding="utf-8")
+            for args in (
+                ("init", "-q", "."), ("config", "user.email", "t@e.st"),
+                ("config", "user.name", "t"),
+            ):
+                subprocess.run(["git", *args], cwd=str(cwd), capture_output=True)
+            (cwd / "work.txt").write_text("x\n", encoding="utf-8")
+            subprocess.run(["git", "add", "-A"], cwd=str(cwd), capture_output=True)
+            subprocess.run(
+                ["git", "commit", "-qm", "wip"], cwd=str(cwd), capture_output=True
+            )
+            result = self.run_sh(self.review_fence(), cwd)
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertIn("not an ancestor of HEAD", result.stdout)

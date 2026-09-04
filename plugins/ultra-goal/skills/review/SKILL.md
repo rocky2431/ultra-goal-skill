@@ -17,8 +17,26 @@ author's reasoning - that is the point, so do not go looking for it.
 
 ```bash
 cat .goals/$1.goal.md
-git -C . diff HEAD
+base=$(cat .goals/$1.baseline 2>/dev/null)
+if [ "$base" = none ] || [ -z "$base" ]; then
+  printf '%s\n' "ultra-goal: no review range can be formed - this run recorded no git baseline, so there is no bounded change to review. Report the review as unavailable rather than reviewing an unbounded tree."
+else
+  git -C . merge-base --is-ancestor "$base" HEAD || printf '%s\n' "ultra-goal: baseline $base is not an ancestor of HEAD - history moved under the run and the recorded range is unreliable. Report that instead of trusting this diff."
+  git -C . diff "$base"
+  git -C . status --porcelain
+fi
 ```
+
+The diff starts from the revision recorded when the gate was armed — the run commits once
+per turn, so `git diff HEAD` would show only the leftovers and you would be reviewing a
+change you never saw. `status --porcelain` lists the untracked files a diff cannot show;
+read any that the boundary suggests are part of the work. A `none` or missing baseline
+means the project had no Git when the gate was armed: there is no range, and the honest
+report is "review unavailable", not a once-over of the working tree — a review of an
+unbounded tree reads as coverage it does not have. A baseline that is not an ancestor of
+HEAD means history was rewritten under the run; say the range is unreliable. Uncommitted
+changes that predate the run also fall inside the range: attribute them with `## Boundary`
+rather than assuming the run made them.
 
 Read `## Boundary`, `## Acceptance` and `## Anchor` from the artifact, and the diff. Then run
 the anchor command yourself and keep its raw output.

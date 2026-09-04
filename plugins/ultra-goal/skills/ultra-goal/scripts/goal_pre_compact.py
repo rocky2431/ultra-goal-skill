@@ -38,7 +38,9 @@ def _carry_over(spec: str) -> str:
     return "\n".join(body)
 
 
-def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
+def handle(
+    event: dict[str, Any], goal: ActiveGoal, host: str | None
+) -> dict[str, Any] | None:
     spec = goal.goal_path.read_text(encoding="utf-8")
     carry_over = _carry_over(spec)
     parts: dict[str, int] = {}

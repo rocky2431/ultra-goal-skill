@@ -1,0 +1,47 @@
+{
+  "description": "Codex's hook set. The .codex-plugin manifest's hooks field replaces the default hooks/hooks.json location, so this file is the whole registration: Stop (tagged for the gate's per-host continuation budget), SessionStart and PreCompact. Codex documents no PostToolUseFailure event, so the delegation-failure recording this plugin does elsewhere is absent here and the run's report is the only record of a degraded round. Each handler carries a commandWindows override, the field Codex's hooks reference documents as \"an optional Windows-only command override\"; without it a Windows Codex would run a POSIX shell string. Unverified on Windows: no such host, and no emulator for one, exists on the machine this was written on - what is verified is the guard's logic, by a cmd.exe batch-subset interpreter over every one of these strings.",
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "P=\"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/skills/ultra-goal/scripts/goal_stop.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\" --host codex; else exec python \"$P\" --host codex; fi",
+            "commandWindows": "if not exist \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_stop.py\" exit 0 & where py >nul 2>nul || exit 0 & py -3 \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_stop.py\" --host codex",
+            "timeout": 600,
+            "statusMessage": "Checking the loop's anchor"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "^(startup|resume|clear|compact|fork)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "P=\"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/skills/ultra-goal/scripts/goal_session_start.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\"; else exec python \"$P\"; fi",
+            "commandWindows": "if not exist \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_session_start.py\" exit 0 & where py >nul 2>nul || exit 0 & py -3 \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_session_start.py\"",
+            "timeout": 10,
+            "statusMessage": "Restoring the active loop"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "P=\"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/skills/ultra-goal/scripts/goal_pre_compact.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\"; else exec python \"$P\"; fi",
+            "commandWindows": "if not exist \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_pre_compact.py\" exit 0 & where py >nul 2>nul || exit 0 & py -3 \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_pre_compact.py\"",
+            "timeout": 10,
+            "statusMessage": "Recording the loop's carried state"
+          }
+        ]
+      }
+    ]
+  }
+}

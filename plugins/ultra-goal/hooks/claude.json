@@ -1,0 +1,19 @@
+{
+  "description": "Claude Code's additional hook file: PreCompact, which zCode does not document and therefore cannot live in the shared hooks/hooks.json that both hosts auto-discover. Claude Code loads this file because the manifest's hooks field names it as an addition to the auto-discovered standard file.",
+  "hooks": {
+    "PreCompact": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "P=\"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/skills/ultra-goal/scripts/goal_pre_compact.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\"; else exec python \"$P\"; fi",
+            "commandWindows": "if not exist \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_pre_compact.py\" exit 0 & where py >nul 2>nul || exit 0 & py -3 \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_pre_compact.py\"",
+            "timeout": 10,
+            "statusMessage": "Recording the loop's carried state"
+          }
+        ]
+      }
+    ]
+  }
+}

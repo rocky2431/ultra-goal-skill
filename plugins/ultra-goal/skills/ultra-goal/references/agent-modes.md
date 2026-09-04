@@ -165,18 +165,32 @@ then its fallback, then continue as the main session alone** - and record which 
 | whether a target answered | **observed at call time** | — |
 | that a fallback was used | the run, in its report and in `### Lessons` | a **claim**, not evidence |
 
-The last row is the honest one, and an earlier draft of this page got it wrong. It promised
-that a degraded round would show up in the event log and be surfaced by `--audit`. It cannot:
-**the only thing that can observe a failed delegation is the run that attempted it**, and the
-run's statements are claims - `events.jsonl` is written by the hooks precisely so that it is
-not. Writing the event from the run would have put a claim inside the evidence file and
-broken the one distinction the whole design rests on.
+The last row is the honest one, and this page has now been wrong about it in both
+directions. An earlier draft promised that a degraded round would show up in the event log
+and be surfaced by `--audit` while only the run could write it - a claim inside the
+evidence file, exactly what `events.jsonl` being hook-written exists to prevent - so the
+finding was deleted, and the page then overcorrected: it declared the finding one nothing
+could ever produce. The hooks reference settles the split: `PostToolUseFailure` fires
+after a failed tool call, which is a host-observed fact, not the run's account of itself.
 
-So degradation is **declared and reported**, not measured. The order is a decision the owner
-already made, and whether it was used is something the run has to say out loud. That is
-weaker than a mechanical check, and saying which of the two you have is the point:
-a `ROUND_DEGRADED` finding that no code could ever produce would have been worse than none,
-because it reads as coverage.
+So the fallback order is **declared; the failure is measured** on the hosts that register
+the event (Claude Code, zCode, Kimi: the hook writes `role_unavailable`, and `--audit`
+surfaces `ROUND_DEGRADED`). Codex documents no such event, so there the run's report is
+the only record - a declared loss, not parity. And whether the fallback was *adequate* is
+a judgement on every host: the run says it out loud, and the answer is the claim in the
+last row. Saying which half you hold is the point - a `ROUND_DEGRADED` finding nothing
+could produce would be worse than none, because it reads as coverage, and so would a
+"measured" verdict about adequacy nothing can measure.
+
+There is one degradation no hook can measure at all, named here because a review round on
+this project produced it: a call that *succeeds* while writing no file. The
+failure event fires on failures only, and the success-side events fire once per tool call
+and are deliberately not registered, so from inside the plugin a degraded round reads as
+a clean one. The only real detector is the expected artifact's absence - the round's evidence is the file the role was told to write - and it lives where the round is
+consumed: the run does not count a round until the file exists, and `--audit` reports a
+declared reviewer with no review file as `REVIEW_UNEVIDENCED`. For rounds delegated to a
+target that writes somewhere else, even that cannot see the artifact; the report is the
+only record there, which is exactly the Codex row above.
 
 Degrading to the main session alone is **always** the last resort and always allowed. A run
 that stops because a reviewer was out of quota has turned an optional check into a single

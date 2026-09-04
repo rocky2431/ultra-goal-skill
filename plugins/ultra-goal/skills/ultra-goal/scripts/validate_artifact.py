@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from goal_hooks import (  # noqa: E402
     ANCHOR_BUDGET_CEILING,
     frozen_digest,
+    sections,
 )
 
 
@@ -1408,12 +1409,114 @@ def audit_artifact(path: Path) -> tuple[dict[str, object], list[Finding]]:
             )
         )
 
+    # The degradation no hook can see: a delegated round that SUCCEEDED and
+    # wrote nothing. PostToolUseFailure fires on failures only, and the
+    # success-side events fire once per tool call and are deliberately not
+    # registered, so from inside the plugin that round reads as a clean one -
+    # it happened to a review round on this project. The only real detector
+    # is the expected artifact's absence, and this is where the owner looks.
+    # Advisories are not verdicts: a run that has not yet proposed completion
+    # owes no review file, and the guard is the run having begun, nothing
+    # smarter. Rounds delegated to a target that writes elsewhere are beyond
+    # this check by construction - the report is the only record there.
+    if checks or claims:
+        try:
+            spec = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            spec = ""
+        if (sections(spec).get("verification") or "").strip():
+            slug = slug_of(path)
+            review = path.parent / ".work" / f"{slug}-review.md"
+            if not review.is_file():
+                out.append(
+                    Finding(
+                        str(path),
+                        "REVIEW_UNEVIDENCED",
+                        "this run declares a reviewer round but no review artifact exists "
+                        f"at {path.parent.name}/.work/{slug}-review.md: "
+                        "a delegation that returns success without writing its file is "
+                        "invisible to every hook (the failure event fires on failures "
+                        "only), so the file is the round's only evidence here - its "
+                        "absence means the round is unevidenced, not clean. If the "
+                        "reviewer wrote elsewhere, say so; otherwise treat the round as "
+                        "degraded",
+                        "advisory",
+                    )
+                )
+
+    # Turns that ended on the host's continuation budget rather than on the
+    # anchor. Hook-written, so this is a measurement. The two shapes are
+    # reported as what they are: an event with `outcome: red` parked with
+    # the anchor still red; an event without one parked with a claim refused
+    # for unrecovered delegated roles and no anchor run at all - describing
+    # that as "the anchor still red" was reporting a measurement that never
+    # happened.
+    parked = [e for e in events if e.get("event") == "continuation_budget_spent"]
+    parked_red = [e for e in parked if e.get("outcome") == "red"]
+    parked_refused = [e for e in parked if e.get("outcome") is None]
+    if parked_red:
+        hosts = ", ".join(
+            sorted({str(e.get("host")) for e in parked_red if e.get("host")})
+        ) or "unknown host"
+        out.append(
+            Finding(
+                str(path),
+                "CONTINUATION_BUDGET_SPENT",
+                f"{len(parked_red)} attempt(s) ended with the anchor still red because "
+                f"the gate's own bound on consecutive denied attempts was spent "
+                f"({hosts}): the run parks rather than loops. The bound is the "
+                "gate's, sized under the host's force-end where one is known - "
+                "raise it by changing the gate, not the host (the host's cap, "
+                "e.g. CLAUDE_CODE_STOP_HOOK_BLOCK_CAP on Claude Code, is only the "
+                "backstop)",
+                "advisory",
+            )
+        )
+    if parked_refused:
+        roles = ", ".join(
+            sorted({str(e.get("roles")) for e in parked_refused if e.get("roles")})
+        ) or "unnamed"
+        out.append(
+            Finding(
+                str(path),
+                "CONTINUATION_BUDGET_SPENT",
+                f"{len(parked_refused)} completion claim(s) were refused with "
+                f"delegated roles unrecovered ({roles}) and no anchor executed - "
+                "the gate parked the turn rather than judge a claim whose workers "
+                "never positively joined. Whether the later recovery was adequate "
+                "is the report's question, not the log's",
+                "advisory",
+            )
+        )
+
     # Did the goalposts move? Two ways to find out, both from machine-written
     # facts: the gate said so on some turn, or the file on disk no longer
-    # matches the digest recorded on turn 1.
-    baseline = next(
-        (c.get("spec_digest") for c in checks if c.get("spec_digest")), None
-    )
+    # matches the digest the ARMING command recorded. The baseline is the
+    # arming-time `.spec.baseline` file, never a digest found in the event
+    # log: the run can write the log, and deriving the baseline from the
+    # first anchor check repeated the gate's own trust error here - a
+    # laundered first row made the audit bless it.
+    baseline = None
+    spec_baseline = path.parent / f"{slug_of(path)}.spec.baseline"
+    try:
+        armed = spec_baseline.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeError):
+        armed = ""
+    if re.fullmatch(r"[0-9a-f]{12}", armed):
+        baseline = armed
+    elif checks or any(e.get("event") == "candidate_refused" for e in events):
+        out.append(
+            Finding(
+                str(path),
+                "SPEC_BASELINE_MISSING",
+                "this run recorded completion attempts but has no arming-time spec "
+                f"baseline at {spec_baseline.name}: it was armed by hand or predates "
+                "recorded arming, so its frozen spec was never verifiable against "
+                "the owner's authorization - the gate refuses such claims, and this "
+                "audit cannot compare the spec either",
+                "advisory",
+            )
+        )
     now = None
     if path.suffix == ".md" and classify(path) == "goal":
         try:
@@ -1428,7 +1531,8 @@ def audit_artifact(path: Path) -> tuple[dict[str, object], list[Finding]]:
                 str(path),
                 "FROZEN_SPEC_CHANGED",
                 f"`## Intent`, `## Boundary` or `## Anchor` changed during the run "
-                f"({turns}): {baseline} at turn 1 versus {now or 'unknown'} now. Whatever "
+                f"({turns}): {baseline or 'unknown'} as armed versus "
+                f"{now or 'unknown'} now. Whatever "
                 "the anchor proved, it did not prove the goal the owner authorized",
             )
         )
@@ -1436,7 +1540,7 @@ def audit_artifact(path: Path) -> tuple[dict[str, object], list[Finding]]:
         "slug": slug_of(path),
         "path": str(path),
         "rows": rows,
-        "spec_digest_first": baseline,
+        "spec_digest_armed": baseline,
         "spec_digest_now": now,
     }, out
 
@@ -1487,10 +1591,10 @@ def print_audit(state: dict[str, object]) -> None:
                     f"{str(row['exit_code'] if row['exit_code'] is not None else '-'):<5} "
                     f"{row['commit'] or '-'}"
                 )
-        if audit["spec_digest_first"]:
-            same = audit["spec_digest_first"] == audit["spec_digest_now"]
+        if audit["spec_digest_armed"]:
+            same = audit["spec_digest_armed"] == audit["spec_digest_now"]
             print(
-                f"  frozen spec: {audit['spec_digest_first']} at turn 1, "
+                f"  frozen spec: {audit['spec_digest_armed']} as armed, "
                 f"{audit['spec_digest_now'] or 'unknown'} now"
                 f" ({'unchanged' if same else 'CHANGED'})"
             )

@@ -1,28 +1,71 @@
 #!/usr/bin/env python3
-"""Stop hook: the anchor gate.
+"""Stop hook: the completion gate.
 
-Eight steps, seven of which let the turn end. A mechanical gate's default has
-to be "allow" - it only refuses in the one case it is certain about.
+The anchor runs at exactly one moment: when the run claims completion. An
+ordinary Stop means "I want to end a host turn", not "the goal is met", so
+it is never blocked, runs no command, and gets at most one short
+deterministic omission reminder - existence, mtime, hashes and checkboxes
+are not completion oracles, and neither is the absence of a claim.
 
-It refuses exactly once: the anchor ran, and it was red. Everything else -
-frozen spec changed, ceiling reached, run not progressing, anchor unrunnable,
-anchor green - lets the turn end and says why.
+A completion candidate is the run's own marker (`.goals/<slug>.candidate`),
+written per the skill's instructions the moment it believes the goal is met.
+Self-reported is fine: the claim only triggers the check, it grants nothing.
+When one is present the gate consumes it - one claim, one judgment, and the
+consumption is checked: a claim whose marker cannot be removed is refused
+rather than judged, because a surviving marker would let one claim be judged
+twice - and then checks, in order: the authorized spec baseline, which the
+arming command recorded once into `.goals/<slug>.spec.baseline` before any
+Stop could run (a digest found in the event log is never a baseline - the
+run can write the log, and the round-4 laundering probe did exactly that;
+a run with no armed baseline has its claims refused, not verified); the
+anchor identity (a mismatch means no old result substitutes); that every
+delegated role's failure has been *positively* recovered - a later
+successful call naming the same target, observed by the PostToolUse hook,
+never a turn boundary standing in for a join; the owner's ceiling, which
+bounds completion attempts and counts every candidate - refused ones
+included, so an unjoined worker cannot stall the count at attempt 1; and
+then it executes the current anchor once against the current state and
+rules on that result alone. The measurement it writes - session identity,
+spec digest, anchor digest, post-anchor state identity (a whole-tree hash:
+a conservative approximation that must not let unrelated changes masquerade
+as relevance), exit code, output digest - is the only thing the gate ever
+rules on: a historical green is never a pass input, and old rows are audit
+only. The write is checked: an attempt whose measurement cannot be recorded
+is reported as unrecorded, never as a passed-and-filed one.
 
-A changed frozen spec is the newest of those and the least obvious. It allows
-rather than denies on purpose: if the intent, the boundary or the anchor moved,
-the run is no longer pursuing the goal the owner authorized, and denying the
-stop would only make it work harder on a target nobody agreed to. The right
-response is to end the turn loudly and put it back in front of the owner.
+Refusal is bounded in two directions, and both bounds are the gate's own.
+The owner's ceiling bounds total attempts; the continuation budget bounds
+how many attempts in a row the gate may deny within one host turn it can
+observe. The budget is not "the host's cap minus one", and it does not
+assume every host counts blocks per turn: where a host force-ends after
+enough consecutive blocks - Claude Code at 8, counted since the last tool
+progress, not per turn - that fact is the backstop that sizes the number,
+nothing more. zCode exposes neither a readable chain flag nor a turn
+identity, so there the streak resets only on boundaries this gate itself
+observed, and a blocked chain that ends without one carries its tail into
+the next turn: a declared degradation, not a turn-scoped mechanism.
 
-The third outcome is the one that is easy to leave out and expensive to get
-wrong. An anchor that cannot run is not a failed anchor; it is an unknown, and
-folding unknown into either verdict is how a mechanical gate starts lying. A
-timeout is the same class of mistake: it measures elapsed time and reports it as
-success or failure, two things it has no access to.
+Three outcomes, not two, and the third is the one that is easy to leave
+out and expensive to get wrong. An anchor that cannot run is unknown, not
+failed, and folding unknown into either verdict is how a mechanical gate
+starts lying. A timeout is the same class of mistake: it measures elapsed
+time and reports it as success or failure, two things it has no access to.
+Exactly those three values are ever written into an event's `outcome` -
+`green`, `red`, `unknown` are what one command did; what the run *is* is a
+separate disposition vocabulary that lives in prose, not in this log.
+
+A changed frozen spec allows on purpose, loudly: if the intent, the
+boundary or the anchor moved, the run is no longer pursuing the goal the
+owner authorized, and denying the stop would only make it work harder on a
+target nobody agreed to. The right response is to end the turn and put the
+decision back in front of the owner. The disarm on that path is checked
+too: a marker that could not be removed is reported as still armed, with
+the by-hand escape named, never announced as disarmed.
 """
 
 from __future__ import annotations
 
+import argparse
 from datetime import datetime, timezone
 import hashlib
 import os
@@ -38,10 +81,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from goal_hooks import (  # noqa: E402
     ANCHOR_BUDGET_CEILING,
     DEFAULT_ANCHOR_BUDGET,
+    DEFAULT_HOST,
     ActiveGoal,
     append_event,
+    claim_session,
+    event_session,
     frozen_digest,
+    host_facts,
     read_events,
+    read_spec_baseline,
     run_hook,
     sections,
 )
@@ -199,59 +247,77 @@ def _resolvable(command: str, root: Path) -> bool:
     return shutil.which(head) is not None
 
 
-def _allow(reason: str, context: str | None = None) -> dict[str, Any]:
-    """End the turn, telling the owner why and the model what it may change.
+def _allow(reason: str) -> dict[str, Any]:
+    """End the turn, telling the owner why - and the model nothing.
 
-    `additionalContext` is documented for Stop as "Feedback for the model; the
-    conversation continues so the model can act on it", and it carries exactly
-    the mutable surface - nothing frozen. A reminder about something the run may
-    not change has one effect: it invites the change.
+    An allow used to attach `hookSpecificOutput.additionalContext`, read as
+    "end the turn and tell the model what it owes". On Claude Code 2.1.260
+    that is not what happens: the probe `clean-claude-allow-context` (clean
+    settings, isolated directory) showed a second Stop callback and the model
+    acting on the injected text - the turn did not end. So an allow carries
+    no model context at all, on any path.
+
+    The obligation did not disappear; it moved to where it always belonged:
+    the run's own loop. The skill's standing instructions make important
+    results visible through ordinary tool output before the Stop and write
+    durable state (carry-over, lessons, commits) before a turn is allowed to
+    end. The next injectable event - where one exists at all; Kimi's task and
+    system-triggered turns fire no `UserPromptSubmit`, and `SessionStart` is
+    not guaranteed either - is best-effort recovery and never carries
+    correctness.
     """
-    payload: dict[str, Any] = {"systemMessage": f"[ultra-goal] {reason}"}
-    if context:
-        payload["hookSpecificOutput"] = {
-            "hookEventName": "Stop",
-            "additionalContext": context,
+    return {"systemMessage": f"[ultra-goal] {reason}"}
+
+
+def output_for(
+    host: str | None, payload: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """The one allowlisted Stop-output shape for the host that asked.
+
+    A deny is not portable, and the proof is two live consumers, not taste:
+    Codex 0.150.1 blocks on the top-level pair and a mixed payload made the
+    block inert, while Kimi 0.40.1's parser reads `message` and
+    `hookSpecificOutput` only and blocks solely on
+    `hookSpecificOutput.permissionDecision == "deny"` - it ignores the
+    top-level pair entirely. One Stop output cannot be shared across
+    vendors, so instead of emitting both shapes and hoping, this
+    reconstructs exactly one shape per host from the decision and the
+    reason and passes nothing else through: the top-level pair for Claude
+    Code, Codex and zCode; the nested pair for Kimi, with the reason
+    carrying everything the blocked turn must hear - on Kimi it is the only
+    field that reaches the model. An allow is silent toward the model on
+    every host (`systemMessage` speaks to the owner) and carries nothing to
+    translate.
+    """
+    if payload is None or payload.get("decision") != "block":
+        return payload
+    reason = str(payload.get("reason") or "")
+    if (host or DEFAULT_HOST) == "kimi":
+        return {
+            "hookSpecificOutput": {
+                "permissionDecision": "deny",
+                "permissionDecisionReason": reason,
+            }
         }
-    return payload
+    return {"decision": "block", "reason": reason}
 
 
-def _deny(reason: str, context: str | None = None) -> dict[str, Any]:
-    """Refuse to let the turn end, in every documented form at once.
+def _deny(host: str | None, reason: str) -> dict[str, Any]:
+    """Refuse to let the turn end, in the host's own output shape.
 
-    Two authoritative sources disagree about how a Stop hook blocks, and both
-    were read directly rather than assumed:
-
-    - The official hooks reference lists, for Stop,
-      `hookSpecificOutput.permissionDecision: "allow|deny"` alongside
-      `additionalContext` and `systemMessage`.
-    - The running binary's own validator, when it rejected a malformed payload,
-      printed a schema in which Stop's `hookSpecificOutput` carries only
-      `hookEventName` and `additionalContext`, with `decision: "approve"|"block"`
-      and `reason` at the top level.
-
-    I changed this once on the strength of the second source alone and broke a
-    field that the first source documents. So it now emits both, and says why:
-    when the sources conflict, satisfying both costs a few bytes, while picking
-    one costs the only hard power in the design. The docs also record a third
-    route - exit code 2 - which this deliberately does not use, because exiting
-    non-zero would discard the JSON that carries the reason.
-
-    Which one the host honours is still a claim until a live run settles it. The
-    observable is simple: a denied turn does not end.
+    Two authoritative sources disagree about how a Stop hook blocks, and
+    this gate once answered by emitting both in one payload. Codex 0.150.1
+    settled that answer with a paired probe: the mixed payload (top-level
+    `decision: block` plus nested `hookSpecificOutput.permissionDecision`)
+    made the block inert - one Stop callback, no continuation - while the
+    same probe sending only the top-level form blocked correctly. Deleting
+    the nested form globally then broke the other consumer: Kimi 0.40.1
+    blocks only on the nested pair. The fix is not to pick one shape but to
+    stop sharing - `output_for` builds the one shape the asking host reads,
+    and the reason carries everything, because a deny has exactly one
+    channel on every host.
     """
-    payload: dict[str, Any] = {
-        "decision": "block",
-        "reason": reason,
-        "hookSpecificOutput": {
-            "hookEventName": "Stop",
-            "permissionDecision": "deny",
-            "permissionDecisionReason": reason,
-        },
-    }
-    if context:
-        payload["hookSpecificOutput"]["additionalContext"] = context
-    return payload
+    return output_for(host, {"decision": "block", "reason": reason})
 
 
 def _obligation(found: dict[str, str], goal: ActiveGoal) -> str | None:
@@ -292,7 +358,7 @@ def _obligation(found: dict[str, str], goal: ActiveGoal) -> str | None:
         return None
 
     parts = [
-        "Before this turn ends, in `" + goal.goal_path.name + "`:",
+        "Before you try to end this turn again, in `" + goal.goal_path.name + "`:",
     ]
     if present:
         parts.append(
@@ -336,69 +402,416 @@ def _signature(outcome: str, exit_code: int | None, digest: str) -> str:
     return f"{outcome}:{exit_code}:{digest}"
 
 
-def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
+def _tree_digest(root: Path) -> str | None:
+    """Digest of everything the anchor could see: HEAD, changed paths, content.
+
+    `.goals` is excluded because the gate's own event log lives there and
+    grows by one line with every check - counting it would make even a turn
+    that did nothing read as progress. None means there is no work-tree fact
+    (no Git, or Git failed), and the caller falls back to the anchor's output
+    alone.
+
+    Untracked-but-not-ignored files contribute their *content*, not just
+    their path: `git status --porcelain` names an untracked file and
+    `git diff HEAD` omits it entirely, so a path-only digest was blind to the
+    one remaining kind of work - rewriting a file that was never committed.
+    `git ls-files --others --exclude-standard` respects `.gitignore`, so
+    build directories stay out. Content is hashed up to 1 MiB per file; an
+    edit confined to the tail of a larger untracked file is unseen, which is
+    a named bound, not an accident.
+    """
+    parts: list[str] = []
+    for args in (
+        ("rev-parse", "HEAD"),
+        ("status", "--porcelain", "--", ":!.goals"),
+        ("diff", "HEAD", "--", ":!.goals"),
+        ("ls-files", "--others", "--exclude-standard", "-z", "--", ":!.goals"),
+    ):
+        try:
+            completed = subprocess.run(
+                ["git", *args],
+                cwd=str(root),
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        except (OSError, ValueError, subprocess.SubprocessError):
+            return None
+        if completed.returncode != 0:
+            return None
+        parts.append(completed.stdout)
+    for relative in sorted(p for p in parts.pop().split("\0") if p):
+        digest = hashlib.sha256()
+        try:
+            with (root / relative).open("rb") as handle:
+                digest.update(handle.read(1 << 20))
+        except OSError:
+            continue  # vanished or unreadable mid-digest: the path is still counted
+        parts.append(f"{relative}\0{digest.hexdigest()}")
+    return hashlib.sha256("\0".join(parts).encode("utf-8", "replace")).hexdigest()[:12]
+
+
+# Events that end a host turn. Any of them between two denials means the
+# denials cannot have been consecutive: the chain broke when the turn did.
+# They size the denial streak only - since round 5 they are no longer the
+# recovery window's edge for a delegation failure; recovery is a positive
+# observation now (see `_unrecovered_failures`).
+_TURN_BOUNDARIES = {
+    "anchor_unavailable",
+    "ceiling_reached",
+    "frozen_spec_changed",
+    "continuation_budget_spent",
+    "stop_ordinary",
+}
+
+
+def _same_role(failure: dict[str, Any], recovery: dict[str, Any]) -> bool:
+    return (
+        failure.get("role") == recovery.get("role")
+        and failure.get("tool") == recovery.get("tool")
+    )
+
+
+def _unrecovered_failures(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Delegation failures no later successful call has cancelled.
+
+    The observable slice of "all required workers joined": PostToolUseFailure
+    writes `role_unavailable` when a call naming a delegation target fails,
+    and the PostToolUse hook writes `role_recovered` when a later call
+    naming the same target and tool *succeeds*. Recovery is therefore a
+    positive observation, never an inference: round 4's probe recorded a
+    role failure, ended an ordinary turn with nothing recovered, claimed
+    again - and the gate let the anchor run. A turn boundary proves a turn
+    ended; it proves nothing about a worker. The other half of the clause -
+    that no writer can still change the relevant artifacts - is not
+    observable from a hook at all; it stays with the run's own standing
+    instructions, which tell it to wait for joins before claiming.
+    """
+    failures: list[dict[str, Any]] = []
+    for entry in events:
+        kind = entry.get("event")
+        if kind == "role_unavailable":
+            failures.append(entry)
+        elif kind == "role_recovered":
+            failures = [f for f in failures if not _same_role(f, entry)]
+    return failures
+
+
+def _omission_reminder(found: dict[str, str]) -> str:
+    """The one short, deterministic line an ordinary Stop may carry.
+
+    Counts and names only, toward the owner: which carry-over subsections
+    are missing and how many acceptance lines are open. It cannot block,
+    it cannot release completion, and it quotes nothing - a reminder built
+    from file contents would be an oracle wearing a reminder's clothes.
+    """
+    carry = found.get("carry-over") or ""
+    missing = [
+        name for name in ("next", "lessons", "state")
+        if not _subsection(carry, name)
+    ]
+    acceptance = found.get("acceptance") or ""
+    still_open = [
+        line for line in acceptance.splitlines() if line.strip().startswith("- [ ]")
+    ]
+    parts = []
+    if missing:
+        parts.append(
+            "`## Carry-over` is missing "
+            + ", ".join(f"`### {name.title()}`" for name in missing)
+            + "."
+        )
+    if still_open:
+        parts.append(f"{len(still_open)} `## Acceptance` line(s) are still open.")
+    return " ".join(parts)
+
+
+def _current_turn_id(events: list[dict[str, Any]]) -> Any | None:
+    """The host turn this Stop belongs to, where a host names its turns.
+
+    Kimi's TurnStarted fires for every new turn whatever its origin and
+    carries `turn_id`; its Stop input carries no turn identity (0.40.1
+    binary: `inputData: {stopHookActive: ...}` and nothing else), so the
+    latest `turn_started` row is the strongest identity available. Hosts
+    with no turn event (everyone else) get None, and the budget is scoped by
+    boundaries instead. Turn ids are per-session ordinals; two concurrent
+    sessions in one repository could collide on them - a named bound, not a
+    solved one.
+    """
+    for entry in reversed(events):
+        if entry.get("event") == "turn_started":
+            return entry.get("turn_id")
+    return None
+
+
+def _denial_streak(
+    events: list[dict[str, Any]], fresh_chain: bool = False
+) -> int:
+    """How many completion attempts in a row this gate has already denied -
+    within the host turn that is still running.
+
+    What it counts changed when the anchor moved to completion candidates:
+    a denial is a refused claim (a red `anchor_checked`, or a
+    `candidate_refused` for an unrecovered role failure), and an ordinary
+    Stop denies nothing. The count is still bounded by turn boundaries this
+    gate or its sibling hooks *observed*, never by the bare tail of a
+    persistent log. The observable boundaries are:
+
+    - a `turn_started` event - the host's own TurnStarted hook ran, which is
+      the host saying a new turn began, whatever began it (Kimi's channel:
+      the reference names user, task and system_trigger origins, so this is
+      the one boundary that covers turns no user prompt opened, and it
+      carries the host's `turn_id`);
+    - a `prompt_submitted` event - the registered UserPromptSubmit hook ran.
+      A user prompt is one origin of a turn, not the boundary itself, but
+      the row is still an observation and still breaks the tail on hosts
+      where no turn event exists;
+    - any recorded decision that ends a turn - an allow, an ordinary stop,
+      a ceiling, a closed run;
+    - the host's own chain flag, passed in as `fresh_chain` - read only where
+      the host's reference documents the field and its meaning.
+
+    Where a `turn_started` row carries a `turn_id`, the count is additionally
+    keyed by it: denials from a different host turn do not count, however
+    the log is ordered. Events without a `turn_id` predate the counter and
+    read as a boundary, which is the safe direction: a run upgraded
+    mid-flight counts its budget from zero rather than inheriting a streak
+    it cannot see.
+    """
+    if fresh_chain:
+        return 0
+    turn_id = _current_turn_id(events)
+    streak = 0
+    for entry in reversed(events):
+        kind = entry.get("event")
+        if kind == "anchor_checked":
+            if not entry.get("blocked"):
+                break
+            if turn_id is not None and entry.get("turn_id") != turn_id:
+                break
+            streak += 1
+        elif kind == "candidate_refused":
+            if turn_id is not None and entry.get("turn_id") != turn_id:
+                break
+            streak += 1
+        elif (
+            kind == "turn_started"
+            or kind == "prompt_submitted"
+            or kind in _TURN_BOUNDARIES
+        ):
+            break
+    return streak
+
+
+# Every event that consumes one completion candidate. The owner's ceiling
+# bounds completion attempts, so every candidate counts - an anchor
+# execution, a refusal for unrecovered workers, an unconsumable claim, an
+# anchor that could not run, a claim the ceiling itself answered. Counting
+# only the anchor executions was the round-4 bypass: three explicit
+# candidates under `ceiling: 1` were all called attempt 1 while the owner's
+# bound never moved.
+CANDIDATE_EVENTS = (
+    "anchor_checked",
+    "candidate_refused",
+    "anchor_unavailable",
+    "ceiling_reached",
+)
+
+
+def handle(
+    event: dict[str, Any], goal: ActiveGoal, host: str | None = None
+) -> dict[str, Any] | None:
+    # The session identity travels with the measurement, and an unclaimed
+    # goal is claimed here: the first Stop that carries a session id owns
+    # the run from then on. `run_hook` has already turned every other
+    # session's event away; this is the one write that makes that check
+    # meaningful. First-write-wins, and it is ownership information, not a
+    # lock - see `claim_session`.
+    session = event_session(event)
+    if session is not None and goal.owner_session is None:
+        claim_session(goal, session)
+
     spec = goal.goal_path.read_text(encoding="utf-8")
     found = sections(spec)
     anchor_section = found.get("anchor") or ""
     anchor, ambiguous = _first_command(anchor_section)
-    budget, budget_declared = _budget(anchor_section)
-    if ambiguous is not None or not anchor:
-        # Recorded, not just announced. These two turns used to leave the log
-        # empty, so an artifact the gate could never enforce produced a run that
-        # looked, in `--audit` and in the event log, exactly like a run that had
-        # not started yet. Deliberately *not* an `anchor_checked` event: nothing
-        # was checked, so it must not advance the turn count or the ceiling.
-        reason = ambiguous or (
-            "no runnable anchor in `## Anchor`, so nothing can be gated. Fix the "
-            "artifact or the gate is decorative"
-        )
-        append_event(
-            goal,
-            {
-                "ts": datetime.now(timezone.utc).isoformat(),
-                "event": "anchor_unavailable",
-                "turn": len([e for e in read_events(goal)
-                             if e.get("event") == "anchor_checked"]) + 1,
-                "reason": reason,
-                "spec_digest": frozen_digest(spec),
-            },
-        )
-        return _allow(f"{goal.slug}: {reason}.")
-
-    events = read_events(goal)
-    checks = [e for e in events if e.get("event") == "anchor_checked"]
-    turn = len(checks) + 1
     digest = frozen_digest(spec)
 
-    # Step 3: did the frozen spec move? Compared against the first turn's
-    # record, not the previous one, so a change followed by a change back is
-    # still a change. Allows, and says so loudly - see the module docstring.
-    first = next((c.get("spec_digest") for c in checks if c.get("spec_digest")), None)
-    if first is not None and first != digest:
-        append_event(
-            goal,
-            {
-                "ts": datetime.now(timezone.utc).isoformat(),
-                "event": "frozen_spec_changed",
-                "turn": turn,
-                "spec_digest_first": first,
-                "spec_digest_now": digest,
-            },
-        )
+    events = read_events(goal)
+    candidates = [e for e in events if e.get("event") in CANDIDATE_EVENTS]
+    turn = len(candidates) + 1
+    candidate_path = goal.goals_dir / f"{goal.slug}.candidate"
+
+    # The authorized baseline is the digest the arming command recorded in
+    # `.goals/<slug>.spec.baseline` before any Stop could run. It is
+    # compared on any Stop, candidate or not, because the check is a digest
+    # comparison and never needs the anchor to run - so a moved goalpost
+    # cannot hide behind "no claim was made". A digest inside the event log
+    # is deliberately never consulted: the run can write the log, and a
+    # completion candidate arriving first must not author its own baseline.
+    # Allows, loudly: see the module docstring.
+    armed = read_spec_baseline(goal)
+    if armed is not None and armed != digest:
+        if not any(
+            e.get("event") == "frozen_spec_changed" for e in events
+        ):
+            append_event(
+                goal,
+                {
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "event": "frozen_spec_changed",
+                    "turn": turn,
+                    "spec_digest_armed": armed,
+                    "spec_digest_now": digest,
+                },
+            )
+        # The run is closed, not merely scolded. There is no mid-run
+        # re-baseline: the armed digest was written by the owner's arming
+        # command, so a changed spec can only mean the run's terms ended.
+        # The disarm is checked - an unlink that failed is not a disarm,
+        # and announcing one while the marker survives was the round-4
+        # false-terminal probe. The observations stay for `--audit` and
+        # Git, and the owner reopens the interview.
+        def _drop(path: Path) -> bool:
+            try:
+                path.unlink()
+                return True
+            except OSError:
+                return False
+
+        marker_gone = _drop(goal.marker_path)
+        _drop(candidate_path)
+        if marker_gone:
+            tail = (
+                "The run is closed and the gate is disarmed; report what changed and "
+                "why. To pursue the changed goal, the owner reopens the interview and "
+                "a new run starts against a new spec - a fresh start clears the event "
+                "log and baselines by hand. Do not carry on against the edited spec."
+            )
+        else:
+            tail = (
+                f"The run is closed, but the gate could not remove its own marker "
+                f"({goal.marker_path.name} would not delete), so hooks will keep "
+                f"seeing this run until it is removed by hand: `rm {goal.marker_path}`. "
+                "Report what changed and why; the owner reopens the interview for a "
+                "new spec."
+            )
         return _allow(
             f"{goal.slug}: `## Intent`, `## Boundary` or `## Anchor` has changed since "
-            f"turn 1 ({first} -> {digest}). Those are frozen for the duration of the "
-            "run, so this is no longer the goal the owner authorized. Stopping. Report "
-            "what changed and why, and let the owner reopen the interview - do not "
-            "carry on against the edited spec."
+            f"the gate was armed ({armed} -> {digest}). Those are frozen for the "
+            f"duration of the run, so this is no longer the goal the owner "
+            f"authorized. {tail}"
+        )
+
+    if not candidate_path.is_file():
+        # An ordinary Stop: the run wants to end a host turn, and that is
+        # all it means. No anchor runs, nothing is judged, and the one line
+        # it may carry is the deterministic omission reminder - counts and
+        # names toward the owner, never an oracle.
+        reminder = _omission_reminder(found)
+        entry: dict[str, Any] = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "event": "stop_ordinary",
+            "spec_digest": digest,
+            "attempts": len(candidates),
+        }
+        turn_id = _current_turn_id(events)
+        if turn_id is not None:
+            entry["turn_id"] = turn_id
+        if session is not None:
+            entry["session_id"] = session
+        append_event(goal, entry)
+        message = f"{goal.slug}: turn ended without a completion claim."
+        if reminder:
+            message += " " + reminder
+        if armed is None:
+            message += (
+                " (No arming-time spec baseline is recorded for this run, so its "
+                "completion claims will be refused rather than judged - re-arm "
+                "through the arming command to fix that.)"
+            )
+        return _allow(message)
+
+    # A completion candidate. Consume it before judging: one claim, one
+    # judgment, and state that changes after the check cannot resurrect a
+    # claim the gate already ruled on - a new claim needs a new marker.
+    # The read and the unlink are separate because they can fail
+    # separately, and an unlink that failed is not a consumption: judging
+    # anyway would let one surviving marker be judged on every following
+    # Stop - the round-4 probe got two "passed attempt" announcements out
+    # of one candidate that way. A claim that cannot be consumed is
+    # refused, never judged.
+    try:
+        claim_text = candidate_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        claim_text = ""
+    consumed = False
+    try:
+        candidate_path.unlink()
+        consumed = True
+    except OSError:
+        consumed = False
+
+    facts = host_facts(host)
+    budget = facts.continuation_budget
+    fresh_chain = (
+        facts.chain_flag is not None and event.get(facts.chain_flag) is False
+    )
+    turn_id = _current_turn_id(events)
+
+    def refuse(reason: str, **extra: Any) -> dict[str, Any]:
+        """Record and return one refused candidate, budget-bounded."""
+        entry = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "event": "candidate_refused",
+            "turn": turn,
+            "reason": reason,
+            **extra,
+        }
+        if turn_id is not None:
+            entry["turn_id"] = turn_id
+        if session is not None:
+            entry["session_id"] = session
+        append_event(goal, entry)
+        if budget is not None and _denial_streak(events, fresh_chain) >= budget:
+            append_event(
+                goal,
+                {
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "event": "continuation_budget_spent",
+                    "turn": turn,
+                    "host": host or DEFAULT_HOST,
+                    "budget": budget,
+                    "refusal": reason,
+                    **extra,
+                },
+            )
+            return _allow(
+                f"{goal.slug}: this completion claim was refused ({reason}), and "
+                f"this gate's own bound of {budget} consecutive denied attempt(s) "
+                f"for one host turn is spent ({facts.source}). The turn ends here "
+                "with the goal unmet. Retry the role or its declared fallback, then "
+                "claim completion again."
+            )
+        return _deny(host, f"{goal.slug}: completion claim refused ({reason}).")
+
+    if not consumed:
+        return refuse(
+            "the claim's marker could not be removed, so it was not judged - a "
+            "claim the gate cannot consume must not be judged twice. Make "
+            f"`{goal.goals_dir.name}` writable and claim again",
         )
 
     stop_section = found.get("stop condition") or ""
     ceiling, declared = _ceiling(stop_section)
 
-    # Step 4: the ceiling is the owner's, and it wins even when the goal is unmet.
-    # `None` means the owner declared no ceiling, so this step does not exist for
-    # that run. Substituting a number here is how a long run gets stopped in its
+    # The ceiling is the owner's, it bounds completion attempts, and every
+    # candidate is one attempt - refused ones included, which is why the
+    # count above includes `candidate_refused`. It wins even when the goal
+    # is unmet, and it is checked before the refusals so an owner-declared
+    # bound can end a run that would otherwise deny forever. `None` means
+    # the owner declared no ceiling, so this step does not exist for that
+    # run. Substituting a number here is how a long run gets stopped in its
     # owner's voice by a limit they never set.
     if ceiling is not None and turn > ceiling:
         append_event(
@@ -418,25 +831,79 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
             f"`or after N turns`."
         )
         return _allow(
-            f"{goal.slug}: ceiling of {ceiling} turns reached without meeting the "
-            f"goal. Stopping. Report what is left rather than claiming success.{source}",
-            _obligation(found, goal),
+            f"{goal.slug}: ceiling of {ceiling} completion attempts reached without "
+            f"meeting the goal. Stopping. Report what is left rather than claiming "
+            f"success.{source}"
         )
 
-    # Step 6: is the anchor even runnable? Answered by looking, not by inference.
-    if not _resolvable(anchor, goal.goals_dir.parent):
+    # No authorized baseline, no judgment. The arming command records the
+    # frozen digest before any Stop can run; a run whose baseline is absent
+    # was never armed through the fence, and its claims are refused rather
+    # than "verified" against a spec nobody armed - the alternative was the
+    # round-4 laundering hole, where the first event to arrive authored the
+    # baseline.
+    if armed is None:
+        return refuse(
+            "no arming-time spec baseline is recorded for this run, so there is "
+            "no authorized spec to complete against. Disarm and re-arm through the "
+            "arming command (`goal_run.py disarm`/`arm`), then claim again"
+        )
+
+    if ambiguous is not None or not anchor:
+        # Recorded, not just announced. Deliberately *not* an
+        # `anchor_checked` event: nothing was checked - but the candidate
+        # was consumed, so it counts as an attempt and is recorded as one.
+        reason = ambiguous or (
+            "no runnable anchor in `## Anchor`, so nothing can be gated. Fix the "
+            "artifact or the gate is decorative"
+        )
         append_event(
+            goal,
+            {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "event": "anchor_unavailable",
+                "turn": turn,
+                "reason": reason,
+                "spec_digest": digest,
+            },
+        )
+        return _allow(f"{goal.slug}: {reason}.")
+
+    # All required workers joined - the observable slice, and it is
+    # positive: a delegation failure blocks a completion claim until a
+    # later successful call naming the same target is observed, not until
+    # some turn happens to end. Retry the role or its fallback, then claim
+    # again.
+    unrecovered = _unrecovered_failures(events)
+    if unrecovered:
+        roles = ", ".join(
+            sorted({str(e.get("role") or "unnamed") for e in unrecovered})
+        )
+        return refuse(
+            f"a delegated role failed and nothing since shows it recovered: "
+            f"re-run the role ({roles}) or its declared fallback, then claim "
+            "completion again",
+            roles=roles,
+        )
+
+    # Is the anchor even runnable? Answered by looking, not by inference.
+    if not _resolvable(anchor, goal.goals_dir.parent):
+        recorded = append_event(
             goal,
             {
                 "ts": datetime.now(timezone.utc).isoformat(),
                 "event": "anchor_checked",
                 "turn": turn,
                 "anchor": anchor,
+                "anchor_digest": hashlib.sha256(
+                    anchor.encode("utf-8", "replace")
+                ).hexdigest()[:12],
                 "outcome": "unknown",
                 "exit_code": None,
                 "output_digest": "",
                 "signature": "unknown:unresolvable:",
                 "spec_digest": digest,
+                "blocked": False,
                 "tail": "executable not found",
             },
         )
@@ -444,9 +911,16 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
             f"{goal.slug}: the anchor's command was not found on PATH, so whether "
             "the work landed is unknown - not failed. Stopping. Fix the anchor or "
             "say the result is unverified; do not guess either way."
+            + ("" if recorded else
+               " The event log could not be written, so this attempt is unrecorded.")
         )
 
-    # Step 7+8: run it. Three outcomes, not two.
+    # The gate itself executes the current anchor once against the current
+    # state and rules on that result alone. The work tree is digested after
+    # the run as the post-anchor state identity: a conservative
+    # approximation of "the state this measurement is about", recorded with
+    # that limit stated.
+    seconds, budget_declared = _budget(anchor_section)
     try:
         completed = subprocess.run(
             anchor,
@@ -454,7 +928,7 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
             cwd=str(goal.goals_dir.parent),
             capture_output=True,
             text=True,
-            timeout=budget,
+            timeout=seconds,
         )
         exit_code: int | None = completed.returncode
         output = (completed.stdout + completed.stderr).strip()
@@ -469,48 +943,74 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
     except (OSError, ValueError) as exc:
         exit_code, output, outcome = None, str(exc), "unknown"
 
+    tree_after = _tree_digest(goal.goals_dir.parent)
+
     output_digest = hashlib.sha256(output.encode("utf-8", "replace")).hexdigest()[:12]
     signature = _signature(outcome, exit_code, output_digest)
-    append_event(
-        goal,
-        {
+    checks = [e for e in events if e.get("event") == "anchor_checked"]
+
+    def record(blocked: bool) -> bool:
+        """Write the measurement, and say whether it landed.
+
+        The write is checked because announcing "passed on attempt N" over
+        an unwritten log was a false announcement: round 4's probe got a
+        green allow out of a gate whose event log stayed zero bytes. A
+        failed write is reported to the owner as unrecorded - never as a
+        filed measurement.
+        """
+        entry: dict[str, Any] = {
             "ts": datetime.now(timezone.utc).isoformat(),
             "event": "anchor_checked",
             "turn": turn,
             "anchor": anchor,
+            "anchor_digest": hashlib.sha256(
+                anchor.encode("utf-8", "replace")
+            ).hexdigest()[:12],
+            "claim": claim_text.strip().splitlines()[0][:200]
+            if claim_text.strip() else "",
             "outcome": outcome,
             "exit_code": exit_code,
             "output_digest": output_digest,
             "signature": signature,
             "spec_digest": digest,
-            "budget_seconds": budget,
+            "budget_seconds": seconds,
             "budget_source": "declared" if budget_declared else "default",
+            "tree_digest": tree_after,
+            "blocked": blocked,
             "tail": output.splitlines()[-1][:200] if output else "",
-        },
-    )
+        }
+        if turn_id is not None:
+            entry["turn_id"] = turn_id
+        if session is not None:
+            entry["session_id"] = session
+        return append_event(goal, entry)
 
     if outcome == "unknown":
         if exit_code is None:
             detail = (
-                f"ran past its {budget}s budget"
+                f"ran past its {seconds}s budget"
                 + ("" if budget_declared else ", which is this gate's default - declare "
                    "one in `## Anchor` as `budget: N minutes` if the anchor needs longer")
             )
         else:
             detail = f"exit {exit_code}"
+        recorded = record(False)
         return _allow(
-            f"{goal.slug}: the anchor could not run ({detail}), so whether the work "
-            "landed is unknown - not failed. Stopping. Say it is unverified rather "
-            "than guessing either way.",
-            _obligation(found, goal),
+            f"{goal.slug}: the anchor could not run ({detail}) on attempt {turn}, so "
+            "whether the work landed is unknown - not failed. Stopping. Say it is "
+            "unverified rather than guessing either way."
+            + ("" if recorded else
+               " The event log could not be written, so this attempt is unrecorded - "
+               "report it as unverified and unwitnessed.")
         )
 
     if outcome == "green":
-        # "Goal met" was this gate claiming something it cannot measure. A green
-        # anchor is one command exiting 0; whether the goal is met is
-        # `## Stop condition`'s question and `## Acceptance`'s evidence. Saying
-        # otherwise put the Skill's own doctrine - a green anchor is not a pass -
-        # in the mouth of the one component with hard power.
+        # "Goal met" was this gate claiming something it cannot measure. A
+        # green anchor is one command exiting 0 on this state; whether the
+        # goal is met is `## Stop condition`'s question and `## Acceptance`'s
+        # evidence. Saying otherwise put the Skill's own doctrine - a green
+        # anchor is not a pass - in the mouth of the one component with
+        # hard power.
         still_open = [
             line for line in (found.get("acceptance") or "").splitlines()
             if line.strip().startswith("- [ ]")
@@ -519,39 +1019,124 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
             f" {len(still_open)} `## Acceptance` line(s) are still open, so this is not "
             "the goal yet: report the verdict and what is left."
             if still_open else
-            " No `## Acceptance` line is still open. Whether that means the run is done "
-            "is `## Stop condition`'s question, not this gate's - check it before "
+            " No `## Acceptance` line is still open. Green proves this anchor exited 0 "
+            "on this state and nothing more: whether that satisfies the goal is "
+            "`## Stop condition`'s question, not this gate's - check it before "
             "claiming completion."
         )
+        recorded = record(False)
         return _allow(
-            f"{goal.slug}: anchor `{anchor}` passed on turn {turn}.{left}",
-            _obligation(found, goal),
+            f"{goal.slug}: anchor `{anchor}` passed on attempt {turn}.{left}"
+            + ("" if recorded else
+               " The event log could not be written, so this attempt is unrecorded - "
+               "report the verdict as unwitnessed and fix the log before the next "
+               "claim.")
         )
 
-    # Step 5: red, but is anything changing? Two identical results in a row mean
-    # the run is spinning, and denying the stop again would only spin it more.
-    previous = checks[-1].get("signature") if checks else None
-    if previous == signature:
-        return _allow(
-            f"{goal.slug}: the anchor produced an identical result two turns in a "
-            f"row (turn {turn}), so the run is not progressing. Stopping. Report "
-            "what is blocking it instead of retrying.",
-            _obligation(found, goal),
+    # Red: the claim is refused and the turn is held. Two identical
+    # signatures are recorded and named, never released on - identical
+    # failure output does not prove no progress, and releasing on the second
+    # one cuts off investigation and long fixes.
+    previous = checks[-1] if checks else None
+    repeated = previous is not None and previous.get("signature") == signature
+    note = (
+        " This attempt's output is byte-identical to the previous attempt's - "
+        "recorded, not a release: identical failure output does not prove no "
+        "progress."
+        if repeated else ""
+    )
+
+    # How much longer may this turn be held? The bound is the gate's own -
+    # how many attempts in a row it will deny within one host turn it can
+    # observe - sized by the host's force-end where one is known, as a
+    # backstop and never as a claim about how the host counts.
+    if budget is not None and _denial_streak(events, fresh_chain) >= budget:
+        recorded = record(False)
+        append_event(
+            goal,
+            {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "event": "continuation_budget_spent",
+                "turn": turn,
+                "host": host or DEFAULT_HOST,
+                "budget": budget,
+                "outcome": "red",
+                "exit_code": exit_code,
+            },
         )
+        message = (
+            f"{goal.slug}: anchor `{anchor}` is still red (exit {exit_code}) on "
+            f"attempt {turn}, and this gate's own bound of {budget} consecutive "
+            f"denied attempt(s) for one host turn is spent ({facts.source}). The turn "
+            "ends here with the goal unmet. Write `### Lessons` and `### Next`, "
+            f"commit this turn as `goal({goal.slug}) turn {turn}: ... [anchor: red]` "
+            "- one completion attempt is one number - and the next prompt "
+            "continues the run. The ceiling still binds: the event log keeps the "
+            "count."
+        )
+        if (host or DEFAULT_HOST) == "claude":
+            message += (
+                " The host's own force-end is CLAUDE_CODE_STOP_HOOK_BLOCK_CAP "
+                "(default 8) consecutive blocks with no tool progress in between - "
+                "the backstop this bound stays under, not the bound itself."
+            )
+        if not recorded:
+            message += (
+                " The event log could not be written, so this attempt is unrecorded."
+            )
+        return _allow(message)
 
     # `of {ceiling}` printed "of None" for a run the owner declared unbounded.
     # It says nothing at all there instead: a run without a ceiling should never
     # read the word, and inventing a number is what `_ceiling` exists to prevent.
     of_ceiling = f" of {ceiling}" if ceiling is not None else ""
-    return _deny(
-        f"{goal.slug}: anchor `{anchor}` is still failing (exit {exit_code}) on turn "
-        f"{turn}{of_ceiling}, so the goal is not met. Keep working. Before the next "
-        "attempt, write one lesson into `### Lessons` naming the cause and the next "
-        "action. The anchor is this turn's check; the reviewer and critic in "
-        "`## Verification` run when you propose completion, not on every red turn.",
-        _obligation(found, goal),
+    deny_reason = (
+        f"{goal.slug}: completion claim refused - anchor `{anchor}` is still failing "
+        f"(exit {exit_code}) on attempt {turn}{of_ceiling}, so the goal is not met. "
+        "Keep working, and run the applicable verification yourself with ordinary "
+        "tools after your next relevant change rather than waiting for this gate. "
+        "Before the next claim, write one lesson into `### Lessons` naming the cause "
+        "and the next action. The reviewer and critic in `## Verification` run when "
+        f"you propose completion, not on every red attempt.{note}"
     )
+    if budget == 1:
+        # A one-block host never invokes this gate again after blocking: when
+        # the turn ends there is no second message, so the park instructions
+        # travel with the only message the run will get.
+        deny_reason += (
+            " This host continues a blocked turn at most once: when the turn "
+            f"ends, commit it as `goal({goal.slug}) turn {turn}: ... [anchor: red]`, "
+            "rewrite `### Lessons` and `### Next`, and continue on the next prompt - "
+            "the ceiling still binds on the attempt count."
+        )
+    obligation = _obligation(found, goal)
+    if obligation:
+        deny_reason += "\n" + obligation
+    recorded = record(True)
+    if not recorded:
+        deny_reason += (
+            "\nThe event log could not be written: this attempt is unrecorded - "
+            "say so in your report rather than citing a measurement nobody can read."
+        )
+    return _deny(host, deny_reason)
 
 
 if __name__ == "__main__":
-    raise SystemExit(run_hook("Stop", handle))
+    # Exit 2 is the one code every host here reads as a deliberate block, and
+    # it is also what Python itself returns for an unreadable script and what
+    # argparse returns for a bad argument - so the fail-open has to cover the
+    # launch and the argument handling, not only the inside of `run_hook`.
+    # SystemExit is a BaseException: argparse's error exit is caught here and
+    # downgraded to the one code a broken hook is allowed to return.
+    try:
+        parser = argparse.ArgumentParser(add_help=False)
+        parser.add_argument(
+            "--host",
+            default=DEFAULT_HOST,
+            help="which host is running this hook; sets the continuation budget",
+        )
+        args, _unrecognized = parser.parse_known_args()
+        code = run_hook("Stop", handle, host=args.host)
+    except BaseException:  # noqa: BLE001 - launch and argparse fail open too
+        code = 0
+    raise SystemExit(code)

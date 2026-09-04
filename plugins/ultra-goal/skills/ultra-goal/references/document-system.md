@@ -8,10 +8,12 @@ observations that arrive between them.
 |---|---|---|---|---|---|
 | `<slug>.goal.md` — spec sections | the specification | owner + agent, together | Ask and explicit Modify **only** | **frozen for the duration of a run** | yes |
 | `<slug>.goal.md` — `## Carry-over` | the execution state | the running agent | before finishing **every** turn | rewritten, never appended | yes |
-| `<slug>.events.jsonl` | the observations | **the hooks, never the run** | every turn | **append-only, never edited** | yes |
+| `<slug>.events.jsonl` | the observations | **the hooks, never the run** | at every Stop, prompt, delegation event and compaction | **append-only, never edited** | yes |
 | `<slug>.decisions.md` | the decision tree | owner + agent | Ask and Modify | rows edited, never appended | yes |
 | `.goals/.work/*` | worker intermediates | each delegated worker | while a round runs | disposable | **no** |
-| `.goals/active` | which goal is running | owner or agent | on start and stop | one line | no |
+| `.goals/active` | which goal is running, and for which session | owner or agent to arm; the first session-carrying Stop adds the `session <id>` line | on start and stop | slug, plus the session line once claimed | no |
+| `<slug>.spec.baseline` | the authorized digest of the frozen sections | **the arming fence, before any Stop ran** | once, at arming | **write-once** | yes |
+| `<slug>.candidate` | the run's completion claim, one line | the run, once per claim | at each claim | consumed by the gate when it rules | no |
 | git history | the evolution | git | one commit per turn | immutable | — |
 
 The two "no" rows are arranged, not just asserted: arming writes `.goals/.gitignore`
@@ -47,10 +49,10 @@ line, and the line is what makes the trace worth keeping:
 | the hooks | `<slug>.events.jsonl` | **measurements** |
 | the owner (with the agent) | `<slug>.decisions.md` | authorizations |
 
-`validate_artifact.py .goals --audit` is the join: each turn's committed verdict beside the
-verdict the gate measured for that turn. Rows that agree are unremarkable. The first row
-where they part company is the answer to "where did this go wrong", which is the only
-question a finished run is ever asked.
+`validate_artifact.py .goals --audit` is the join: each completion attempt's committed
+verdict beside the verdict the gate measured for it. Rows that agree are unremarkable. The
+first row where they part company is the answer to "where did this go wrong", which is the
+only question a finished run is ever asked.
 
 Nothing here auto-resolves a divergence. The log cannot know why a turn claimed green; it
 knows only what it measured.
@@ -62,12 +64,12 @@ they quoted files the model can open. The rule that settles it:
 
 > **A hook inlines only what it alone possesses. Everything already on disk gets a path.**
 
-| | Stop, every turn | SessionStart, once per boundary |
+| | Stop, at a completion claim | SessionStart, once per boundary |
 |---|---|---|
-| **Possesses alone** | the anchor verdict it just measured; the obligation | the fact that a run exists at all |
-| **Inlines** | verdict, obligation, section names, open-line count | the frozen terms: intent, boundary, anchor, carry-over |
+| **Possesses alone** | the anchor verdict it just measured; the refusal's reason | the fact that a run exists at all |
+| **Inlines** | verdict and obligation inside the deny's reason; the owner-facing one-liner | the frozen terms: intent, boundary, anchor, carry-over |
 | **Points at** | the bodies of `### State`, `### Lessons`, `### Next`, `## Acceptance` | everything else, named when dropped |
-| **Size** | ~660 characters, **independent of the artifact** | bounded by `CONTEXT_LIMIT`, frozen terms exempt |
+| **Size** | bounded, **independent of the artifact** | bounded by `CONTEXT_LIMIT`, frozen terms exempt |
 
 The asymmetry is not inconsistency. At a session boundary the run **does not know a goal
 exists**, so it has no reason to open any file - the injection's job is to establish that
@@ -116,27 +118,29 @@ above, and the anchor's output is what settles it. `--audit` is where the two me
 
 ## What the gate says, and to whom
 
-Two channels, and confusing them wastes the only per-turn contact the design has.
+Two channels, and confusing them wastes the deny - the one contact with the model that
+still ends nothing.
 
 | Channel | Read by | Carries |
 |---|---|---|
-| `decision: "block"` + `reason` | the model, when the turn may not end | why it may not end, and the one thing to do first |
-| `hookSpecificOutput.additionalContext` | the model, on every turn that does end | **exactly the sections the run may change** - named, with the open acceptance lines counted, never quoted |
+| the deny, in the asking host's own shape | the model, when a claimed completion may not stand | why it may not stand, and the one thing to do first |
 | `systemMessage` | the owner | one line of what happened |
 
-The middle row follows a rule worth stating on its own: **what the gate reminds you of should
-be exactly what you may change.** A mutable section it never mentions is the one that goes
-stale; a frozen section it does mention is an invitation to edit. So the reminder holds
-`### Next`, `### Lessons`, `### State` and the still-open `## Acceptance` lines, and nothing
-else - the frozen spec is re-injected at session boundaries, where the question is *what am I
-doing*, not here, where it is *what do I owe before this turn ends*.
+There is no per-turn injection channel, and that is a measured fact, not a preference: on
+Claude Code 2.1.260 an allow carrying `additionalContext` continues the turn instead of
+ending it. What the run owes (carry-over rewritten, lessons written, work committed) rides
+the skill's standing instructions and the deny's reason - the reminder inside the reason
+names `### Next`, `### Lessons`, `### State` and the still-open `## Acceptance` lines,
+never a frozen section: what the gate reminds the run of is exactly what it may change.
 
-This corrects a belief that sat in the code for the whole life of the gate. Blocking was
-emitted as `hookSpecificOutput.permissionDecision`, which is the **PreToolUse** shape; Stop
-takes only `hookEventName` and `additionalContext` there and blocks on the top-level pair. So
-the one hard power in this design was wired to a field the host does not read - and every
-test checked what the script emitted rather than what the host honours. A payload contract is
-a claim until something outside the emitter agrees with it.
+A deny also cannot be one payload for all hosts, and both halves are measured: the mixed
+payload (top-level `decision: "block"` plus nested `permissionDecision`) was inert on
+Codex 0.150.1, while deleting the nested form globally left Kimi 0.40.1 - whose parser
+reads `hookSpecificOutput.permissionDecision` only - with no blocking path at all. One
+Stop output cannot be shared across vendors, so the gate reconstructs exactly one
+allowlisted shape per asking host, and every test pins the shape per host rather than
+what one script emits. A payload contract is a claim until something outside the emitter
+agrees with it.
 
 ## Why the spec is frozen while a run is in flight
 

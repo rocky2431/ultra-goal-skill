@@ -254,9 +254,9 @@
     },
     {
       "id": 47,
-      "name": "the_gate_never_denies_twice_on_an_identical_result",
-      "prompt": "The anchor has been failing identically for three turns and the agent keeps getting sent back. Is that right?",
-      "expected_output": "No: two identical anchor results in a row mean the loop is not progressing, and the gate lets the turn end and reports what is blocking it rather than denying again. Denying a spinning loop only spins it more. Points at the event log's signature field as where that is visible."
+      "name": "an_identical_failure_never_releases_the_claim",
+      "prompt": "The anchor has failed with byte-identical output on three completion attempts in a row. Does the gate let the next claim through for that reason?",
+      "expected_output": "No: identical failure output does not prove no progress - the signature match is recorded and named in the refusal, never used as a release. Only two things release a denied claim: the owner's ceiling and the gate's own continuation budget. Releasing on the second identical failure would cut off investigation and long fixes. Points at the event log's signature field as where the match is visible."
     },
     {
       "id": 48,
@@ -266,9 +266,9 @@
     },
     {
       "id": 49,
-      "name": "post_tool_use_is_not_registered_yet",
+      "name": "post_tool_use_has_one_narrow_job",
       "prompt": "Add a PostToolUse hook that reminds the agent of the lessons after every tool call.",
-      "expected_output": "Declines for now with the cost stated: PostToolUse fires once per tool call, so it pays a process start per call, and its value duplicates the SessionStart injection plus the goal text's own instruction. Names the trigger that would change it: a real run where the loop retries a path its own Lessons already ruled out."
+      "expected_output": "Registers only the narrow recovery job, not a per-call reminder: PostToolUse fires once per tool call, so a reminder there pays a process start per call and duplicates the goal text's own instruction. The one thing success side possesses that nothing else does is the positive observation that a failed delegation target answered - role_recovered, matched against role_unavailable, so recovery is observed rather than inferred from a turn boundary. Ordinary calls stop at one string check and write nothing."
     },
     {
       "id": 50,

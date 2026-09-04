@@ -76,7 +76,9 @@ ESSENTIAL = ("intent", "boundary", "anchor", "carry-over")
 SKIP = ("handoff",)
 
 
-def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
+def handle(
+    event: dict[str, Any], goal: ActiveGoal, host: str | None
+) -> dict[str, Any] | None:
     if event.get("source") not in SOURCES:
         return None
 
@@ -84,6 +86,8 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
     found = sections(spec)
     checks = [e for e in read_events(goal) if e.get("event") == "anchor_checked"]
     last = checks[-1] if checks else None
+    # The anchor runs at completion candidates now, so the count this names
+    # is attempts, not host turns - a run may end many turns between them.
 
     lines = [
         f"An active goal is running in this project: `{goal.slug}`.",
@@ -98,7 +102,7 @@ def handle(event: dict[str, Any], goal: ActiveGoal) -> dict[str, Any] | None:
     ]
     if last is not None:
         lines += [
-            f"Last anchor check: turn {last.get('turn')}, outcome "
+            f"Last completion check: attempt {last.get('turn')}, outcome "
             f"{last.get('outcome')}, exit {last.get('exit_code')}.",
             "",
         ]

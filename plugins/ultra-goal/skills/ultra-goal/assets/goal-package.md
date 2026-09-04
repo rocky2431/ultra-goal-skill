@@ -172,12 +172,16 @@ a plan, and a goal with a plan should have been authored as a graph.
 ## Handoff
 
 Start it with **`/ultra-goal:goal-run weekly-dep-upgrade`** where this plugin is installed: it
-validates the artifact, writes `.goals/active` to arm the gate, and hands over the spec. The
-gate is what keeps the run going - it refuses to let a turn end while the anchor is red - so
-no host's goal mode is needed, and none of them can write the marker anyway.
+validates the artifact and arms the gate through the one fence that records the run's
+authorized baselines. The run then works in ordinary host turns; the gate judges completion
+claims - it refuses a claim while the claimed completion's anchor is still red - so no
+host's goal mode is needed, and none of them can arm the gate anyway.
 
-Where the plugin is absent, paste the text below as a plain prompt and create the marker by
-hand with `printf '%s\n' weekly-dep-upgrade > .goals/active`:
+Where the plugin is absent, paste the text below as a plain prompt. Without the plugin
+there is no gate to satisfy: run the anchor yourself, show its real output, and report
+against it honestly. If the plugin's install root is reachable, arm from it - `python3
+<plugin-root>/skills/ultra-goal/scripts/goal_run.py arm weekly-dep-upgrade` - and the gate
+goes live.
 
 ```
 /goal Read the Carry-over section of .goals/weekly-dep-upgrade.goal.md first. Then upgrade
@@ -186,7 +190,7 @@ package.json and the lockfile - never application source or CI config.
 You have not met this goal until you have actually run `pnpm test -- --run && pnpm build`
 in this session and seen it exit 0: do not claim completion from reasoning about the code,
 and do not call an upgrade safe without that output. When you report on the anchor, name
-the turn and the exit code you saw rather than summarising it.
+the attempt number and the exit code you saw rather than summarising it.
 Do not conclude why something broke from a changelog alone - reproduce it.
 Open a PR but do not merge it.
 You are the run for weekly-dep-upgrade, not its designer: the terms below were already
@@ -200,24 +204,32 @@ At the start of each turn, state which turn you are on,
 which `## Acceptance` lines this turn is for, what you need to find out before touching
 anything, and what output would prove those lines - before changing anything.
 If a role in `## Roles` could not be reached, say so in the report and put it in
-`### Lessons`: a review that could not happen is a missing review, not a pass.
+`### Lessons`: a review that could not happen is a missing review, not a pass. Retry the
+role or its declared fallback before claiming completion, and wait for every role you
+invoked to finish.
 Rewrite the Carry-over section before you finish - State gets where the work stands,
 Lessons gets at most 3 causal findings, Next gets the single objective for the following
 round, and delete what is no longer true.
-Commit once per turn as `goal(weekly-dep-upgrade) turn <N>: <summary> [anchor: green|red|
-unknown]`. Stop after 6 turns even if unmet, and say so.
+When you believe the goal is met, run the anchor yourself and read its output, write one
+short line to .goals/weekly-dep-upgrade.candidate naming what you claim, then end your
+turn: the claim triggers the gate's check and grants nothing. Commit ordinary work turns
+as `goal(weekly-dep-upgrade): <summary>`; commit a completion attempt the gate has
+measured as `goal(weekly-dep-upgrade) turn <N>: <summary> [anchor: green|red|unknown]`,
+with <N> the number in the gate's message. Stop after 6 completion attempts even if
+unmet, and say so.
 ```
 
-Nine clauses, one hole each: objective inside a scope, anchor as the only accepted
-evidence, no confidence claim without it, the verdict reported as a turn and an exit code
-rather than a summary, no conclusion from documents alone, **the run is the run and not the
-designer**, droppable means droppable with a wrong term challenged rather than edited,
-state the turn out loud, rewrite carry-over including Next. Host: Claude Code (recorded in
+Ten clauses, one hole each: objective inside a scope, anchor as the only accepted
+evidence, no confidence claim without it, the verdict reported as an attempt number and
+an exit code rather than a summary, no conclusion from documents alone, **the run is the
+run and not the designer**, droppable means droppable with a wrong term challenged rather
+than edited, state the turn out loud, rewrite carry-over including Next, and completion
+claimed through the candidate marker rather than asserted. Host: Claude Code (recorded in
 the decisions record) - the objective is portable, and `/ultra-goal` starts it wherever the plugin is installed.
 
 First iteration should produce: the audit output, the version bumps it implies, the anchor
 command's real output, and a rewritten Carry-over section.
 
-Afterwards, `validate_artifact.py .goals --audit` puts each turn's committed verdict beside
-the verdict the gate measured for that turn. They should agree on every row; a row where
-they do not is where to start reading.
+Afterwards, `validate_artifact.py .goals --audit` puts each completion attempt's committed
+verdict beside the verdict the gate measured for it. They should agree on every row; a row
+where they do not is where to start reading.

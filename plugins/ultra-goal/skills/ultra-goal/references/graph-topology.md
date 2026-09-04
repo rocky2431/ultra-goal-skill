@@ -96,10 +96,10 @@ routing over an author-time graph, which is the confusion this Skill exists to p
 
 Two consequences worth keeping:
 
-- **The per-turn payload must not grow with the work.** Whatever the artifact holds, the
-  Stop hook's `additionalContext` names the mutable sections and counts the open acceptance
-  lines: about 660 characters, the same for eight lines or eighty. See "What a hook inlines,
-  and what it points at" in `document-system.md`.
+- **The gate's payload must not grow with the work.** Whatever the artifact holds, the
+  deny's reason names the mutable sections and counts the open acceptance lines, and the
+  allow carries one owner-facing line: the same size for eight acceptance lines or eighty.
+  See "What a hook inlines, and what it points at" in `document-system.md`.
 - **A goal that has grown eighty ordered tasks was authored wrong.** `### Next` takes
   exactly one objective, and `## Acceptance` is unordered on purpose. A list of ordered
   steps is a plan, and a plan belongs in a graph - where a runtime, not a gate, holds the

@@ -11,7 +11,7 @@ deliberately left unmechanized.
 | Check | Measures | Judges | Same? |
 |---|---|---|---|
 | anchor exit code | the exit code | did the work land | **yes** |
-| turn count against the ceiling | commits/events | how many turns have run | **yes** |
+| candidate count against the ceiling | consumed candidates in the event log | how many completion attempts have run | **yes** |
 | frozen-spec digest | a sha256 of three sections | did the goal move | **yes** |
 | claim versus event log | two recorded strings | do they agree | **yes** |
 | a timeout | elapsed seconds | did it succeed or fail | **no** |
@@ -28,13 +28,14 @@ available here.
 
 | Distrusts | Control | Strength |
 |---|---|---|
-| the generator's opinion of its own output | the anchor runs for real, every turn | **hard** — the only thing that may deny a stop |
+| the generator's opinion of its own output | the anchor runs for real at every completion claim | **hard** — the only thing that may deny a claimed completion |
 | the reviewer's verdict | a critic that audits the review, not the code | soft: must happen, verdict advisory |
 | agreement between reviewer and critic | three disagreement classes, evidence required | soft |
 | a shared model's blind spots | reviewer and critic on different vendors | soft |
 | **the author's framing reaching the reviewer** | `inputs:` per role — the reviewer gets the artifact, the criteria and the anchor's output, not the argument for them | soft |
-| **the run's account of its own turn** | the commit's claim compared against the event log by `--audit` | observed, reported, never auto-resolved |
-| **the run's account of its own target** | the frozen-spec digest, recorded on turn 1 by the gate | observed; ends the turn with an alarm |
+| **the run's account of its own attempt** | the commit's claim compared against the event log by `--audit` | observed, reported, never auto-resolved |
+| **the run's account of its own target** | the frozen-spec digest, recorded by the arming fence before any Stop ran | observed; ends the turn with an alarm |
+| **"a turn ended, so the worker must have joined"** | recovery is a positive observation (`role_recovered` from the success side), never a boundary inference | hard |
 | an owner-set threshold quietly moving | a row in `decisions.md` | social — asked for, not enforced |
 
 ## Why input isolation is a separate control from vendor choice

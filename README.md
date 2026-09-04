@@ -136,10 +136,11 @@ without `--status`.
 ## Starting a run: no host goal mode required
 
 Four of five measured hosts have a `/goal` command, and none of them is needed. What kept a
-model working there was re-prompting; here the Stop hook does it by refusing to let a turn
-end while the anchor is red — so the loop was always ours. Item by item, goal mode duplicates
-four of this Skill's own mechanisms and cannot do the one that matters: write `.goals/active`,
-the marker without which every hook here is inert.
+model working there was re-prompting; here the run works in ordinary host turns and the Stop
+hook judges completion claims — it refuses a claim while the claimed completion's anchor is
+still red — so the loop was always ours. Item by item, goal mode duplicates four of this
+Skill's own mechanisms and cannot do the one that matters: arm `.goals/active` through the
+validating fence, without which every hook here is inert.
 
 ```
 /ultra-goal:goal-run <slug>
@@ -208,31 +209,61 @@ directly from a Git marketplace.
 
 ## The gate
 
-On a host that exposes the events, three hooks install with the Skill and turn the anchor from
-a sentence in a prompt into something that actually runs.
+On a host that exposes the events, hooks install with the Skill and turn the anchor from
+a sentence in a prompt into something that actually runs. Which hooks register is a
+per-host fact — each manifest registers only events its host documents, so zCode (no
+`PreCompact`) and Codex (no `PostToolUseFailure`) each get their own set, and Kimi — whose
+reference makes every event but `PreToolUse`, `Stop` and `UserPromptSubmit`
+observation-only — registers no `SessionStart` at all; its `UserPromptSubmit` line carries
+the pointer and the gate's last decision instead.
 
 | Hook | Does | Can it block? |
 |---|---|---|
-| `Stop` | Runs the anchor every turn | **Yes, in exactly one case**: the anchor ran and was red |
-| `SessionStart` | Re-injects the frozen spec and carried state after a restart | No |
+| `Stop` | Runs the anchor exactly once per completion candidate; an ordinary turn-end runs nothing and is never held | **Yes, while a claimed completion's anchor is red** — bounded by the gate's own continuation budget |
+| `SessionStart` | Re-injects the frozen spec and carried state after a restart (not registered on Kimi — that host ignores its output) | No |
 | `PreCompact` | Records the carried state before the context is emptied | No |
-| `PostToolUseFailure` | Records that a call naming a delegation target failed, so a degraded round cannot read as a clean one | No |
+| `PostToolUseFailure` | Records that a call naming a delegation target failed, so a degraded round cannot read as a clean one (no such event on Codex — the run's report is the only record there) | No |
+| `PostToolUse` | Records the positive opposite — a later call naming the same delegation target *succeeded* — so worker recovery is observed, never inferred from a turn boundary (not registered on Codex, which records no failures to recover) | No |
+| `UserPromptSubmit` | Kimi only: one fixed-size line per prompt — artifact pointer plus the gate's last decision — that host's documented channel for both | No |
+| `TurnStarted` | Kimi only: records the host's own turn boundary (`turn_id`, `origin_kind`) for every new turn whatever its origin — a user prompt is one origin of a turn, not the boundary itself | No |
+
+**The loop is the continuation budget.** A host keeps a Stop-blocked turn alive only so
+many times in a row — Claude Code force-ends after 8 consecutive blocks, zCode after 3,
+Kimi triggers a blocking Stop once per turn, Codex documents no cap — so the gate counts
+its own blocks in the event log and releases one *before* the host's cap, ending the turn
+loudly (`continuation_budget_spent`, surfaced by `--audit`) instead of letting the host's
+force-end warning have the last word.
+
+**The budget is scoped to the host turn by an observed boundary — and zCode has none.**
+The count resets at a fact the host or the gate observed: Claude Code's and Codex's
+documented `stop_hook_active`, Kimi's `TurnStarted` (fires for every new turn whatever
+its origin, and carries `turn_id`), an allow, or a chain-ender the gate itself wrote.
+zCode's reference lists `stop_hook_active` among Stop's inputs with no word of semantics
+and its seven events include no turn boundary, so there the streak resets only on the
+gate's own facts: a blocked chain that ends without one (an interrupt, an error, a
+session end) carries its tail into the next turn, which can park one block early. A
+declared gap — reading the undocumented field or treating a user prompt as the turn
+boundary would be a proxy that looks grounded, which is the mistake this design made
+twice before refusing it.
 
 **Three outcomes, not two.** An anchor that cannot run — missing command, not executable,
 timed out — is **unknown**, not failed. A timeout measures elapsed time and has no access to
 success or failure, so reporting it as either is how a mechanical gate starts lying. Unknown
 lets the turn end and says the result is unverified.
 
-**Seven of the eight steps allow.** Frozen spec changed, ceiling reached, run not
-progressing, anchor unrunnable, anchor green, no anchor, no active goal — all let the turn
-end and say why. It refuses only when it is certain.
+**Nearly every step allows.** Frozen spec changed, ceiling reached, continuation budget
+spent, anchor unrunnable, anchor green, no anchor, no active goal, no armed spec baseline
+— all let the turn end and say why. It refuses only a completion claim it can judge, and
+only while that judgment is red or premature.
 
-**It also remembers which goal it was pointed at.** On the first turn the gate records a
-digest of `## Intent`, `## Boundary` and `## Anchor`; on every later turn it compares. When
-they differ the run is no longer pursuing the goal you authorized, so the turn ends loudly
-and the anchor is not run at all — proving something about an edited spec proves the wrong
-thing. It allows rather than denies on purpose: the answer to a moved goalpost is to hand
-the decision back, not to work harder against it.
+**It also remembers which goal it was pointed at.** The arming fence records a digest of
+`## Intent`, `## Boundary` and `## Anchor` into `.goals/<slug>.spec.baseline` before any
+Stop can run; on every later Stop the gate compares against that file — never against a
+digest found in the event log, which the run can write. When they differ the run is no
+longer pursuing the goal you authorized, so the turn ends loudly and the anchor is not run
+at all — proving something about an edited spec proves the wrong thing. It allows rather
+than denies on purpose: the answer to a moved goalpost is to hand the decision back, not
+to work harder against it.
 
 ### What it costs a project that never asked for one
 
@@ -248,9 +279,11 @@ Escape hatches, neither of which needs the agent's cooperation: `rm .goals/activ
 Registration is idempotent, backs up `settings.json` first, preserves every hook it does not
 own, and `doctor` reports `missing` or `partial:<events>` if something later removes it.
 
-`PostToolUse` is deliberately not registered — it fires once per tool call, and its value
-duplicates what `SessionStart` injects. It gets added when a real run shows a loop retrying a
-path its own lessons already ruled out.
+`PostToolUse` is registered with one narrow job: it records that a later call naming a
+failed delegation target *succeeded* — the positive observation without which the gate
+could only infer worker recovery from a turn boundary, which proved nothing. Its detection
+runs before anything else, so an ordinary tool call stops at one string check and writes
+nothing.
 
 ## The validator
 
@@ -289,22 +322,22 @@ process, a different set of blind spots.
 
 | Channel | Read by | Carries |
 |---|---|---|
-| `decision: "block"` + `reason` | the model, when the turn may not end | why, and the one thing to do first |
-| `additionalContext` | the model, on every turn that ends | **exactly the sections the run may change**, with current values |
+| the deny, in the host's own shape | the model, when a claimed completion may not stand | why, and the one thing to do first |
 | `systemMessage` | you | one line of what happened |
 
-The middle row follows a rule worth stating alone: **what the gate reminds you of should be
-exactly what you may change.** A mutable section it never mentions is the one that goes
-stale; a frozen section it does mention is an invitation to edit. So the reminder holds
-`### Next`, `### Lessons`, `### State` and the still-open `## Acceptance` lines — nothing
-frozen.
+There is no per-turn injection channel, and that is deliberate: on Claude Code an allow
+carrying model context continues the turn instead of ending it — measured, not assumed —
+so an allow is silent toward the model on every host. What the run owes (carry-over
+rewritten, lessons written, work committed) rides the skill's standing instructions and
+the deny's reason, which is the one channel a blocked turn reliably reads.
 
-This corrects a belief that sat in the code for the gate's whole life: blocking was emitted
-as `hookSpecificOutput.permissionDecision`, which is the **PreToolUse** shape. Stop takes
-only `hookEventName` and `additionalContext` there and blocks on the top-level pair — so the
-one hard power in this design was wired to a field the host does not read, and every test
-checked what the script emitted rather than what the host honours. A payload contract is a
-claim until something outside the emitter agrees with it.
+A deny also cannot be one payload for all hosts, and that is measured twice over:
+Codex 0.150.1 blocks on the top-level `decision`/`reason` pair and a mixed payload made
+the block inert, while Kimi 0.40.1's parser reads `hookSpecificOutput.permissionDecision`
+only and ignores the top-level pair. So the gate builds exactly one shape per host —
+the top-level pair for Claude Code, Codex and zCode; the nested pair for Kimi, with the
+reason carrying everything the blocked turn must hear. A payload contract is a claim
+until something outside the emitter agrees with it.
 
 ## A ceiling you did not choose is not a ceiling
 
@@ -346,10 +379,11 @@ why the small set of checkable facts has to stay out of its hands.
 python3 scripts/validate_artifact.py .goals --audit
 ```
 
-Each turn's committed verdict beside the verdict the gate measured for that turn, with every
-divergence named: a claim the log contradicts, a claim for a turn the gate never saw, a run
-with no gate at all, a moved frozen spec, or no history to audit against. On a run that went
-wrong, the first row where the two part company is where to start reading.
+Each completion attempt's committed verdict beside the verdict the gate measured for it,
+with every divergence named: a claim the log contradicts, a claim for an attempt the gate
+never saw, a run with no gate at all, a moved frozen spec, or no history to audit against.
+On a run that went wrong, the first row where the two part company is where to start
+reading.
 
 Nothing auto-resolves a divergence, and the limits are stated rather than implied: the run
 can write any file it can read, `events.jsonl` included. What defends the log is not
@@ -420,12 +454,24 @@ session alone, and record which happened.
 | whether a target answered | observed at call time | — |
 | that a fallback was used | the run, in its report and `### Lessons` | a **claim**, not evidence |
 
-**This one is declared and reported, not measured**, and an earlier version of this README
-claimed otherwise. It promised a `role_unavailable` event surfaced by `--audit`. Nothing
-could write it: the only thing able to observe a failed delegation is the run that attempted
-it, and a run's statements are claims — `events.jsonl` is hook-written precisely so that it
-is not. A finding no code can produce is worse than none, because it reads as coverage. The
-constant and the finding are deleted.
+**Whether a delegation failed is measured where the host fires `PostToolUseFailure`**
+(Claude Code, zCode, Kimi): the hook writes `role_unavailable` and `--audit` surfaces it
+as `ROUND_DEGRADED`. This passage once said the opposite — that no code could write the
+event — and that was true of the version it described: the only writer considered was the
+run, and a run's statements are claims, so `events.jsonl` was the wrong place and the
+finding was deleted. The hooks reference settled that a *host* observes the failed call,
+which is why the finding exists again with a hook writing it. Codex documents no such
+event, so there the run's report is the only record — a declared loss, not parity. Whether
+the fallback was *adequate* stays a claim on every host, which is the last row above.
+
+And a call that *succeeds* while writing no file is a degradation **no hook can measure**:
+the failure event fires on failures only, and the success-side events fire once per tool
+call and are deliberately not registered — a round that returned success and produced
+nothing reads as a clean one from inside the plugin (it happened to a review round on
+this project). The only real detector is the expected artifact's absence — the round's evidence is the file the role was told to write — so the run does not count a round until
+that file exists, and `--audit` reports a declared reviewer with no review file as
+`REVIEW_UNEVIDENCED`. A review that returned success and left nothing is a missing
+review, not a pass.
 
 `fallback: none` is a legitimate answer and says the run stops rather than degrading; silence
 does not. And a review that could not happen is a **missing review, not a red anchor** — the
