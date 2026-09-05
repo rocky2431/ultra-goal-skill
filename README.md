@@ -1,603 +1,570 @@
 # UltraGoal
 
-An Agent Skill that interviews you into a **grounded** goal, then writes the prompt or
-script that pursues it until an anchor says it is met.
+[English](README.md) · [简体中文](README.zh-CN.md)
 
-The goal is the invariant. A loop and a graph are two shapes it compiles to, and neither is
-an upgrade of the other — the distinction is when routing gets decided.
+**Goal engineering for Claude Code, Codex, Kimi and zCode.** UltraGoal turns a vague
+request into an agreed, inspectable goal, then helps a host agent pursue it using
+current evidence. Version: **2.15.1**.
 
-## The problem
+The goal is the invariant. A loop chooses its next route during execution; a graph
+chooses routes ahead of execution. Both use the same goal contract.
 
-"Make an agent keep doing this" is easy to say and hard to make work. The loops that fail
-in production fail in the same few ways:
+UltraGoal is a **Skill, scripts and host hooks**. The main agent chooses methods
+and workers. Scripts check narrow facts and evidence contracts. The host supplies
+tools, permissions, session identity, continuation and cancellation. There is no
+bundled Agent Runtime, background dispatcher or workflow engine.
 
-- there is no measurement that cannot be argued with, so the loop cannot tell progress
-  from motion;
-- the agent decides for itself when the work is good enough, and "good enough" drifts
-  toward whatever ends the turn;
-- the agent grades its own output, and it praises it;
-- work gets split by workflow phase — plan, implement, test — so every handoff loses the
-  context the next phase needed;
-- agents check each other in a closed circle where everything is consistent and nothing
-  is verified.
+## Contents
 
-None of that is fixed by a better framework. It is fixed by answering five questions
-before anything runs.
+- [Install and start](#install-and-start)
+- [From a request to an agreed goal](#from-a-request-to-an-agreed-goal)
+- [Autonomy during execution](#autonomy-during-execution)
+- [Dispatching agents and receiving feedback](#dispatching-agents-and-receiving-feedback)
+- [When the agent asks the owner](#when-the-agent-asks-the-owner)
+- [Files and their maintenance](#files-and-their-maintenance)
+- [Arming and native continuation](#arming-and-native-continuation)
+- [Hooks and host coverage](#hooks-and-host-coverage)
+- [Completion verification](#completion-verification)
+- [Independent review](#independent-review)
+- [Recovery, cancellation and cleanup](#recovery-cancellation-and-cleanup)
+- [Troubleshooting](#troubleshooting)
+- [Knowledge and Skill maintenance](#knowledge-and-skill-maintenance)
+- [Validation and limits](#validation-and-limits)
 
-## What it does
+## Install and start
 
-It covers the whole life of a loop — create it, look at it, change it — and needs no other
-Skill installed to do any of that.
+Python **3.10+** is required for the bundled scripts. Their runtime and tests use
+the Python standard library. The host must be able to run the configured Python
+command and discover the appropriate plugin components.
 
-0. **Recognizes the intent** before anything else: create a loop, modify one that exists,
-   inspect what is running, or say this is not a loop at all. When the workflows directory
-   is non-empty it checks status *before* the first question, so a request about work that
-   already has a loop becomes a modification instead of a second artifact for the same job.
+### Native plugins
 
-1. **Classifies** the work. One question: *can you sketch the whole thing on paper before
-   running any of it?* Yes means graph-shaped — routing was decided at authoring time and
-   the edges are code. "I'd need to know what step three returns" means loop-shaped —
-   routing is decided during inference, every iteration, and billed every time. Topology
-   is not the distinction; a loop is a directed cyclic graph. *When the routing decision
-   gets made* is the distinction.
+Native installation provides the main Skill, the run command, review roles and
+the host's hook profile. CLI syntax depends on the installed host version. These
+Claude Code and Codex command forms were checked against local CLI help on
+2026-09-05; that check does not establish a fresh installation or lifecycle pass.
 
-2. **Interviews** you, one question per turn, each carrying a recommended answer: intent,
-   anchor, stop condition, **means**, boundary, verifier, split, surface, divergence. It
-   looks up anything the repository can answer instead of asking you, and it refuses to
-   emit an artifact with no anchor.
-
-   The means question is the one that decides how much latitude the run has. You label each
-   means `[load-bearing]` or `[droppable]`; the run may abandon a droppable one on evidence
-   and must record the argument, and may not touch a load-bearing one at all. Without the
-   labels, abandoning a feature is indistinguishable from scope drift, so the agent has to
-   either stop at every surprise or drop things quietly — and neither is what you wanted.
-
-3. **Compiles** one machine-consumable artifact — and stops there. Running it is not this
-   Skill's job.
-
-| Shape | Artifact | Consumer |
-|---|---|---|
-| Loop | `<slug>.goal.md` — the objective plus the goal line to paste | the host's goal mode |
-| Graph, one vendor | `<slug>.workflow.js` — topology in code | a workflow runtime, where one exists |
-| Graph, several vendors | `<slug>.delegation.md` — one adversarial-review triad | cross-agent delegation |
-| Always | `<slug>.decisions.md` — Decision / Rejected / Why | you, next time |
-
-The decisions record holds decisions, not architecture. The script or prompt is the only
-description of what the thing does; a prose copy of it goes stale and starts lying. It is
-also the interview's progress — written row by row as answers are confirmed, before the
-artifact exists — so a session that dies mid-interview resumes instead of restarting.
-
-4. **Tracks state without storing any.**
+Claude Code:
 
 ```bash
-python3 scripts/validate_artifact.py .goals --status
+claude plugin marketplace add rocky2431/ultra-goal-skill
+claude plugin install ultra-goal@ultra-goal
 ```
 
-Reports each artifact's shape, anchor, stop condition, phases or workers, and decision
-count. The artifacts on disk are the only record; this is a projection recomputed on every
-call, so it cannot drift the way a tracked state file would. `--run-anchors` executes each
-anchor and reports its exit code — the one question that matters about a running loop — but
-it runs commands the artifact names, in a shell, so it asks first and refuses to run
-without `--status`.
-
-5. **Makes the loop evolve.** An unattended loop wakes with an empty context every
-   iteration. Unless something carries forward it rebuilds history from git logs and retries
-   paths it has already proven dead, believing each time it is the first attempt. So a
-   `/loop` or `/schedule` artifact gets a `## Carry-over` section, and **the prompt itself**
-   is wired to read it before acting and rewrite it before finishing — a section nothing
-   writes to stays empty forever.
-
-   Three places, three jobs, no duplication:
-
-   | What you want to see | Where it lives |
-   |---|---|
-   | What is true now | the `## Carry-over` section — current only, pruned |
-   | How it became true | `git log -p <slug>.goal.md` — the diffs *are* the evolution |
-   | What each iteration did | the commit message — one line per iteration |
-
-   A goal with a cadence also gets **`## Acceptance`**: one unordered line per
-   requirement, each carrying the state the run claims for it. One sentence plus one anchor
-   answers *is the whole thing done* and cannot answer *which parts are* — and the second
-   question is where a long run declares victory on the strength of the part it finished.
-   Unordered, never numbered: ordered steps are a plan, a plan is an author-time
-   decomposition, and that is a graph. `plan.md` and a dependency-ordered `tasks.json` stay
-   refused; see
-   [references/document-system.md](plugins/ultra-goal/skills/ultra-goal/references/document-system.md)
-   for the line between them.
-
-   Because the history is in Git, the document never has to hold it. Carry-over has three
-   parts with different budgets: `### State` (where the work stands, at most 8),
-   `### Lessons` (**why** something failed and what to do instead, at most 3), and
-   `### Next` (the single objective for the following round, inside the frozen intent —
-   exactly one, because a list of them is a plan and a goal with a plan should have been
-   authored as a graph). `### Next` is the edge that closes the loop: without it a run
-   re-attempts the same objective until the anchor goes green or the ceiling hits. The
-   Lessons
-   cap comes from Reflexion, which bounds its reflection memory at 1-3 because entries the
-   model must reason over compete with the work for the same budget.
-
-   A lesson is a cause and a next action, never an event. "The build failed" is the signal;
-   "the build fails without a committed lockfile because CI runs `--frozen-lockfile` —
-   commit the lockfile in the same change" is the reflection. Only the second one changes
-   the next iteration.
-
-6. **Keeps lessons in the project.** What a loop learns is true of one repository — one
-   project's dead end is another project's correct answer. It never gets promoted to
-   user-level configuration or into this Skill, which is versioned and shared. The Skill
-   carries the criteria, the owner's configuration carries their standing preferences, the
-   project carries what its loop learned, and the arrows only point down.
-
-7. **Modifies by editing the decision, not appending to a log.** A changed decision replaces
-   the old one in the Decision column and the old one moves to Rejected with why it changed.
-   A request that contradicts something already in the Rejected column gets surfaced rather
-   than quietly reversed. A change to the anchor itself reopens the interview — a loop whose
-   anchor changed is a different loop.
-
-## Starting a run: no host goal mode required
-
-Four of five measured hosts have a `/goal` command, and none of them is needed. What kept a
-model working there was re-prompting; here the run works in ordinary host turns and the Stop
-hook judges completion claims — it refuses a claim while the claimed completion's anchor is
-still red — so the loop was always ours. Item by item, goal mode duplicates four of this
-Skill's own mechanisms and cannot do the one that matters: arm `.goals/active` through the
-validating fence, without which every hook here is inert.
-
-```
-/ultra-goal:goal-run <slug>
-```
-
-Ships with the plugin. It validates the artifact, arms the gate, and hands over the spec in
-one step. Where the plugin is absent, paste `## Handoff`'s text as a plain prompt and create
-the marker by hand — the objective is portable even when the command is not.
-
-## Hosts
-
-Goal mode is the mechanism: paste one objective into your CLI, walk away, and the host keeps
-the model working until it is met or a ceiling is hit. Measured on real installs:
-
-| Host | Goal mode | Notes |
-|---|---|---|
-| Claude Code | `/goal <objective>` | backed by a stop hook; also has `/loop`, `/schedule` |
-| Codex 0.150.1 | `/goal <objective>` | a `goal` extension accounts progress after every tool call |
-| Kimi | `/goal <objective>` | plus `/goal pause` / `resume` / `cancel` |
-| zCode 0.16.5 | `/goal <objective>` | also `--target` for a headless session |
-| OpenCode 1.18 | not found | the same text works as a plain prompt |
-
-"Not found" means no evidence in that host's help output or shipped binary, not proof of
-absence. Cross-vendor delegation works on all of them.
-
-**What goal mode does not do is decide what counts as done — it asks the model.** That gap
-gets closed in the goal text itself, not with machinery around the host:
-
-```
-/goal <objective, inside <scope>>. You have not met this goal until you have actually run
-`<anchor>` in this session and seen it <exact result> - do not claim completion from
-reasoning, and do not state <confidence claim> without that output. Do not conclude
-<inference> from documents alone; reproduce it. State which turn you are on at the start of
-each turn. Rewrite the Carry-over section before you finish. Stop after <N> turns even if
-unmet, and say so.
-```
-
-Eight clauses, one hole each: scope creep, claiming success from reasoning, inappropriate
-confidence, a verdict nobody can check against the log, inference beyond the data, silent
-scope drift, losing count of the ceiling, and the run never learning or re-aiming. The same
-text pastes into all four hosts.
-
-**A workflow script needs a workflow runtime.** Only Claude Code has one, so elsewhere the
-Skill will not emit that shape — the file would be something nothing can run.
-
-Artifacts live in the project's `.goals/`, not inside any tool's private directory: they are
-project assets that belong in Git and may be read by whichever agent a teammate runs.
-
-## Install
+Codex:
 
 ```bash
-git clone https://github.com/rocky2431/ultra-goal-skill
+codex plugin marketplace add rocky2431/ultra-goal-skill
+codex plugin add ultra-goal@rocky-ultra-goal
+```
+
+For Kimi and zCode, use the native plugin facility available in your installed
+build and load the package at `plugins/ultra-goal`. The package supplies
+`kimi.plugin.json` and `.zcode-plugin/plugin.json`. A `kimi plugin` CLI subcommand
+is not present in every distribution. If the build cannot load its manifest and
+hooks, a copied Skill alone does not provide the gate.
+
+Confirm discovery of the Skill, run command and configured hooks in the actual
+host. Avoid enabling both native and legacy copies of the same hooks. A manifest
+parse or a successful install message does not prove that the host invokes a hook
+or honors its output.
+
+### Legacy Skill-only installer
+
+For hosts without the native package path, the repository also has a managed
+copy installer:
+
+```bash
+git clone https://github.com/rocky2431/ultra-goal-skill.git
 cd ultra-goal-skill
-python3 scripts/install_user.py install                 # all supported hosts
-python3 scripts/install_user.py install --hosts claude   # or pick them
-python3 scripts/install_user.py doctor --json            # verify
+python3 scripts/install_user.py install --hosts claude
+python3 scripts/install_user.py doctor --json
 ```
 
-Hosts: `hermes`, `claude`, `codex`, `kimi`, `zcode`, `opencode`. Installing keeps a
-recovery copy and refuses to overwrite an unmanaged Skill of the same name.
-`uninstall` removes only copies this installer manages.
+Available copy targets are `hermes`, `claude`, `codex`, `kimi`, `zcode` and
+`opencode`. The installer backs up managed changes and refuses to overwrite an
+unmanaged Skill. `uninstall --hosts <host>` removes its managed installation.
 
-The repo also ships a plugin manifest (`.agents/plugins/marketplace.json` and
-`plugins/ultra-goal/.codex-plugin/plugin.json`) for hosts that install plugins
-directly from a Git marketplace.
+This route copies the main Skill and configures **only Claude's Stop,
+SessionStart and PreCompact hooks**. It does not install the complete native
+command/role package or the other hosts' hook profiles. Its doctor checks its own
+files and registrations, not unattended behavior.
 
-## The gate
+### First goal
 
-On a host that exposes the events, hooks install with the Skill and turn the anchor from
-a sentence in a prompt into something that actually runs. Which hooks register is a
-per-host fact — each manifest registers only events its host documents, so zCode (no
-`PreCompact`) and Codex (no `PostToolUseFailure`) each get their own set, and Kimi — whose
-reference makes every event but `PreToolUse`, `Stop` and `UserPromptSubmit`
-observation-only — registers no `SessionStart` at all; its `UserPromptSubmit` line carries
-the pointer and the gate's last decision instead.
+In the **business project's directory**, ask the host to use UltraGoal:
 
-| Hook | Does | Can it block? |
+> Use UltraGoal to turn this into an executable goal: make the CSV export usable
+> by our operations team. Investigate what already exists, ask me only the
+> material decisions, and show me the complete acceptance and authority contract.
+
+The agent inspects existing goals before starting an interview. Once the terms
+are confirmed, use the exposed `goal-run` command. On hosts with namespaced slash
+commands, the packaged form is:
+
+```text
+/ultra-goal:goal-run export-ready
+```
+
+Where the host does not expose that command, ask it to follow the packaged
+[run procedure](plugins/ultra-goal/commands/goal-run.md) using its actual tools.
+The `.goal.md` and paired `.decisions.md` must already exist. Starting a run does
+not authorize the agent to invent a missing agreement.
+
+For unattended work, the host also needs an available, authorized native
+continuation mechanism. Arming the gate alone cannot provide one.
+
+## From a request to an agreed goal
+
+The entry distinguishes creating, modifying, inspecting and executing a goal,
+and ordinary work that does not need a goal loop. It reads references only when
+the current phase needs them.
+
+Init and research resolve facts that can change the goal. The agent investigates
+repository state, tools and existing instructions itself. It asks only unresolved
+material owner decisions: **one question per turn**, with a recommendation and
+what would change it. These are dependencies to resolve, not nine mandatory
+interview turns.
+
+The resulting contract contains:
+
+| Field | What it establishes |
+|---|---|
+| `Intent` | Material original owner words and a source locator where available, separate from the agent's interpretation |
+| `Acceptance` | Unordered success requirements with stable IDs; an execution plan has a separate home |
+| `Anchor` | An observational command that checks the agreed result, with an explicit time budget |
+| `Stop condition` | `success: verified` and `ceiling: N` or `ceiling: none`; the ceiling counts completion attempts |
+| `Means` | Complete declarations labelled `[load-bearing]` or `[droppable]` |
+| `Boundary` | Scope/effects and approval limits; confidence claims needing measurement; inference limits |
+| `Verification` | Evaluator provenance, protected evaluator inputs, coverage for every acceptance ID and any required review |
+| Roles and surfaces | Worker responsibilities, approved fallbacks, readable/writable resources and integration ownership |
+| `Carry-over` and `Handoff` | Current state, lessons, next action and the actual start/recovery procedure |
+
+Before freezing, challenge both **false acceptance** (all checks pass but the
+request is unmet) and **false rejection** (a valid outcome fails an unrequested
+method constraint). A unit suite is enough only when it measures the requested
+outcome; file existence is not proof of usability.
+
+Before offering unattended execution, the instructions require independent
+specification critique, using the original request, draft and evidence before
+the author's defense. Resolve material objections, then read back the complete
+contract. Existing explicit confirmation counts; silence does not. "Start now"
+is not a review waiver. A clean critique of already approved terms does not
+require another confirmation.
+
+The critique and the quality of the interview are currently **model-followed
+instructions**. Structural validation cannot establish that they happened or
+that the criteria fully express the owner's intent.
+
+See the [canonical goal contract](plugins/ultra-goal/skills/ultra-goal/references/goal-contract.md).
+
+## Autonomy during execution
+
+| Tier | Contents | Change rule |
 |---|---|---|
-| `Stop` | Runs the anchor exactly once per completion candidate; an ordinary turn-end runs nothing and is never held | **Yes, while a claimed completion's anchor is red** — bounded by the gate's own continuation budget |
-| `SessionStart` | Re-injects the frozen spec and carried state after a restart (not registered on Kimi — that host ignores its output) | No |
-| `PreCompact` | Records the carried state before the context is emptied | No |
-| `PostToolUseFailure` | Records that a call naming a delegation target failed, so a degraded round cannot read as a clean one (no such event on Codex — the run's report is the only record there) | No |
-| `PostToolUse` | Records the positive opposite — a later call naming the same delegation target *succeeded* — so worker recovery is observed, never inferred from a turn boundary (not registered on Codex, which records no failures to recover) | No |
-| `UserPromptSubmit` | Kimi only: one fixed-size line per prompt — artifact pointer plus the gate's last decision — that host's documented channel for both | No |
-| `TurnStarted` | Kimi only: records the host's own turn boundary (`turn_id`, `origin_kind`) for every new turn whatever its origin — a user prompt is one origin of a turn, not the boundary itself | No |
+| Frozen | Intent, Boundary, Anchor, Stop condition, Verification, acceptance requirement text and complete labelled Means | Owner authority and a new goal are required |
+| Firm | Method, cadence, worker choice, abandoning an approved droppable means, using an approved verifier fallback | Adapt within authority and update the decision row with evidence |
+| Fluid | State, Lessons, Next and ordinary execution planning | Rewrite as new evidence arrives |
 
-**The loop is the continuation budget.** A host keeps a Stop-blocked turn alive only so
-many times in a row — Claude Code force-ends after 8 consecutive blocks, zCode after 3,
-Kimi triggers a blocking Stop once per turn, Codex documents no cap — so the gate counts
-its own blocks in the event log and releases one *before* the host's cap, ending the turn
-loudly (`continuation_budget_spent`, surfaced by `--audit`) instead of letting the host's
-force-end warning have the last word.
+The declaration that a means is droppable stays frozen; deciding to drop it is
+an allowed strategy change. A decision row records a choice and never grants
+permission to lower a threshold, increase a budget or waive required review.
 
-**The budget is scoped to the host turn by an observed boundary — and zCode has none.**
-The count resets at a fact the host or the gate observed: Claude Code's and Codex's
-documented `stop_hook_active`, Kimi's `TurnStarted` (fires for every new turn whatever
-its origin, and carries `turn_id`), an allow, or a chain-ender the gate itself wrote.
-zCode's reference lists `stop_hook_active` among Stop's inputs with no word of semantics
-and its seven events include no turn boundary, so there the streak resets only on the
-gate's own facts: a blocked chain that ends without one (an interrupt, an error, a
-session end) carries its tail into the next turn, which can park one block early. A
-declared gap — reading the undocumented field or treating a user prompt as the turn
-boundary would be a proxy that looks grounded, which is the mistake this design made
-twice before refusing it.
+A loop lets the main model select the next useful action from observations.
+Optional `.workflow.js` and `.delegation.md` attachments name the same `.goal.md`
+and cannot establish different terms. Emit a workflow only when its actual
+consumer exists and its entry point has been exercised. Parsing JavaScript does
+not prove that `agent()` or `pipeline()` can run.
 
-**Three outcomes, not two.** An anchor that cannot run — missing command, not executable,
-timed out — is **unknown**, not failed. A timeout measures elapsed time and has no access to
-success or failure, so reporting it as either is how a mechanical gate starts lying. Unknown
-lets the turn end and says the result is unverified.
+## Dispatching agents and receiving feedback
 
-**Nearly every step allows.** Frozen spec changed, ceiling reached, continuation budget
-spent, anchor unrunnable, anchor green, no anchor, no active goal, no armed spec baseline
-— all let the turn end and say why. It refuses only a completion claim it can judge, and
-only while that judgment is red or premature.
+**The main agent dispatches work. Hooks do not.** Honor owner-assigned roles;
+otherwise choose a worker only when a bounded handoff is useful. Small work may
+stay in the main session. There is no fixed vendor order or mandatory three-model
+round on every task.
 
-**It also remembers which goal it was pointed at.** The arming fence records a digest of
-`## Intent`, `## Boundary` and `## Anchor` into `.goals/<slug>.spec.baseline` before any
-Stop can run; on every later Stop the gate compares against that file — never against a
-digest found in the event log, which the run can write. When they differ the run is no
-longer pursuing the goal you authorized, so the turn ends loudly and the anchor is not run
-at all — proving something about an edited spec proves the wrong thing. It allows rather
-than denies on purpose: the answer to a moved goalpost is to hand the decision back, not
-to work harder against it.
+Use the host's actual delegation tools or an installed bridge. When the
+`agent-delegate` bridge is available, `agent-delegate list --json` discovers its
+registered targets. The Skill does not install or emulate that bridge.
 
-### What it costs a project that never asked for one
+Each mission supplies:
 
-Every hook's first act is one check: is there a `.goals/active` marker naming an artifact that
-exists? Without one, nothing is read, nothing is written, no command runs — a process start
-and a `stat`. That early exit is the only thing between an installed hook and an unrelated
-project, so it is pinned from nine angles in `tests/test_goal_hooks.py`, including that an
-inactive project executes no anchor and that a handler which raises still exits 0.
+1. The accepted terms and the bounded objective of this assignment.
+2. Current decisions, relevant original evidence and prior failed attempts.
+3. Read/write scope, shared resources, limits and integration responsibilities.
+4. The expected output location and how the result will be checked.
+5. The conditions the worker can resolve itself and those it must return.
 
-Escape hatches, neither of which needs the agent's cooperation: `rm .goals/active`, or
-`ULTRA_GOAL_HOOKS_DISABLED=1`.
+Workers can use `.goals/.work/` for mission/result files. Separate task files do
+not isolate writes to a shared file, database or service. Parallelize genuinely
+independent work and join all relevant writers before integrated review.
 
-Registration is idempotent, backs up `settings.json` first, preserves every hook it does not
-own, and `doctor` reports `missing` or `partial:<events>` if something later removes it.
+Feedback has different meanings:
 
-`PostToolUse` is registered with one narrow job: it records that a later call naming a
-failed delegation target *succeeded* — the positive observation without which the gate
-could only infer worker recovery from a turn boundary, which proved nothing. Its detection
-runs before anything else, so an ordinary tool call stops at one string check and writes
-nothing.
+| Observation | Main agent's responsibility |
+|---|---|
+| The call succeeded | Inspect the expected output; transport success is not completion |
+| The worker reports completion | Read the artifact and its evidence against the mission |
+| The worker failed | Preserve the observation, then choose an authorized retry, alternative or fallback |
+| The worker requests input | Answer from existing terms where possible; ask the owner only for a material decision |
+| The worker explicitly rejects | Examine the boundary and any authorized alternative |
+| No response | Treat status as unconfirmed and inspect the native task; do not invent an input request or completion |
 
-## The validator
+Even a call that *succeeds* while writing no file is insufficient:
+**the round's evidence is the file the role was told to write**. A returned
+summary is a claim, and model agreement is not independent evidence.
+
+On the registered host profiles, recognized delegation failures produce
+`role_unavailable`; a later success for the same target/tool produces
+`role_recovered`. Recognition covers direct `agent-delegate run --to <target>`
+commands or structured calls to that exact tool. Opaque scripts, compound
+commands and arbitrary native delegation tools are not automatically observed.
+Recovery describes the call, not every mission for that target.
+
+These transport events are audit observations, not extra acceptance conditions.
+An approved fallback may satisfy the goal while the original vendor remains
+unavailable. A **required independent reviewer cannot fall back to generator
+self-review**. Additional advisory reviewers or a reviewer/critic exchange are
+optional unless the accepted goal requires them; repeated review needs a bound.
+
+After reading feedback, the main agent rewrites `State`, `Lessons` and `Next`,
+updates a decision row if strategy changed, and chooses the next action. This is
+the feedback loop; there is no Python scheduler choosing the strategy.
+
+## When the agent asks the owner
+
+Questions come through the main agent's normal conversation or native input UI.
+Hooks do not conduct the interview or forward every worker question verbatim.
+
+| Situation | Action |
+|---|---|
+| Repository or tool fact can be checked | Investigate it |
+| Change method/order or use an already approved fallback | Decide within authority and record a material choice |
+| Change success criteria, load-bearing means, boundary or budget | Ask the owner |
+| Need an effect outside existing authority | Ask before that effect; continue independent authorized work |
+| Required reviewer unavailable, with no accepted independent fallback | Remain unverified and report the missing condition |
+| External operation has an unknown outcome | Inspect its real effect before retrying or escalating |
+| Frozen terms conflict | State the term, observed obstacle, recommendation and deciding fact |
+
+Challenges belong in `## Challenges from the run` in the decisions record.
+A challenge is not authorization to edit the term. Reuse existing approvals;
+do not ask again for a decision already settled.
+
+## Files and their maintenance
+
+Artifacts belong in the business project's `.goals/`, not a vendor's private
+Skill directory. `<slug>` names one goal, not a path.
+
+| File | Writer | Maintenance rule |
+|---|---|---|
+| `<slug>.goal.md` | Owner + agent for the contract; main agent for Carry-over | Keep frozen terms; rewrite current execution state |
+| `<slug>.decisions.md` | Owner + agent | Decision / Rejected / Why / Who; revise the affected row, distinguish `owner` from `agent` |
+| `<slug>.events.jsonl` | Gate and hook scripts | Append observations; never insert model-authored claims as measurements |
+| `active` | `arm`, `rebind`, `disarm` | Goal slug plus its owning native session ID; transient |
+| `<slug>.spec.baseline` | Arming script | Write-once frozen-contract digest |
+| `<slug>.verification.baseline` | Arming script | Write-once hashes of protected evaluator files |
+| `<slug>.baseline` | Arming script | Starting Git revision or `none`; not a complete history |
+| `<slug>.verification.lock` | Verification scripts | Native locking for serialized verification; keep the lock inode |
+| `<slug>.candidate` | Main agent, optional fallback path | One pending completion claim, consumed by the gate |
+| `<slug>.review.json` | Independent verifier | Default current receipt; review again after declared inputs change |
+| `<slug>.reviews/<digest>.zip` | Gate | Retained receipt, goal and declared input snapshots for historical audit |
+| `.work/` | Workers | Disposable intermediates only after necessary evidence has a retained home |
+| `<slug>.workflow.js` / `<slug>.delegation.md` | Agent within the agreement | Optional execution attachments; no independent success terms |
+
+Before ending each work turn, the main agent rewrites:
+
+- **State:** current facts, evidence pointers and unfinished work.
+- **Lessons:** conditional causes that change the next action, not an event diary.
+- **Next:** one immediate recovery objective; link a longer plan when useful.
+
+Three lessons and eight state entries are compactness suggestions, not validity
+limits. Keep a necessary fourth lesson. Pruning a summary must not delete the
+only source supporting a claim. Hooks do not write missing model reasoning or
+automatically maintain all these documents.
+
+Events retain bounded observations, digests and output excerpts, not every tool's
+full stdout or all conversations. Required review archives contain **declared
+inputs**, not the whole workspace. Preserve other material raw evidence explicitly.
+Git preserves committed revisions only; tracking a file does not authorize a
+commit or publication.
+
+See [document maintenance](plugins/ultra-goal/skills/ultra-goal/references/document-system.md).
+
+## Arming and native continuation
+
+`arm` validates the goal and paired decisions, checks the real initiating session,
+refuses another active goal/session, pins baselines, records session ownership and
+then creates the marker. One project directory has one active goal marker.
+
+The marker format is shown for inspection, not manual authoring:
+
+```text
+export-ready
+session actual-native-session-id
+```
+
+Use explicit current native session identity. Do not guess one or adopt an
+inherited parent process's ID. A foreign or identity-less event cannot consume
+the owner's candidate or reset its state. Re-arming preserves baselines and prior
+attempts. Explicit, authorized `rebind` transfers the session while retaining
+those facts and discarding the previous pending claim.
+
+For manual operation, replace the example paths, slug and identity below:
 
 ```bash
-python3 scripts/validate_artifact.py .goals --json
+ULTRAGOAL_SCRIPTS="/path/to/ultra-goal-skill/plugins/ultra-goal/skills/ultra-goal/scripts"
+ULTRAGOAL_PROJECT="/path/to/business-project"
+ULTRAGOAL_SLUG="export-ready"
+ULTRAGOAL_SESSION="actual-native-session-id"
+
+python3 "$ULTRAGOAL_SCRIPTS/validate_artifact.py" "$ULTRAGOAL_PROJECT/.goals"
+python3 "$ULTRAGOAL_SCRIPTS/goal_run.py" arm "$ULTRAGOAL_SLUG" \
+  --root "$ULTRAGOAL_PROJECT" --session-id "$ULTRAGOAL_SESSION"
 ```
 
-It observes facts and nothing else: file pairing, required sections, every shape carrying
-an anchor, `meta` being a pure literal and the first statement, phases declared before use,
-delegation targets that are actually registered, and JavaScript syntax. It never edits an artifact and it never judges
-whether a topology is the right one — that part is the design, and design belongs to you
-and the model, not to a template engine.
+Arming activates the gate. Native goal mode supplies continued execution. When a
+model-callable native mechanism exists and is authorized, use it; if the host
+exposes only a user command, the owner must invoke that actual command. Without
+a driver, the agent can work in the current turn but cannot promise later turns.
+Do not start a detached process to evade native cancellation or continuation bounds.
 
-Its silence is not evidence that the design is right.
+## Hooks and host coverage
 
-## Three roles that ship as isolated skills
+These are **the registrations shipped by this package**, not a claim of identical
+vendor APIs or a fresh live installation on every host.
 
-The reviewer, the critic and the design critic are not ad-hoc subagent calls. Each is a
-skill with `context: fork` and `background: false`, which the skills reference defines as
-running the skill's content as the whole prompt in a subagent that **never sees the invoking
-conversation**:
+| Event | Claude Code | Codex | Kimi | zCode | Purpose |
+|---|---|---|---|---|---|
+| `Stop` | Yes | Yes | Yes | Yes | Ordinary stop observation or explicit candidate verification |
+| `SessionStart` | Yes | Yes | No | Yes | Supported start/resume/clear/compact/fork recovery |
+| `PreCompact` | Yes | Yes | Yes | No | Carry-over digest and counts before compaction |
+| `PostToolUseFailure` | Yes | No | Yes | Yes | Recognized delegation failure |
+| `PostToolUse` | Yes | No | Yes | Yes | Recognized call recovery |
+| `UserPromptSubmit` | No | No | Yes | No | Goal pointer and last recorded decision on a user prompt |
+| `TurnStarted` | No | No | Yes | No | Actual host turn ID/origin observation |
 
-| Invoke | Reads | Writes |
-|---|---|---|
-| `/ultra-goal:design-critic <slug>` | the spec and the decisions record, before any work starts | nothing — returns objections |
-| `/ultra-goal:review <slug>` | the artifact, the frozen diff, the anchor's own output | `.goals/.work/<slug>-review.md` |
-| `/ultra-goal:critic <slug>` | that review and the same frozen diff | `.goals/.work/<slug>-critique.md` |
+Common registrations are in `hooks/hooks.json`; Claude adds `hooks/claude.json`,
+Codex uses `hooks/codex.json`, and Kimi declares its profile in `kimi.plugin.json`.
+The package includes host-specific output and Windows command adapters; their
+presence does not establish Windows lifecycle acceptance.
 
-The contagion worth preventing is the **author's argument**, and the author is the session
-doing the invoking — so making isolation a declared property of the file removes the step
-where the caller has to remember to arrange it. Crossing vendors instead is the same
-protocol with `agent-delegate` in place of the fork: same inputs, same refusals, one extra
-process, a different set of blind spots.
+A normal Stop with **no completion candidate** does not run the Anchor or spend an
+attempt. Stop is not a background service or a universal write-permission gate.
+Frozen-spec changes are detected at Stop; evaluator protection is checked at
+verification boundaries. Detection cannot undo a write or an external effect.
 
-## What the gate says, and to whom
+Blocking output follows the host contract: Claude/Codex/zCode use the top-level
+`decision: block` and `reason`; Kimi uses nested
+`hookSpecificOutput.permissionDecision: deny` and `permissionDecisionReason`.
+An allowing Stop carries no added model context. Use ordinary tool output to make
+a verdict visible before delivery; future recovery injection is best effort.
 
-| Channel | Read by | Carries |
-|---|---|---|
-| the deny, in the host's own shape | the model, when a claimed completion may not stand | why, and the one thing to do first |
-| `systemMessage` | you | one line of what happened |
+See [host hooks and lifecycle limits](plugins/ultra-goal/skills/ultra-goal/references/host-hooks.md).
 
-There is no per-turn injection channel, and that is deliberate: on Claude Code an allow
-carrying model context continues the turn instead of ending it — measured, not assumed —
-so an allow is silent toward the model on every host. What the run owes (carry-over
-rewritten, lessons written, work committed) rides the skill's standing instructions and
-the deny's reason, which is the one channel a blocked turn reliably reads.
+## Completion verification
 
-A deny also cannot be one payload for all hosts, and that is measured twice over:
-Codex 0.150.1 blocks on the top-level `decision`/`reason` pair and a mixed payload made
-the block inert, while Kimi 0.40.1's parser reads `hookSpecificOutput.permissionDecision`
-only and ignores the top-level pair. So the gate builds exactly one shape per host —
-the top-level pair for Claude Code, Codex and zCode; the nested pair for Kimi, with the
-reason carrying everything the blocked turn must hear. A payload contract is a claim
-until something outside the emitter agrees with it.
-
-## A ceiling you did not choose is not a ceiling
-
-`## Stop condition` takes a declared line: `ceiling: 6`, or **`ceiling: none`** for a run
-that should continue until the anchor is green however long that takes. Read first, before
-any prose.
-
-This was a live defect, and the case that found it was real: a long run whose stop condition
-said "no ceiling" would have been stopped by this gate at turn 13 while reporting *ceiling
-reached* — in the owner's own voice, at a number they never wrote. When neither a `ceiling:`
-line nor a turn count can be read, the gate now applies its default **and says that it is
-its own**, and `CEILING_UNDECLARED` warns at authoring time.
-
-## Two severities, because two different things were being reported alike
-
-An artifact missing its anchor is broken. An artifact carrying nine `### State` entries
-against a budget this Skill *invented* is worth a sentence — and failing over that number
-would be the Skill enforcing its own guess as if it were a fact. So findings carry a
-severity, and only errors move the exit code:
-
-- **error** — the artifact cannot do its job as written (no anchor, no handoff, a reviewer
-  with no critic, an acceptance line with no state);
-- **advisory** — this Skill's judgement about how well it will work (`STATE_UNPRUNED`,
-  whose budget has no cited basis; `ANCHOR_BUDGET_UNREACHABLE`, where the number is simply
-  above what the host's hook timeout permits).
-
-`LESSONS_UNPRUNED` stays an error because it has a basis: Reflexion bounds its reflection
-memory at 1-3 entries, since entries the model must reason over compete with the work.
-`STATE_MAX = 8` has no such source, and now says so.
-
-## Claims, measurements, and the audit
-
-The run authors the artifact, its carried state, its commit messages and its reviews. All of
-that is a **claim**. The hooks author `<slug>.events.jsonl` — exit codes, output digests,
-spec digests — and only that is a **measurement**. Wide latitude for the model is exactly
-why the small set of checkable facts has to stay out of its hands.
+Prefer explicit `verify`, an ordinary tool call that returns the current result
+**before** the agent's final answer. It uses the same gate as the Stop fallback:
 
 ```bash
-python3 scripts/validate_artifact.py .goals --audit
+python3 "$ULTRAGOAL_SCRIPTS/goal_run.py" verify "$ULTRAGOAL_SLUG" \
+  --root "$ULTRAGOAL_PROJECT" --session-id "$ULTRAGOAL_SESSION" \
+  --claim "The integrated result is ready for the accepted checks."
 ```
 
-Each completion attempt's committed verdict beside the verdict the gate measured for it,
-with every divergence named: a claim the log contradicts, a claim for an attempt the gate
-never saw, a run with no gate at all, a moved frozen spec, or no history to audit against.
-On a run that went wrong, the first row where the two part company is where to start
-reading.
+Before this call, finish outputs, update recovery state, join relevant writers
+and obtain any required independent receipt. The verification path:
 
-Nothing auto-resolves a divergence, and the limits are stated rather than implied: the run
-can write any file it can read, `events.jsonl` included. What defends the log is not
-permission but publication — it is committed, so a rewritten history is a diff. Making a
-moved goalpost **visible** is the achievable property; making it impossible is not.
+1. Confirms the active goal/session and acquires the native verification lock.
+2. Reconciles a previous started-but-unsettled attempt as interrupted; never
+   substitutes an older green or silently replays the Anchor.
+3. Checks the frozen terms against the arming baseline.
+4. Records `verification_started` with a unique ID before consuming the claim.
+5. Applies the completion-attempt ceiling and checks evaluator protection and
+   any required current review.
+6. Runs the agreed Anchor within its declared budget.
+7. Rechecks the terms, protected evaluator and review inputs after the Anchor.
+8. Retains required review evidence and settles the same attempt ID.
 
-## Roles, and which of them are actually choices
+A current recorded result must establish the whole accepted verification contract:
+frozen terms intact, evaluator protection intact, current green Anchor and every
+required review valid. `verification_passed` and `fresh_check` refer to the current
+request; a missing recorded settlement cannot support completion.
 
-Every development round has four stages — research, shape a plan, carry it out, review and
-feed back — and most of what looks like a "multi-agent or not" question belongs to exactly
-one stage. So `## Roles` is settled per stage, and the Skill says which parts you get to
-decide:
-
-| Stage | Who | Your call? |
+| Condition | Gate behavior | Completion established? |
 |---|---|---|
-| Lead — intent into a spec | this session, with you | **No** — an interview cannot be delegated |
-| **Research** | fanned-out subagents | how wide, and whether any needs another vendor |
-| Plan — the spec, plus one adversarial pass over it | this session + a design critic | whether the design critic runs |
-| **Carry out** — the code **and its tests, test first** | **this session** | **No** — see below |
-| Verify at code level | the anchor | **No** — mechanical |
-| Review semantically | not whoever wrote it | the one real choice |
-| Fan out | one worker per subject | only where subjects are independent and **each has its own anchor** |
+| Ordinary Stop, no claim | Allow without running the Anchor | No |
+| Current full verification passes | Allow | Accepted checks passed |
+| Anchor red or a required verification condition unmet | Refuse a refusable claim within the applicable denial bound | No |
+| Command unavailable or timed out | Allow, result unknown | No |
+| Completion-attempt ceiling exhausted | Allow and report remaining work | No |
+| Consecutive-denial bound exhausted | End this turn; further work needs a native turn or prompt | No |
+| Frozen specification changed | Close the run and remove active marker/candidate | No |
+| Foreign/missing event identity on a bound goal | Inert | No judgment |
+| Legacy/invalid unbound marker | Diagnostic on Stop; no handler or state mutation | No judgment |
+| Hook cannot produce a reliable judgment | Do not trap the host; no completion proof | No |
 
-**Who writes the code is your call**, and the recommendation cuts both ways. For a small
-slice: the main session. Anthropic runs both patterns
-split by task type: "Claude Code uses this orchestrator-subagent pattern. The main agent
-writes code, edits files, and runs commands itself... This contrasts with the research
-system, where the lead agent delegates." The reason matters more than the authority:
-`### Lessons` and every dead end live in the main context, so a fresh coder subagent would
-restart the run at turn 1 every turn. **At scale it flips**, and there is a working
-counterexample on this machine: a long build where the lead holds the loop, owns one ledger,
-writes no code, and two cross-vendor executors alternate between build rounds and review
-rounds — each taking a whole slice, so it is a role rotation rather than the phase split this
-design refuses.
+Three limits are separate: the owner's **completion-attempt ceiling**, the gate's
+**consecutive-denial bound**, and the **host's native budgets**. None is a synonym
+for the others. `ceiling: none` does not remove host limits. The current Anchor
+maximum is 570 seconds within a 600-second Stop hook configuration.
 
-The referee-and-player objection is answered somewhere else entirely — the **anchor's exit
-code decides**, with no model in that path, and the reviewer never receives the author's
-argument. Moving the referee out of the writer's hands is what the zero-trust layer is for.
+Anchor observations are `green`, `red` or `unknown`. Run dispositions are separate:
+`in_progress`, `input_required`, `blocked_retryable`, `budget_exhausted`,
+`unachievable`, `completed`, `canceled`. A failed check alone does not prove a goal
+permanently unachievable.
 
-And there is a sharper answer still, taken from that production run: **the judge records its
-verdict before reading the executors' reports.** Run the anchor, write the verdict to
-`<slug>.judge-review.md`, and only then read what they said. That is context isolation
-applied to the judge rather than the reviewer, and it closes what "the exit code decides"
-does not — the exit code cannot settle which findings mattered, or whether a report was
-honest about what it never checked.
+The fallback writes `<slug>.candidate` and lets a real Stop check it **after** the
+response. Until then it is pending. A following Stop does not rerun a claim already
+consumed by explicit verification. If the model says "done" but neither invokes
+`verify` nor writes a candidate, there is no natural-language completion detector
+that forces this path. Following the claim protocol remains a model obligation.
 
-**The only genuine choice in review is model independence**, because the two axes cure
-different diseases:
+## Independent review
 
-| Axis | The disease | Cost |
-|---|---|---|
-| **Context isolation** | the author's *argument* reaching the reviewer, who then reviews the argument | negligible — **and not optional** |
-| **Model independence** | *shared blind spots*: two agents on one model make the same mistake and agree about it | ~10x |
-
-So a same-model subagent is not a cheap substitute for a different vendor. It cures the
-first completely and the second not at all. When review runs and the round cap are
-parameters of that choice, not peers of it.
-
-## Declared degradation
-
-An agent runs out of quota, a target does not answer, a process dies. Every role in
-`## Roles` names a `fallback:` — try the role, then its fallback, then continue as the main
-session alone, and record which happened.
-
-| What | Who decides | Where it lives |
-|---|---|---|
-| who to fall back to | **you**, at design time | `## Roles` |
-| whether a target answered | observed at call time | — |
-| that a fallback was used | the run, in its report and `### Lessons` | a **claim**, not evidence |
-
-**Whether a delegation failed is measured where the host fires `PostToolUseFailure`**
-(Claude Code, zCode, Kimi): the hook writes `role_unavailable` and `--audit` surfaces it
-as `ROUND_DEGRADED`. This passage once said the opposite — that no code could write the
-event — and that was true of the version it described: the only writer considered was the
-run, and a run's statements are claims, so `events.jsonl` was the wrong place and the
-finding was deleted. The hooks reference settled that a *host* observes the failed call,
-which is why the finding exists again with a hook writing it. Codex documents no such
-event, so there the run's report is the only record — a declared loss, not parity. Whether
-the fallback was *adequate* stays a claim on every host, which is the last row above.
-
-And a call that *succeeds* while writing no file is a degradation **no hook can measure**:
-the failure event fires on failures only, and the success-side events fire once per tool
-call and are deliberately not registered — a round that returned success and produced
-nothing reads as a clean one from inside the plugin (it happened to a review round on
-this project). The only real detector is the expected artifact's absence — the round's evidence is the file the role was told to write — so the run does not count a round until
-that file exists, and `--audit` reports a declared reviewer with no review file as
-`REVIEW_UNEVIDENCED`. A review that returned success and left nothing is a missing
-review, not a pass.
-
-`fallback: none` is a legitimate answer and says the run stops rather than degrading; silence
-does not. And a review that could not happen is a **missing review, not a red anchor** — the
-report has to say so, and the goal text now asks for it.
-
-## The one thing the goal can learn from
-
-## Owner-decided versus agent-assumed
-
-`decisions.md` has a fourth column, `Who`, holding `owner` or `agent`. It exists because a
-real run needed it and did not have it: its first artifact carried "(my inline assumption,
-the owner did not object)" and "(I set this outright, not offered as an option)" inside Why
-cells. Both were the right call. Neither was a decision the owner made — and without the
-column an assumption is indistinguishable from an agreement, so `--status` counts them apart:
-
-```
-closed-loop-skeleton  [loop]  decisions=12  assumed=2  **challenges=1**
-```
-
-An `agent` row is legitimate and often necessary. Leaving it unmarked is not.
-
-## The one thing the goal can learn from
-
-`### Lessons` carries method forward. `### Next` re-aims within the terms. Neither can say
-*the terms themselves are wrong* — that is frozen, and correctly so. So there is exactly one
-thing a run knows that the design side cannot: which term turned out to be unworkable in
-contact with reality. Until v1.2.0 that was the only outcome that wrote nothing down.
-
-`## Challenges from the run`, in the decisions record, is that channel:
-
-- **written by the run**, and only the run — the one part of that file its owner does not
-  author;
-- **ruled on by the owner**, so `--status` counts challenges apart from decisions and an
-  unresolved objection never reads as a settled decision;
-- **the term challenged, what the run hit, and what would settle it** — all three, or it is
-  a complaint rather than an objection;
-- **instead of editing the term.** A run that edits a frozen term has moved the goalpost; a
-  run that challenges it has done its owner a favour;
-- **read first by the next Modify pass**, which already had to read this file — so the
-  objection lands exactly where the next design pass is required to look.
-
-Optional on purpose: most runs raise none, and demanding one per run produces invented
-objections, the same failure as a reviewer who must find something.
-
-## Adversarial review
-
-Verification is two roles, not one, because one is measurably not enough. A **reviewer**
-reviews the artifact; a **critic** reviews the review — not the code.
-
-```
-M (main)      the only role that edits the artifact
-R (reviewer)  reviews the artifact          [artifact FROZEN during the exchange]
-C (critic)    reviews R's review
-```
-
-The failure this prevents is **false consensus**: two agents that both say "looks fine" have
-produced one opinion reported twice, and a loop cannot tell that from verification. The fix is
-textual — the critic sorts every point into exactly one of **agreement**, **evidence-backed
-disagreement** (cite it), or **concern-based disagreement** (say what would settle it), and
-the reviewer answers with evidence rather than a rebuttal. That turns a disagreement into an
-auditable object.
-
-Three roles outperformed a five-agent panel in the source study
-([arXiv 2608.18167](https://arxiv.org/html/2608.18167)), and adding independent reviewers
-alone did *not* reliably help. The count is not the mechanism; the third role is. Where the
-roles are separate agents they get **different vendors** — agents sharing a model share its
-blind spots. Inner loop capped at 5 rounds, with first-pass termination so work that was
-already correct costs two calls.
-
-This replaced an earlier shape that split delegation by domain — one worker per concern, the
-orchestrator merging their reports. That is the two-reviewer step the study measured and found
-unreliable. Domains became the reviewer's checklist; parallelism moved from "several reviewers
-on one artifact" to "several artifacts, each with its own triad".
-
-## Scope
-
-**It stops at a document and Git.** One artifact, one decisions record, one carry-over
-section, and version control. No directory tree, no derived index, no progress ledger, no
-state machine, and no second copy of anything Git already holds. The shape resembles a
-spec-driven development harness and that resemblance is a constraint, not an invitation:
-harnesses that grew those parts have had to delete them again. Adding one requires naming a
-question that neither the artifact nor `git log` can answer.
-
-This Skill produces **executable artifacts** and is self-contained: it assumes no
-neighbouring Skill is installed, and its hand-off spells out the command in full rather than
-leaving another Skill to fill in the gap.
-
-The loop's own boundary — what it may touch, which effects need approval — is one of the six
-questions and belongs here. A broader authority model for an agent that is not a loop does
-not: that gets answered directly, not wrapped in a loop. If you do happen to run
-[agent-harness-design](https://github.com/rocky2431/agent-harness-design-skill) or
-[agent-delegate](https://github.com/rocky2431/agent-delegate-skill), the eval set records
-where each would take over — as `optional_skills`, never as a dependency.
-
-## Sources
-
-The guidance traces to primary sources, listed with URLs and a currency date in
-[references/research-basis.md](plugins/ultra-goal/skills/ultra-goal/references/research-basis.md).
-Anthropic's loop and multi-agent engineering posts are treated as doctrine; the July 2026
-"graph engineering" essays are treated as argument.
-
-The carry-over design rests on two papers, with what was taken and what was deliberately
-left behind spelled out in
-[references/evolution-and-scope.md](plugins/ultra-goal/skills/ultra-goal/references/evolution-and-scope.md):
-**SKILL.state** ([arXiv 2608.26263](https://arxiv.org/abs/2608.26263)) for explicit carried
-state over replayed history — including the finding that one five-field schema served 100
-task instances — and **WikiSkill** ([arXiv 2608.27454](https://arxiv.org/html/2608.27454))
-for persistent knowledge being the critical variable in skill evolution (48.7% → 63.7% in
-their ablation). WikiSkill's machinery — inference agent, wiki maintainer, skill proposer,
-gating against a validation set — is **not** adopted: it is a training framework, and a loop
-designed with its owner in the room has no validation set.
-
-## Tests
+Every acceptance ID maps to `anchor` or `review` in `Verification.covers`. For a
+required review, the contract declares approved verifier identities/fallbacks,
+bounded `inputs` and the receipt path. Obtain the current review packet with:
 
 ```bash
-python3 -m unittest discover -s tests -p "test_*.py" -v
+python3 "$ULTRAGOAL_SCRIPTS/goal_run.py" review-inputs "$ULTRAGOAL_SLUG" \
+  --root "$ULTRAGOAL_PROJECT"
 ```
 
-273 tests: the validator's rules at two severities, the status projection, the
-claim-versus-measurement audit
-against a real Git repository, the gate's eight outcomes, the package surface, version
-consistency across three files, every relative link in `SKILL.md` resolving, and the shipped
-templates passing the shipped validator. Three are safety tests — that an anchor is never
-executed unasked, that it is not executed once the frozen spec has moved, and that the
-validator never edits an artifact.
+The **independent verifier** writes the receipt; the generator must not sign for
+it. The gate checks the approved identity, a session distinct from current and
+previous executing sessions, a digest binding the contract and declared inputs,
+required IDs, passing verdict and per-ID `checks` with actual path/quote evidence.
+Changed inputs require a new review. Native forks that share the execution
+session's identity cannot satisfy that distinct-session requirement.
+
+At the post-Anchor boundary, the gate retains a content-addressed ZIP with the
+receipt, goal, manifest and declared input bytes. Historical audit validates that
+archive, not today's replacement files. Missing or corrupted recorded archives
+are reported, not silently rebuilt or reused as a current review.
+
+These are checked declarations, not authenticated credentials. Shared filesystem
+fields do not provide identity security; a quotation match does not prove the
+claim logically follows. Fresh context and model diversity reduce some correlated
+errors but do not establish correctness. Review the original evidence before an
+author's persuasive explanation.
+
+## Recovery, cancellation and cleanup
+
+Before finishing each turn, save Carry-over. `PreCompact` records its digest and
+counts; it does not summarize unsaved reasoning or block compaction. Supported
+`SessionStart` injection restores priority terms/state and points to anything
+omitted for space; read the complete contract before acting. Kimi's prompt hook
+provides a pointer and last decision, while `TurnStarted` only observes the turn.
+
+A started verification without settlement remains pending/unknown and spends an
+attempt. Recovery can mark it interrupted after acquiring the lock. Reconcile
+actual files and external effects before a new attempt. A request sent without a
+response may already have taken effect: query the service before retrying. This
+is verification bookkeeping, not exactly-once business execution.
+
+For authorized session transfer with valid baselines:
+
+```bash
+python3 "$ULTRAGOAL_SCRIPTS/goal_run.py" rebind "$ULTRAGOAL_SLUG" \
+  --root "$ULTRAGOAL_PROJECT" --session-id "$ULTRAGOAL_SESSION"
+```
+
+Recovery never renews authority, budgets or canceled work. Cancellation must be
+reconciled in **both** native goal state and the Skill's gate. Disarming alone
+does not cancel a native goal:
+
+```bash
+python3 "$ULTRAGOAL_SCRIPTS/goal_run.py" disarm "$ULTRAGOAL_SLUG" \
+  --root "$ULTRAGOAL_PROJECT"
+```
+
+After a current verified completion, the agent reports deliverables, evidence and
+limits, updates native goal state through its actual controls, and disarms the
+gate. Keep the goal, decisions, events, baselines and required review evidence for
+the agreed retention period. Remove only disposable scratch after checking that
+necessary evidence survives. Never remove unsettled-attempt evidence just to make
+a directory look complete. Commit, install and publish only with authority.
+
+## Troubleshooting
+
+| Symptom | Check and response |
+|---|---|
+| `active` exists, but nothing is verified | Check hook discovery, actual event `cwd`, marker format and owning session; an ordinary Stop also does not verify |
+| Legacy marker contains only a slug, or its session binding is invalid | Version 2.15.1 emits a Stop `systemMessage` diagnostic; the gate remains inactive and files stay untouched |
+| UI hides the allowing diagnostic | Inspect raw hook output/logs; emitting a diagnostic is not proof that every host UI displays it |
+| Ordinary `arm` refuses a legacy marker | Use authorized `rebind` if its original baselines remain valid; otherwise explicitly disarm, validate the agreed goal and arm it |
+| Baselines mismatch or the goal was closed after a spec change | Create a newly authorized goal, preferably a new slug; do not delete history or re-pin changed terms to conceal the change |
+| Another session's hooks are silent | Intentional ownership isolation; do not steal the marker |
+| Worker call succeeded but no result file exists | The mission is not joined; inspect the native task and retrieve its actual output |
+| Anchor cannot execute or times out | Outcome is unknown; diagnose the executable, environment and budget |
+| Receipt is missing/stale/self-authored | Obtain an accepted independent review of current inputs |
+| Anchor passed, then verification was interrupted | Latest attempt is unverified; older green cannot settle it |
+| Agent stops although the goal is unmet | Check native budgets, attempt ceiling and denial bound; a Stop hook cannot provide later execution |
+
+The unbound-marker diagnostic uses the existing allowing `systemMessage` channel
+and only runs on Stop. It does not auto-migrate the marker, run the handler,
+consume a candidate, write an event or inject continuation context. Bound foreign
+sessions remain silent. `ULTRA_GOAL_HOOKS_DISABLED=1` disables these hooks in the
+host process environment; reconcile any native goal separately.
+
+For read-only inspection and historical evidence checks:
+
+```bash
+python3 "$ULTRAGOAL_SCRIPTS/validate_artifact.py" "$ULTRAGOAL_PROJECT/.goals" --status
+python3 "$ULTRAGOAL_SCRIPTS/validate_artifact.py" "$ULTRAGOAL_PROJECT/.goals" --audit
+python3 "$ULTRAGOAL_SCRIPTS/goal_run.py" diff "$ULTRAGOAL_SLUG" --root "$ULTRAGOAL_PROJECT"
+```
+
+`--status --run-anchors` is different: it executes artifact-named shell commands
+and requires their effects to be authorized. Audit findings identify divergences;
+they do not automatically repair them or prove the specification was adequate.
+
+## Knowledge and Skill maintenance
+
+Keep raw observations, current state and conditional project knowledge distinct.
+A lesson belongs in existing project documentation with its evidence, applicable
+conditions and what would invalidate it. A business run may revise its own state;
+it cannot automatically rewrite the installed Skill or global configuration.
+
+An authorized maintenance change follows a small cycle: retain the failure,
+formulate conditional knowledge, propose the smallest instruction/code change,
+compare against a baseline on relevant and held-out work, then retain or roll back
+the candidate. Preserve failed experiments. There is no permanent maintainer agent
+or automatic rule promotion.
+
+The [research basis](plugins/ultra-goal/skills/ultra-goal/references/research-basis.md)
+links prior work from OpenAI, Anthropic, Google and others. WikiSkill informs the
+separation of experience, knowledge and executable skills; SKILL.state informs
+immutable specification versus mutable state. Their measured results and runtime
+properties do not transfer automatically to this Skill. See the
+[maintenance procedure](plugins/ultra-goal/skills/ultra-goal/references/evolution-and-scope.md).
+
+## Validation and limits
+
+Run the repository checks without installing test dependencies:
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+The suite covers contract validation, session ownership, candidate verification,
+interruption accounting, locks, retained review evidence, host output contracts
+and packaging. The 2.15.1 regression exercises the unbound-marker diagnostic
+through all four Stop adapters and checks that goal files remain byte-identical.
+This is a script-level check, not a four-host UI or unattended lifecycle run.
+
+The model still owns interview adequacy, specification critique, routing, joins,
+state maintenance and invocation of the completion protocol. Scripts mechanize
+narrow facts; they do not verify every natural-language statement, authenticate
+shared-file identities or prove the original goal can never be wrong.
+
+Historical product and host probes are bounded evidence. Full unattended closure
+across all four hosts, Windows native lifecycle, all cancellation/recovery
+combinations and a statistical reliability above 95% remain unestablished. Eval
+scenario definitions are not completed model trials. See
+[remaining validation scope](docs/wip/outstanding.md).
 
 ## License
 
-MIT
+[MIT](LICENSE).

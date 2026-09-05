@@ -1,7 +1,23 @@
 # Adversarial review
 
-The verification protocol this Skill asks for, and why it has three roles rather than five
-reviewers.
+An optional review protocol for goals that choose a reviewer and a critic. It is not a
+requirement for every goal or every independent review. The cited study motivates this
+pattern in its evaluated setting; it does not establish a universal optimal team size.
+
+## Required and advisory are different objects
+
+Read this before choosing a protocol, because the two are checked differently:
+
+| | Required review | Advisory review |
+|---|---|---|
+| Declared in | `## Verification`'s `review` contract, with an acceptance ID mapped to `review` | prose, or nowhere |
+| Settles | that acceptance ID — the run cannot complete without it | nothing on its own; it informs the run |
+| Evidence | a receipt written by an approved verifier, in its own session, over the declared inputs | whatever the reviewer produced |
+| May the run vary it | no — identities and inputs are frozen, and only a pre-authorized fallback substitutes | yes, freely |
+
+The triad below is a protocol you may run in either position. Running it does not make a
+review required, and a required review does not have to be a triad — one independent
+reviewer with a receipt is often the whole answer.
 
 ## The shape
 
@@ -49,7 +65,8 @@ to fix a measured failure of the previous one. Two findings matter here:
 - **Adding independent reviewers alone did not reliably improve results.** More eyes on the
   code is not the mechanism. Someone auditing the eyes is.
 
-So the count is not the point. The third role is.
+Use this evidence to consider a critic when false consensus is a concrete risk, not to
+forbid simpler reviews or other team structures.
 
 ## The failure it exists to prevent: false consensus
 
@@ -95,8 +112,12 @@ So the isolation that matters is over inputs:
 | R | the frozen artifact, the acceptance criteria, the anchor's raw output | M's explanation, M's confidence, M's summary of what it tried |
 | C | R's review and the same frozen artifact | M's opinion of the review, R's account of its own confidence |
 
-State this per role in the delegation package as an `inputs:` field, where it is mechanically
-checkable. In a single-agent goal package `## Verification` is prose and the rule is stated
+State this per role in the delegation package as an `inputs:` field. Where the review is a
+required one, `## Verification`'s `review.inputs` bounds it in every shape: the verifier
+digests exactly those paths and the gate refuses a receipt computed over anything else.
+
+That checks *which files* were reviewed, and nothing more. Whether M's explanation reached
+the reviewer's context is a property of how the role was invoked, so there the rule is stated
 rather than checked - pattern-matching prose for the right words would be keyword-guessing
 wearing the costume of a check.
 
@@ -105,8 +126,7 @@ wearing the costume of a check.
 Where the roles are separate agents, **give them different underlying models.** Agents differ
 only by their context, their scaffolding, and the model beneath them — which is why identical
 agents make identical mistakes, and why a critic sharing the reviewer's model will mostly
-agree with it. Different vendors buy real independence rather than a differently worded
-prompt.
+agree with it. Different vendors can reduce shared errors; they do not prove independence.
 
 A workable assignment on a machine with several CLIs:
 
@@ -130,13 +150,13 @@ does not:
 |---|---|---|
 | **completed** | the mission was carried out | run the anchor yourself; the report is a claim |
 | **failed** | attempted, did not work | read what was tried before re-dispatching |
-| **input-required** | cannot proceed without something specific | supply that thing, or drop the mission. **Not a failure, and never scored as one** |
+| **input-required** | a concrete unanswered question or explicit native waiting-for-input state | resolve the question within existing authority; a paused mission is not completion |
 | **rejected** | the mission is outside what this worker should do | take the objection seriously; a worker that declines loudly beats one that improvises |
 
-**Silence is `input-required`, never `completed`.** This is the whole reason to name the
-states: without them, a worker that returned nothing and a worker that found nothing look
-identical, and the orchestrator reads the second one as agreement — which is the false
-consensus this protocol exists to break, arriving through a different door.
+**Silence is unconfirmed.** Inspect the native task, process or delegation receipt
+before deciding whether it is running, finished, failed or waiting for input. If
+status cannot be observed, retain unknown and the readback/retry condition; do not
+invent an owner question or treat the missing reply as agreement.
 
 ## Cost
 
@@ -144,14 +164,9 @@ Each inner round is two calls, one for R and one for C, capped at five rounds. F
 termination means work that was already correct costs two calls, not ten. Compare that to
 fanning out to N reviewers: N calls, and N reviews nobody audited.
 
-## What this replaces
+## Other review methods
 
-An earlier version of this Skill split delegation by **domain** — one worker for overflow,
-another for reentrancy — and had the orchestrator merge their reports. That is the
-two-reviewers step the source study measured and found unreliable, for the reason above: no
-one audits either report, and the orchestrator has no independent evidence with which to
-arbitrate between them.
-
-Domains do not disappear. They become the reviewer's checklist. Parallelism does not
-disappear either — it moves from "several reviewers on one artifact" to "several artifacts,
-each with its own triad".
+This triad is one option. A single independent reviewer or reviewers split by **domain**
+can be appropriate when the task and available evidence support that choice. The main
+model remains responsible for reconciling findings and checking the actual artifact.
+Do not infer acceptance from consensus or force a second reviewer without a concrete need.

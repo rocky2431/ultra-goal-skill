@@ -1,6 +1,6 @@
 {
   "name": "ultra-goal",
-  "version": "2.11.0",
+  "version": "2.15.1",
   "description": "Interview the owner into a grounded goal, then emit the runnable prompt or script that pursues it until an anchor says it is met.",
   "author": {
     "name": "rocky2431",
@@ -11,7 +11,7 @@
   "interface": {
     "displayName": "UltraGoal",
     "shortDescription": "Turn a vague objective into a goal an agent can hold to",
-    "longDescription": "Adds a provider-neutral Skill that turns an objective into a goal an agent can hold to without its owner in the room: it interviews the owner for a goal's intent, anchor, quantified stop condition, boundary, droppable means, and adversarial verifier, refuses the shapes that fail in production, and compiles a machine-consumable artifact - a /goal package to paste into any host's goal mode, a workflow script, or a cross-vendor delegation triad. Meaning stays model-authored; only the package surface and the machine-measured evidence are mechanically checked.",
+    "longDescription": "A skill for grounded goals on Codex, Claude Code, Kimi and zCode. It establishes intent, evidence and authority, lets the main model manage work and feedback, and uses bounded hooks to check explicit completion claims. Unattended continuation requires an available native host goal service. The skill adds no Agent Runtime; support is stated by tested host surface.",
     "developerName": "rocky2431",
     "category": "Developer Tools",
     "capabilities": [

@@ -22,7 +22,8 @@ sys.path.insert(0, str(VALIDATOR.parent))
 import validate_artifact as va  # noqa: E402
 
 
-GOOD_WORKFLOW = """// anchor: `pnpm test -- --run`
+GOOD_WORKFLOW = """// goal: `fix-flaky-tests.goal.md`
+// anchor: `pnpm test -- --run`
 export const meta = {
   name: 'fix-flaky-tests',
   description: 'Quarantine flaky tests, then verify each quarantine decision',
@@ -64,6 +65,8 @@ transitive overrides that carry a comment.
 ## Stop condition
 
 Stop when `pnpm audit --audit-level=high` reports 0 findings, or after 6 turns.
+success: verified
+ceiling: 6
 
 ## Anchor
 
@@ -91,10 +94,14 @@ A reviewer with a fresh context reviews the diff; a critic then audits that revi
 than the code, classifying each point as agreement, evidence-backed disagreement, or
 concern-based disagreement. At most 5 inner rounds.
 
+```json
+{"source":"external","basis":"Independent fixture command.","protected":[],"covers":{"core":"anchor","api":"anchor"},"review":null}
+```
+
 ## Acceptance
 
-- [x] `packages/core` current with a green anchor
-- [ ] `packages/api` current with a green anchor
+- [x] core: `packages/core` current with a green anchor
+- [ ] api: `packages/api` current with a green anchor
 
 ## Cadence
 
@@ -127,6 +134,8 @@ Read this before acting; rewrite it before finishing. Drop anything no longer tr
 
 GOOD_DELEGATION = """# Delegation: settlement-audit
 
+goal: `settlement-audit.goal.md`
+
 Adversarial review over a frozen artifact. Only the orchestrator edits it, and only after
 the review has converged. The reviewer and critic are different vendors on purpose: agents
 that share a model share its blind spots.
@@ -150,8 +159,8 @@ that share a model share its blind spots.
 The artifact stays frozen for the whole inner loop. The reviewer answers a disagreement with
 evidence, never with a rebuttal. At most 5 inner rounds. If round 1 converges with no
 findings, accept and stop. A report ends in exactly one outcome: completed, failed,
-input-required (name what is needed), or rejected (say why). Silence is input-required,
-never completed.
+input-required (name what is needed), or rejected (say why). Silence is unknown;
+query actual worker state before deciding the next action.
 """
 
 
@@ -163,6 +172,16 @@ class Harness(unittest.TestCase):
 
     def write(self, name: str, text: str) -> Path:
         path = self.dir / name
+        # Attachment fixtures include the contract they execute. Missing or
+        # mismatched shared contracts are tested directly in test_goal_contract.
+        for suffix in (".workflow.js", ".delegation.md"):
+            if name.endswith(suffix):
+                import re
+                shared = name[:-len(suffix)] + ".goal.md"
+                text = re.sub(r"goal: `[^`]+`", f"goal: `{shared}`", text)
+                contract = self.dir / shared
+                if not contract.exists():
+                    contract.write_text(GOOD_GOAL)
         path.write_text(text, encoding="utf-8")
         return path
 
@@ -245,7 +264,7 @@ class GoalTests(Harness):
             GOOD_GOAL.replace(
                 "Stop when `pnpm audit --audit-level=high` reports 0 findings, or after 6 turns.",
                 "Stop when the dependencies look healthy enough.",
-            ),
+            ).replace("success: verified\nceiling: 6", ""),
         )
         self.assertIn("STOP_CONDITION_NOT_QUANTIFIED", self.codes(path))
 
@@ -370,7 +389,7 @@ class DelegationTests(Harness):
 
 
 class GoalVerificationTests(Harness):
-    def test_verification_naming_only_one_role_is_reported(self) -> None:
+    def test_goal_allows_one_independent_reviewer(self) -> None:
         self.write("v1.decisions.md", GOOD_DECISIONS)
         path = self.write(
             "v1.goal.md",
@@ -381,15 +400,15 @@ class GoalVerificationTests(Harness):
                 "That is the whole check.",
             ),
         )
-        self.assertIn("REVIEW_NOT_ADVERSARIAL", self.codes(path))
+        self.assertEqual([], self.codes(path))
 
-    def test_verification_without_a_round_cap_is_reported(self) -> None:
+    def test_single_check_does_not_need_an_inner_round_cap(self) -> None:
         self.write("v2.decisions.md", GOOD_DECISIONS)
         path = self.write(
             "v2.goal.md",
-            GOOD_GOAL.replace("At most 5 inner rounds.", "Repeat until they agree."),
+            GOOD_GOAL.replace("At most 5 inner rounds.", "Run this check once."),
         )
-        self.assertIn("CONVERGENCE_NOT_BOUNDED", self.codes(path))
+        self.assertEqual([], self.codes(path))
 
 
 class DecisionsTests(Harness):
@@ -846,8 +865,8 @@ class AcceptanceTests(Harness):
         )
         self.assertIn("ACCEPTANCE_MISSING", self.codes(path))
 
-    def test_a_one_shot_goal_does_not(self) -> None:
-        """Where it would be ceremony, it is not asked for."""
+    def test_a_one_shot_goal_still_needs_recovery(self) -> None:
+        """A single start can still lose context or be interrupted."""
         self.write("a.decisions.md", GOOD_DECISIONS)
         one_shot = GOOD_GOAL
         for section in ("## Acceptance", "## Cadence", "## Carry-over"):
@@ -855,14 +874,14 @@ class AcceptanceTests(Harness):
         path = self.write("a.goal.md", one_shot)
         codes = self.codes(path)
         self.assertNotIn("ACCEPTANCE_MISSING", codes)
-        self.assertNotIn("CARRYOVER_MISSING", codes)
+        self.assertIn("CARRYOVER_MISSING", codes)
 
     def test_a_numbered_acceptance_list_is_a_plan(self) -> None:
         self.write("a.decisions.md", GOOD_DECISIONS)
         path = self.write(
             "a.goal.md",
             GOOD_GOAL.replace(
-                "- [x] `packages/core` current with a green anchor",
+                "- [x] core: `packages/core` current with a green anchor",
                 "1. `packages/core` current with a green anchor",
             ),
         )
@@ -873,7 +892,7 @@ class AcceptanceTests(Harness):
         path = self.write(
             "a.goal.md",
             GOOD_GOAL.replace(
-                "- [ ] `packages/api` current with a green anchor",
+                "- [ ] api: `packages/api` current with a green anchor",
                 "- `packages/api` current with a green anchor",
             ),
         )
@@ -908,8 +927,8 @@ class SeverityTests(Harness):
         self.assertEqual([], report.errors)
         self.assertEqual(1, len(report.advisories))
 
-    def test_a_cited_budget_stays_an_error(self) -> None:
-        """LESSONS_MAX has a basis (Reflexion bounds its memory at 1-3)."""
+    def test_necessary_lessons_above_the_compact_default_remain_valid(self) -> None:
+        """A research hyperparameter must not reject necessary recovery facts."""
         self.write("s.decisions.md", GOOD_DECISIONS)
         path = self.write(
             "s.goal.md",
@@ -919,8 +938,9 @@ class SeverityTests(Harness):
             ),
         )
         report = va.validate_paths([str(path)])
-        self.assertIn("LESSONS_UNPRUNED", {f.code for f in report.errors})
-        self.assertFalse(report.ok)
+        self.assertIn("LESSONS_UNPRUNED", {f.code for f in report.advisories})
+        self.assertTrue(report.ok)
+        self.assertEqual([], report.errors)
 
     def test_the_cli_labels_advisories_and_still_exits_zero(self) -> None:
         self.write("s.decisions.md", GOOD_DECISIONS)
@@ -973,7 +993,7 @@ class WorkerOutcomeTests(Harness):
         path = self.write(
             "w.delegation.md",
             GOOD_DELEGATION.replace(
-                "A report ends in exactly one outcome: completed, failed,\ninput-required (name what is needed), or rejected (say why). Silence is input-required,\nnever completed.",
+                "A report ends in exactly one outcome: completed, failed,\ninput-required (name what is needed), or rejected (say why). Silence is unknown;\nquery actual worker state before deciding the next action.",
                 "",
             ),
         )
@@ -1144,12 +1164,12 @@ class StatusTests(Harness):
             loop["next"],
         )
 
-        graph = by_slug["fix-flaky-tests"]
+        graph = next(item for item in state["artifacts"] if item["kind"] == "workflow")
         self.assertEqual("graph-single-vendor", graph["shape"])
         self.assertEqual(["Triage", "Verify"], graph["phases"])
         self.assertIn("pnpm test", graph["anchor"])
 
-        star = by_slug["cross-vendor-audit"]
+        star = next(item for item in state["artifacts"] if item["kind"] == "delegation")
         self.assertEqual("graph-star", star["shape"])
         self.assertEqual(["codex", "kimi"], star["workers"])
 
@@ -1219,7 +1239,7 @@ class CarryOverTests(Harness):
         )
         self.assertIn("CARRYOVER_MISSING", self.codes(path))
 
-    def test_one_shot_goal_needs_no_carry_over(self) -> None:
+    def test_one_shot_goal_needs_carry_over(self) -> None:
         self.write("os.decisions.md", GOOD_DECISIONS)
         without_cadence = GOOD_GOAL.split("## Cadence")[0] + """## Handoff
 
@@ -1229,7 +1249,7 @@ class CarryOverTests(Harness):
 """
         path = self.write("os.goal.md", without_cadence)
         report = va.validate_paths([str(path)])
-        self.assertTrue(report.ok, [f.as_dict() for f in report.findings])
+        self.assertIn("CARRYOVER_MISSING", [f.code for f in report.findings])
 
     def test_scheduled_loop_also_needs_carry_over(self) -> None:
         self.write("sc.decisions.md", GOOD_DECISIONS)
@@ -1309,8 +1329,7 @@ class CarryOverTests(Harness):
 
 
 class CadenceTests(Harness):
-    """Carry-over is required by the presence of a cadence, not by guessing at
-    scheduler keywords. A goal that repeats needs carried state; a one-shot does not."""
+    """Recovery is required independently of cadence or scheduler keywords."""
 
     def test_any_cadence_requires_carry_over(self) -> None:
         self.write("c1.decisions.md", GOOD_DECISIONS)
@@ -1342,7 +1361,7 @@ class CadenceTests(Harness):
                 )
                 self.assertIn("CARRYOVER_MISSING", self.codes(path))
 
-    def test_no_cadence_means_no_carry_over_required(self) -> None:
+    def test_no_cadence_still_requires_carry_over(self) -> None:
         self.write("c2.decisions.md", GOOD_DECISIONS)
         one_shot = GOOD_GOAL.split("## Cadence")[0] + """## Handoff
 
@@ -1352,7 +1371,7 @@ class CadenceTests(Harness):
 """
         path = self.write("c2.goal.md", one_shot)
         report = va.validate_paths([str(path)])
-        self.assertTrue(report.ok, [f.as_dict() for f in report.findings])
+        self.assertIn("CARRYOVER_MISSING", [f.code for f in report.findings])
 
 
 class RunnableHandoffTests(Harness):

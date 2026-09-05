@@ -114,11 +114,11 @@ class RegistrationTests(Harness):
         ]
         self.assertEqual(["python3 /somebody/else/check.py"], remaining)
 
-    def test_a_host_without_the_events_registers_nothing_and_says_so(self) -> None:
+    def test_legacy_installer_reports_its_own_adapter_limit(self) -> None:
         result = self.run_installer("install", "--hosts", "kimi")
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertIn("no hooks registered", result.stdout)
-        self.assertIn("the goal text still works", result.stdout)
+        self.assertIn("hooks are not configured by this legacy installer", result.stdout)
+        self.assertIn("a copied skill alone does not activate the gate", result.stdout)
         self.assertFalse((self.home / ".claude" / "settings.json").exists())
 
     def test_unreadable_settings_refuses_rather_than_clobbering(self) -> None:
@@ -188,7 +188,7 @@ class DoctorTests(Harness):
     def test_doctor_says_unsupported_for_a_host_without_the_events(self) -> None:
         self.run_installer("install", "--hosts", "kimi")
         report = self.doctor("kimi")
-        self.assertEqual("unsupported-host", report["hosts"]["kimi"]["hooks"])
+        self.assertEqual("not-configured-by-this-installer", report["hosts"]["kimi"]["hooks"])
         self.assertTrue(report["ok"], "an unsupported host is not a broken install")
 
 

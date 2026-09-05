@@ -1,5 +1,12 @@
 # 理论扫描:四家的长任务工程实践,与 UltraGoal 的逐条对照
 
+> 历史记录，已被 2026-09-05 的[研究依据复核](../../plugins/ultra-goal/skills/ultra-goal/references/research-basis.md)
+> 及当前 `plugins/ultra-goal/skills/ultra-goal/references/` 规范取代。以下保留当时推理与待决项，
+> 不再作为执行指令。已纠正的旧结论包括：移除 Generator、压缩等于清空上下文、
+> Lessons 超过三条必须报错、普遍禁止 plan/task 文件、沉默 worker 等于等待用户、
+> Git 自动保存未提交的每轮完整历史。历史原文不因后续实现而改写；当前验收状态以
+> [剩余验证范围](../wip/outstanding.md)与当前 README 为准。
+
 状态:进行中。这份文档在"是否进入实践"这个决定做完、且下面的待决项清空后删除,
 把留得住的内容折进 `references/`。
 

@@ -60,8 +60,9 @@ generalise past this instance:
   action.
 - **What the reset discarded was the most valuable context that will ever exist.** At the
   handoff the window holds why each term was chosen, what the design critic objected to and
-  what the owner rejected. The artifact keeps at most three lessons. Trading the first for
-  the second is a downgrade dressed as hygiene.
+  what the owner rejected. Carry-over is a compact summary; three lessons is a
+  suggestion, not a correctness limit. Keep necessary source evidence instead of
+  assuming the summary can replace everything a reset discards.
 - **The worry it answered already had three answers**, one of them mechanical: the
   injection's own first line, `frozen_digest()` written and compared by machine, and the
   challenge row for a term that really is wrong. A fourth defence that costs the owner an

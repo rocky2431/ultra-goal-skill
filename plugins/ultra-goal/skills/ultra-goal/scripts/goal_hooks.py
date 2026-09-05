@@ -32,13 +32,13 @@ GOALS_DIR = ".goals"
 # arming command, into `<slug>.spec.baseline` and compared by the gate on
 # every later Stop against that file - never against a digest found in the
 # event log, because the run can write the log.
-FROZEN_SECTIONS = ("intent", "boundary", "anchor")
+FROZEN_SECTIONS = ("intent", "boundary", "anchor", "stop condition", "verification")
 ACTIVE_MARKER = "active"
 SPEC_BASELINE_SUFFIX = ".spec.baseline"
 DISABLE_ENV = "ULTRA_GOAL_HOOKS_DISABLED"
 # A slug names one artifact in `.goals/`. It is never a path.
 SLUG_MAX = 100
-# The marker's optional second line names the session that owns the run. A
+# The marker's required second line names the session that owns the run. A
 # session id is ownership information, not an anti-forgery key: any process
 # that can write files can write the marker. What the line buys is that a
 # *different* session's ordinary hooks - a Stop that would gate, a prompt
@@ -200,9 +200,8 @@ def _valid_slug(raw: str) -> str | None:
 def _valid_session(raw: str) -> str | None:
     """A session token: one lineless, pathless, printable word.
 
-    Claude Code and Codex send UUID-shaped ids; anything hostile-looking is
-    ignored rather than rejected, because the marker is fail-open by design -
-    an unreadable session line means an unclaimed goal, never a dead gate.
+    UUIDs and the native prefixed IDs are accepted. An invalid identity makes
+    arming refuse and hook events inert; it can never claim an unbound goal.
     """
     token = raw.strip()
     if not token or len(token) > SESSION_MAX:
@@ -213,13 +212,15 @@ def _valid_session(raw: str) -> str | None:
         return None
     if not token.isprintable():
         return None
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]*", token):
+        return None
     return token
 
 
 def _read_marker(marker: Path) -> tuple[str | None, str | None]:
-    """The marker's slug line and its optional `session <id>` line.
+    """Read the marker's slug and session line, including legacy unbound markers.
 
-    Still deliberately dumb: fixed first line, one optional keyed line, and
+    Still deliberately dumb: fixed first line, one keyed line, and
     anything unparsable reads as absent rather than fatal.
     """
     try:
@@ -294,13 +295,9 @@ def read_spec_baseline(goal: ActiveGoal) -> str | None:
 def event_session(event: dict[str, Any]) -> str | None:
     """The session identity the host put in the payload, where it does.
 
-    Read only as `session_id`: the field the Claude Code hooks reference
-    documents for every event, and the one the Codex Stop probe receipts
-    carry. Kimi's Stop input is `{stopHookActive: ...}` and nothing else
-    (0.40.1 binary), and zCode has never loaded a hook on this machine - so
-    absence is normal there. An event with no session identity cannot be
-    told apart from the owner's and is not excluded: a declared degradation,
-    not a proxy read of a field no reference documents.
+    All four measured host envelopes include `session_id`. An earlier
+    reading of Kimi's event-specific input missed the common envelope.
+    Missing identity never grants ownership, including on legacy markers.
     """
     value = event.get("session_id")
     if isinstance(value, str):
@@ -311,30 +308,12 @@ def event_session(event: dict[str, Any]) -> str | None:
 def owns_goal(goal: ActiveGoal, event: dict[str, Any]) -> bool:
     """Is this event the owning session's?
 
-    Enforced exactly when both sides name a session: the marker's line and
-    the event's `session_id`. Anything else - an unclaimed marker, an
-    id-less event - passes, because an undistinguishable event is not
-    evidence of a stranger.
+    Ownership is bound by the initiating session during arming. A foreign
+    or identity-less event cannot consume a candidate or change recovery
+    state. Legacy unbound markers are inert until explicitly re-armed.
     """
     session = event_session(event)
-    if session is None or goal.owner_session is None:
-        return True
-    return session == goal.owner_session
-
-
-def claim_session(goal: ActiveGoal, session: str) -> None:
-    """Record `session` as the run's owner in the marker. First write wins.
-
-    Called by the Stop hook the first time a session-carrying Stop arrives
-    over an unclaimed goal. Concurrent first Stops race and the last writer
-    wins - ownership information, not a lock.
-    """
-    try:
-        goal.marker_path.write_text(
-            f"{goal.slug}\nsession {session}\n", encoding="utf-8"
-        )
-    except (OSError, UnicodeError):
-        pass
+    return session is not None and session == goal.owner_session
 
 
 def emit(payload: dict[str, Any]) -> None:
@@ -389,6 +368,14 @@ def run_hook(
         goal = active_goal(event.get("cwd"))
         if goal is None:
             return 0
+        if goal.owner_session is None:
+            if event_name == "Stop":
+                emit({"systemMessage": (
+                    f"[ultra-goal] {goal.slug}: .goals/active has a legacy or invalid session binding. "
+                    "Hooks are inactive; no verification was performed. "
+                    "Use goal_run.py rebind for an authorized recovery, or disarm before arming an agreed goal."
+                )})
+            return 0
         if not owns_goal(goal, event):
             # Another session's event over this cwd's goal: not its run to
             # gate, inject into, or reset. Silent and side-effect free.
@@ -400,6 +387,35 @@ def run_hook(
         return 0
     except BaseException:  # noqa: BLE001 - a hook must never take the host down
         return 0
+
+
+def completion_attempt(entry: dict[str, Any]) -> bool:
+    """Recognize a settled attempt; use completion_attempts to count starts too."""
+    return entry.get("event") in {
+        "anchor_checked", "candidate_refused", "anchor_unavailable", "ceiling_reached",
+        "verification_interrupted",
+    } or (entry.get("event") == "frozen_spec_changed" and entry.get("completion_candidate") is True)
+
+
+def completion_attempts(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One latest observation per attempt, including starts without an outcome.
+
+    Legacy rows without an ID remain separate attempts. Starting and settling a
+    new attempt must not spend its ceiling twice.
+    """
+    attempts: list[dict[str, Any]] = []
+    positions: dict[str, int] = {}
+    for entry in events:
+        if entry.get("event") != "verification_started" and not completion_attempt(entry):
+            continue
+        identity = entry.get("verification_id")
+        if isinstance(identity, str) and identity:
+            if identity in positions:
+                attempts[positions[identity]] = entry
+                continue
+            positions[identity] = len(attempts)
+        attempts.append(entry)
+    return attempts
 
 
 def append_event(goal: ActiveGoal, entry: dict[str, Any]) -> bool:
@@ -470,4 +486,34 @@ def frozen_digest(spec: str) -> str:
     """
     parts = sections(spec)
     joined = "\n".join(parts.get(name, "") for name in FROZEN_SECTIONS)
+    # Requirement text is invariant; checkboxes are mutable progress claims.
+    joined += "\nacceptance:\n" + re.sub(
+        r"(?m)^(\s*[-*]\s+)\[[ xX]\]", r"\1[ ]", parts.get("acceptance", "")
+    )
+    # Include continuation lines: moving a label to the next line cannot
+    # turn an owner-owned declaration into mutable prose.
+    labelled = [block for block in bullet_blocks(parts.get("means", ""))
+                if re.search(r"\[(?:load-bearing|droppable)\]", block, re.I)]
+    if labelled:
+        joined += "\nmeans labels:\n" + "\n".join(labelled)
     return hashlib.sha256(joined.encode("utf-8", "replace")).hexdigest()[:12]
+
+
+def bullet_blocks(text: str) -> list[str]:
+    """A bullet and its indented continuation lines, shared by validation/digests."""
+    blocks: list[str] = []
+    current: list[str] = []
+    for line in text.splitlines():
+        if re.match(r"^\s*[-*]\s+", line):
+            if current:
+                blocks.append("\n".join(current))
+            current = [line.strip()]
+        elif current and line[:1].isspace() and line.strip():
+            current.append(line.strip())
+        else:
+            if current:
+                blocks.append("\n".join(current))
+            current = []
+    if current:
+        blocks.append("\n".join(current))
+    return blocks

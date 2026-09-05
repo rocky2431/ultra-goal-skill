@@ -5,913 +5,325 @@ when_to_use: "When the owner wants work to keep running without them - \"make an
 license: MIT
 metadata:
   author: rocky2431
-  version: "2.11.0"
+  version: "2.15.1"
 ---
 
 # UltraGoal
 
-The owner has an objective they want an agent to pursue without them in the room. Your job
-is to interview them until that objective has an intent, an anchor that cannot be argued
-with, a stop condition a machine can evaluate, a boundary, means labelled by whether they
-may be dropped, and a verifier that is not the generator — then write the prompt or script
-that pursues it and hand it off.
+Turn the owner's objective into an executable goal they can start and leave running.
+The goal is the invariant; loop and graph differ in **when routing gets decided**.
+This skill defines the goal and hands it to the host. The host supplies execution,
+continuation, permissions and resource controls.
 
-**The goal is the invariant; loop and graph are two shapes it compiles to.** Neither is an
-upgrade of the other. The distinction is *when routing gets decided*, and a graph is what
-you can only write once you already know the route. Most work is a loop. Reach for a graph
-only when a loop provably cannot hold it.
-
-The agent gets wide latitude inside that frame: it picks the method, drops means that turn
-out not to serve the intent, and rewrites its own carried state. **That latitude is exactly
-why every claim it makes has to be checkable against something it did not author.** Wide
-authority and zero trust in self-report are the same design decision, not opposing ones.
+**One goal contract, whatever the execution shape.** Every run owns
+`.goals/<slug>.goal.md` and `<slug>.decisions.md`. A workflow or delegation package
+is an optional attachment to that same contract. The model may change strategy,
+workers and carried state within the accepted terms; it may not make success easier.
 
 ## Keep activation scoped
 
-Use this Skill when the deliverable is an **executable artifact**: a goal the owner pastes
-into their CLI and walks away from, a workflow script, or a delegation package other agents
-consume.
-
-The goal's own boundary — what it may touch, and which of its effects need approval before
-they run — is question 5 below and belongs here. A broader authority model for an agent
-that is not pursuing a goal does not: answer that directly instead of building a goal
-around it.
-
-Running it is not this Skill either. It stops when the artifact validates and the owner
-has the command.
+Use this skill to create, inspect or modify an executable goal package, workflow
+script or delegation package. An ordinary task or a broader authority-model question
+needs its own answer, not a goal interview. Assume no other Skill is installed.
 
 ## Recognize the intent first
 
-Work out which of these the owner is asking for before classifying anything. Guessing
-wrong either wastes an interview or silently overwrites a loop that is already running.
-
-| Intent | What it sounds like | Do this |
+| Intent | Signal | Action |
 |---|---|---|
-| **Create** | "make an agent keep doing this", "turn this into something that runs itself" | Run the interview below |
-| **Modify** | "change the stop condition", "it keeps doing X", or the request names an existing slug | Jump to *Modify an existing loop* |
-| **Inspect** | "what loops do we have", "is it still running", "why did it stop" | Report status and change nothing |
-| **Not a loop** | a one-shot task, an ordinary code change, a question that wants an answer | Say so and do the work directly |
-| **Executing** | a pasted goal line, or a request from inside a run that is already underway | **Do not activate.** Do the work the goal asks for |
+| **Create** | The owner wants to set up autonomous work | Interview, compile and validate below |
+| **Modify** | The request changes an existing goal's terms | Read the goal and decisions; use Modify below |
+| **Inspect** | The owner asks what exists, what ran or why it stopped | Use Inspect below; change nothing |
+| **Executing** | A pasted goal line or a work step under an active goal | **Do not activate.** Do the work the goal asks for |
+| **Not a loop** | A one-shot task or an answer | Do the requested work directly |
 
-Derive it from the request plus what is on disk rather than asking. Whenever the project's
-workflows directory is non-empty, **run the status command before the first question**: an
-existing artifact covering the same subject means the intent is Modify, not Create.
+If `.goals/` has artifacts, **run the status command before the first question**.
+An existing goal covering the request may make it Modify, not Create. State alone
+is not the decision: changing its ceiling is Modify; upgrading its next package is
+Executing. When uncertain, do the requested work rather than reopening an interview.
+If missing goal terms materially hindered that work, name the missing term once.
 
-### The one intent that is not a request for this Skill
+## Read only what this stage needs
 
-A pasted goal line is dense with this Skill's own vocabulary — intent, anchor, boundary,
-carry-over, turns, stop condition — because this Skill wrote it. That makes **executing a
-goal** the intent most likely to pull the Skill in wrongly, and the damage is specific:
-interviewing an owner who is not in the room, about a goal that was already agreed, while a
-run burns its turn ceiling on the conversation.
+- **Creating or changing terms:** read [goal-contract.md](references/goal-contract.md)
+  before writing an artifact. It owns the schema, criterion counterexamples,
+  independent-review receipt and completion contract.
+- **Choosing delegation or review:** read [agent-modes.md](references/agent-modes.md).
+  For a chosen reviewer/critic exchange, also read
+  [adversarial-review.md](references/adversarial-review.md). Its packaged role calls
+  are `/ultra-goal:review <slug>` and `/ultra-goal:critic <slug>`.
+- **Authored routing:** read [graph-topology.md](references/graph-topology.md).
+  For trigger or scheduling choices, read [loop-primitives.md](references/loop-primitives.md).
+- **Starting or resuming:** switch to [goal-run.md](../../commands/goal-run.md).
+  Read [host-hooks.md](references/host-hooks.md) only to resolve a host capability,
+  hook refusal or lifecycle limitation.
+- **Recovery, evidence retention or a longer execution plan:** read
+  [document-system.md](references/document-system.md). An unknown external effect
+  also requires the recovery procedure in [goal-contract.md](references/goal-contract.md).
+- **Changing the skill from accumulated experience:** use the tested-promotion
+  procedure in [evolution-and-scope.md](references/evolution-and-scope.md).
+  Ordinary goal execution does not need that maintenance procedure.
 
-Two signals, either of which is enough to stay out:
-
-- The request **is** a goal line — it opens with a host's goal command, or it reads as
-  instructions addressed to the agent rather than a request addressed to you.
-- `.goals/active` names an existing artifact and the request is a step of that work rather
-  than a change to its terms.
-
-The second signal is worth reading twice, because the same project state means opposite
-things depending on the request. "Make it stop after three turns" while a goal is active is
-**Modify**. "Upgrade the next package" while a goal is active is **Executing** — the run
-doing its job, and no business of this Skill's.
-
-When you are unsure, do the work rather than the interview — and then **actually spend the
-sentence.** A missed activation costs one sentence offering to design the goal properly; a
-wrong activation costs a turn of the ceiling and replaces the run with a conversation. So:
-do the work, and if the objective was underspecified in a way that cost you something, say
-so once at the end, naming what was missing. That turns a miss into a lead instead of
-silence, and it is the only reason erring this way is cheap.
+Do not preload all references. Read [anti-patterns.md](references/anti-patterns.md),
+[zero-trust.md](references/zero-trust.md) or
+[research-basis.md](references/research-basis.md) when a concrete design question
+needs their failure analysis, control limits or source evidence.
 
 ## Interview protocol
 
-- **One question per turn.** Wait for the answer. Several at once means the owner answers
-  the easy one and skips the load-bearing one.
-- **Every question carries your recommended answer** and what would change it. A question
-  without a recommendation moves work onto the owner instead of sharpening it.
-- **Facts are yours, decisions are theirs.** Resolve anything the repository, git history,
-  test config, CI, or a tool can tell you before asking. Check the project's and the user's
-  `CLAUDE.md` (or equivalent) for a standing answer and skip that question when you find one.
-- **Definitions come from the vendor's reference documentation.** What a hook event is for,
-  which fields its output honours, what a skill's frontmatter accepts - read the reference,
-  do not infer it from an engineering blog, a strings dump of the binary, or a working
-  example on this machine. Every one of those three has produced a wrong answer here: a
-  blog post about dropping context resets was read as a verdict on two hook events the
-  reference defines differently, an abbreviated schema printed by a validator was read as
-  the whole contract, and a skill's frontmatter was reconstructed from installed plugins
-  while the reference documented fields none of them used. **An example shows one thing
-  that works; a reference says what is allowed.**
-- **Do not write the artifact until the owner confirms** the decisions read back correctly.
-  Not the first plausible agreement — an explicit confirmation.
+- **Facts are yours, decisions are theirs.** Resolve repository, test, CI and
+  standing-instruction facts first. Probe only unknowns that could change the goal;
+  stop when resolved. Init is not permission to complete an unconfirmed deliverable.
+- Ask only unresolved material owner decisions. The decisions below are **not nine
+  mandatory turns**. **One question per turn**; each question **carries your
+  recommended answer** and what would change it. Reuse explicit owner answers.
+- **Definitions come from the vendor's reference documentation.** Examples and local
+  probes show a supported case, not the full host contract. Check the actual session.
+- Preserve the owner's material words and clarifications verbatim in `## Intent`,
+  separately from your operational interpretation; include a source locator when
+  available. Do not invent a quotation or substitute your summary for their request.
+- Keep confirmed decisions in `<slug>.decisions.md` as you go. That record is also
+  the interview's progress: recover from it instead of restarting the interview.
+
+Before freezing, test both **false acceptance** (all checks pass but the owner's
+request remains unsatisfied) and **false rejection** (a valid result fails an
+unrequested method constraint). Use the original request. A correct one-off result
+need not have a pipeline unless repeatability was required; file existence does
+not prove readability, and an exact quote does not prove the claim follows from it.
+
+**Before offering unattended execution, independently critique the specification.**
+Give the reviewer the original owner request, draft and evidence, not your argument
+for it. `/ultra-goal:design-critic <slug>` is the packaged option. Resolve material
+objections in the decisions record before freezing. If independent context is
+unavailable or the owner explicitly waives it, disclose the limit rather than a pass.
+**Start authorization is not a review waiver.** “Start now; do not ask again” means
+run the critique against the already approved terms before arming; a clean result
+needs no further owner turn. Only a material objection needs resolution.
+
+Read back the **complete contract** against the original words: intent, every
+acceptance requirement, authority, success and exit conditions, labelled means and
+how each requirement will be verified. **Do not arm or present a draft as agreed
+until the owner confirms.** An existing explicit confirmation of those terms counts;
+silence does not. A clearly labelled draft may be written for independent critique.
+
+## Settle the goal's decisions
+
+Read the canonical contract for exact fields. Resolve these dependencies without
+turning the list into a fixed interview script:
+
+1. **Intent:** what outcome improves, and which original owner words define it?
+2. **Anchor:** what observational command measures the requested result end to end?
+   **No anchor, no artifact.** A unit suite is sufficient only when it measures the
+   requested outcome. Otherwise drive the running product or external result.
+   Settle criteria before generating a checker; inspect it before approval.
+   Declare evaluator logic, fixtures and indirect configuration in `protected`;
+   the anchor must not edit them or the reviewed product. Write `budget: N minutes`
+   under `## Anchor`; timeout or an unavailable command means unknown, not failed.
+3. **Stop condition and Acceptance:** every goal gets `## Acceptance` with stable
+   IDs and a `covers` map to anchor or required review. **Unordered, never numbered**:
+   requirements describe success; an optional plan describes execution. Checkboxes
+   are claims. `success: verified` requires a current green anchor and every required
+   review. Explicit `ceiling: N` or `ceiling: none` counts **completion attempts**,
+   not host turns, tool calls, tokens or money. Set native budgets separately.
+4. **Means:** label complete declarations `[load-bearing]` or `[droppable]`. The
+   owner decides what may be abandoned; the run records why it drops an allowed means.
+5. **Boundary:** specify **Scope**, **Confidence** and **Inference** refusals: allowed
+   paths/effects and approval limits; claims needing measured evidence; conclusions
+   that documents alone cannot establish. Existing authorization remains valid.
+6. **Verifier:** who checks the result, and **who checks the checker?** A required
+   review has accepted identities/fallbacks, bounded inputs, acceptance IDs and a
+   receipt written by an independent verifier with its own session. The generator
+   never signs it. Advisory review can vary; a critic is **not mandatory for every
+   goal**. When choosing repeated review, specify a cap. Fresh context and different
+   models can reduce correlation; neither guarantees independence or correctness.
+7. **Shape and split:** start with the main model loop; split when each handoff can
+   carry the context and return a verifiable result. Follow owner-assigned roles;
+   otherwise the main model selects a suitable method within its authority.
+8. **Read and write surface:** name what each worker reads, writes and returns,
+   including shared files, databases, services and resource limits. One goal or one
+   operating loop does not prevent resource collisions. Join writers before review.
+9. **Divergence handling:** execution details may adapt; changing frozen terms stops
+   and reports. Put the term, observed obstacle and what would settle it under
+   `## Challenges from the run` in the decisions record. A challenge is not permission
+   to change the term; do not invent one when there is no objection.
 
 ## Classify first, then confirm at the end
 
-Ask the one-minute test before anything else:
+Can you sketch the whole thing on paper before running any of it? Known routes can
+be authored; routes depending on new observations belong to inference. Mixed shapes
+are normal. A plan or task list does not require a graph runtime or replace the goal.
+Reconsider the initial shape after the decisions are clear.
 
-> Can you sketch the whole thing on paper before running any of it?
-
-- **Yes** → graph-shaped. Routing was decided at authoring time; the edges are code and
-  cost nothing per run.
-- **"I'd need to know what step three returns"** → loop-shaped. Routing is decided during
-  inference, every iteration, and billed every time.
-
-Topology is not the distinction — a loop is a directed cyclic graph. **When the routing
-decision is made** is the distinction, and everything else follows from it.
-
-The first answer is provisional. Re-check it after the interview: detail often turns an
-imagined graph into one loop with a good stop condition, and occasionally the reverse.
+For delegation, discover actual available targets rather than asking the owner to
+inventory them. If using the installed delegation bridge, `agent-delegate list --json`
+provides that inventory; do not assume the bridge is installed. Pass current decisions, failures and evidence, writable scope and
+expected results. Read the role reference before choosing the mechanism or fallback.
+Call success is not a join: inspect the expected artifact. Transport failures such
+as `role_unavailable` are observations, not acceptance conditions. A required review
+cannot fall back to generator self-review even when a vendor is unavailable.
 
 ## Three tiers of frozen
 
-"The North Star does not move, the details do" needs a sharper line than that, because the
-interesting cases are in between. Three tiers, and the middle one is the one worth naming:
+| Tier | Terms | Changes during a run |
+|---|---|---|
+| **Frozen** | Intent, Boundary, Anchor, Stop condition, Verification, Acceptance requirement text and complete labelled Means declarations | Owner authority and a new goal required |
+| **Firm** | Method, cadence, worker choice, dropping a droppable means or using a pre-authorized verifier fallback | Within existing authority; **write the row in `decisions.md`** with evidence |
+| **Fluid** | State, Lessons, Next and ordinary execution planning | Rewrite as needed inside the frozen terms |
 
-| Tier | What | Changeable mid-run | On change |
-|---|---|---|---|
-| **Frozen** | `## Intent`, `## Boundary`'s three refusals, `## Anchor`, and `## Means`'s labels | **No** | Stop and report; this reopens the interview and lands in `decisions.md` |
-| **Firm** | the stop condition's threshold, the turn ceiling, who verifies, the cadence, and **dropping a means labelled droppable** | Yes | Allowed, but **write the row in `decisions.md`** - a silently moved threshold is indistinguishable from a moved goal |
-| **Fluid** | `### State`, `### Lessons`, `### Next`, how the work actually gets done | Yes | Just do it; that is what they are for |
-
-The Firm tier is where the latitude lives. Dropping a droppable means is a real decision the
-run is authorized to make on its own — that is the difference between an agent with judgement
-and an agent that stops at every surprise — and the price of making it is one row saying what
-the evidence was.
-
-Two different things enforce these tiers, and it is worth knowing which is which.
-**Frozen is mechanically observed**: the gate digests `## Intent`, `## Boundary` and
-`## Anchor` on the first turn and compares on every later one, so a moved goalpost ends the
-turn with an alarm and shows up in `--audit`.
-**Firm is enforced socially**, by asking for the row — a threshold edit looks like any other
-edit. What makes the asking worth it: the row is what tells a later reader whether the run
-met a goal or met a goal that had been made easier.
-
-## Interview in this order
-
-Each answer unblocks the next. Skip any question whose answer you already derived.
-
-Write `<slug>.decisions.md` as you go — one row per confirmed answer, before the artifact
-exists. That record is also the interview's progress: if the session ends or context is
-lost, read it and resume from the first unanswered question instead of starting over.
-
-1. **Intent** — what gets better when this runs? One sentence about the outcome, not a
-   list of steps. If they can only describe steps, the loop has no reference and cannot
-   tell progress from motion.
-2. **Anchor** — how do we know it actually got better? Demand a command whose output
-   cannot be argued with: a test exit code, a build result, a query count, an on-chain
-   receipt. A dashboard, a self-report, or another agent's opinion is not an anchor.
-   **No anchor, no artifact** — say so plainly and go back to this question.
-   **And it has to cross the whole path.** A unit suite exercises the code, not the
-   product, so it can be green while the thing does not start — the failure Anthropic
-   names as an agent that "would fail to recognize that the feature didn't work end to
-   end", with unit-tests-only listed as the anti-pattern. Where a build is not enough — a
-   UI, an API contract, a payment path — the anchor drives the running thing. Ask how long
-   it takes, too, and write `budget: N minutes` under `## Anchor`: the gate's default is
-   its own guess, and an anchor that overruns is reported *unknown*, never failed.
-3. **Stop condition** — when does it stop? Express it with the anchor plus a ceiling
-   (`0 high-severity advisories, or 6 turns`). The owner defines "good enough"; the moment
-   the agent decides that for itself, the loop optimizes its own comfort.
-   **If it will be started more than once, enumerate it.** One sentence plus one anchor
-   answers *is the whole thing done*; it cannot answer *which parts are*, and that second
-   granularity is where a long run declares victory early. So a goal with a `## Cadence`
-   also gets `## Acceptance`: one unordered line per requirement, each carrying the state
-   the run claims for it. `[x]` is a claim; the anchor's output is the evidence.
-   **Unordered, never numbered** — ordered steps are an author-time decomposition, which
-   is a plan, which is a graph. See
-   [references/document-system.md](references/document-system.md) for where that line
-   sits, because a list of requirements is the thing most easily mistaken for a ledger.
-4. **Means** — what do you believe it takes to get there, and **which of those would you
-   give up if it turned out not to serve the intent?** Label each one `[load-bearing]` or
-   `[droppable]`. This is the question that decides how much latitude the run actually has:
-   without the labels, abandoning a feature is indistinguishable from scope drift, so the
-   run must either stop on everything or drop things quietly. Neither is what you want. The
-   labels are yours; the argument for using one is the agent's, and it costs a row in
-   `decisions.md`.
-5. **Boundary** — three refusals, not one. A specified agent needs all three, and each
-   answers a different way loops go wrong in production:
-   - **Scope**: what must it never touch? Paths, effects, and the commit gate. Anything
-     reversible inside the boundary needs no approval; anything outside does.
-   - **Confidence**: what must it never claim without the anchor's output? "Safe",
-     "passing", "done" are claims, and a loop that makes them from reasoning has stopped
-     being grounded.
-   - **Inference**: what must it never conclude from documents alone? A changelog, an
-     issue thread, or another agent's report explains nothing until it is reproduced.
-6. **Verifier** — who checks the result, and **who checks the checker?** Two roles, because
-   one is measurably not enough: a reviewer with a fresh context (an agent grading its own
-   output praises it), plus a critic that audits the *review* rather than the code. Name
-   **what each role is given**: the reviewer gets the frozen artifact, the criteria, and the
-   anchor's output — never the author's account of why the work is correct, because a
-   reviewer handed that account reviews the account. See
-   [references/adversarial-review.md](references/adversarial-review.md); the short version is
-   that three roles beat a five-agent panel, and the third role is why.
-
-   **Most of `## Roles` is not a choice, and saying which part is keeps the question
-   honest.** Discover first: run `agent-delegate list --json` yourself and note each
-   target's vendor — which agents exist is a fact, and spending the owner's turn on it is
-   the mistake this question used to make. Then read
-   [references/agent-modes.md](references/agent-modes.md) and settle the roles by stage:
-
-**Every stage is the owner's to assign** — who does the work is a material
-   trade-off, and those belong to them. Recommend strongly, with the reason, and then take
-   their answer. Only two rows are not theirs to move, and both are constraints rather than
-   preferences:
-
-   | Stage | Recommend | Why, and what would change it |
-   |---|---|---|
-   | Lead — intent into a spec | this session, with them | An interview is a conversation with the owner, so whoever leads has to be the agent they are talking to. **Constraint, not preference** |
-   | **Research** — find out what is true first | fanned-out subagents | The one stage the published evidence says to delegate: a lead that dispatches and synthesises beats one that explores |
-   | Plan — the spec, plus one adversarial pass | this session + a design critic | Design-time specification is the higher-leverage intervention, and the Rejected column is currently written by whoever wrote the Decision |
-   | **Carry out** — the code **and its tests, test first** | this session, **for a small slice** | `### Lessons` and every dead end live in this context, so a delegated coder restarts at turn 1 every turn. **But scale flips it**: on a large build, an owner who keeps the loop, owns one ledger and writes no code — with two cross-vendor executors alternating build and review rounds — is a shape that works in production. Test-first is a **Constraint**: whoever writes the code writes its tests first, because splitting them is a phase split |
-   | Verify at code level | the anchor | **Constraint** — a command, no model in the path |
-   | Review semantically | not whoever wrote it | The one place where the choice below actually costs money |
-   | Fan out | one worker per subject | Only where subjects are independent and **each has its own anchor** |
-
-   **Three of these roles ship as forked skills, so the isolation is a property of the
-   file rather than something you have to arrange:**
-
-   | Invoke | Runs as | Reads | Writes |
-   |---|---|---|---|
-   | `/ultra-goal:design-critic <slug>` | forked, no conversation history | the spec and the decisions record | nothing — returns objections |
-   | `/ultra-goal:review <slug>` | forked | the artifact, the frozen diff, the anchor's own output | `.goals/.work/<slug>-review.md` |
-   | `/ultra-goal:critic <slug>` | forked | that review and the same frozen diff | `.goals/.work/<slug>-critique.md` |
-
-   `context: fork` means the skill's content is the whole prompt and **the fork never sees
-   this conversation** — which is exactly the contagion that matters, because the thing that
-   must not reach a reviewer is the author's argument, and the author is you. Each waits for
-   its result in the invoking turn (`background: false`), so the artifact stays frozen for
-   the exchange.
-
-   **The only genuine choice in review is model independence**, because the two axes cure
-   different diseases: a **fresh context** stops the author's *argument* from reaching the
-   reviewer and is never optional; a **different vendor** stops *shared blind spots* and
-   costs about 10x. A same-model subagent cures the first completely and the second not at
-   all — it catches "you did not do what the spec says" and misses "the spec and the code
-   are wrong in the same way". Recommend a different vendor only where a mistake is
-   expensive **and** looks correct from inside.
-
-   **When review runs** and the **round cap** are parameters of that choice, not peers of
-   it: default to proposed completion plus the acceptance lines a green anchor would not
-   prove, and 5 rounds accepting a clean first pass.
-
-   Delegating to another vendor instead is the same protocol with `agent-delegate` in place
-   of the fork: same inputs, same refusals, one extra process and a different set of blind
-   spots.
-
-   **Then who judges, and whether they judge blind.** A lead that reads the executors'
-   reports before recording its own verdict has been persuaded before it decided, which is
-   the referee-and-player problem arriving through the back door. The stronger form is
-   **blind first**: run the anchor yourself, write your verdict to
-   `<slug>.judge-review.md`, *then* read their reports and record where the readings differ.
-   Recommend it wherever the work is delegated; it costs one extra file and the discipline
-   of judging before listening.
-
-**Then a `fallback:` per role.** An agent runs out of quota, a target does not answer, a
-process dies: try the role, then its fallback, then continue as this session alone. A run
-that stops because a reviewer was out of quota has turned an optional check into a single
-point of failure.
-**The fallback order is declared; the failure is measured where the host allows it.**
-`PostToolUseFailure` fires after a failed tool call, which is a host-observed fact, so on
-the hosts that register it (Claude Code, zCode, Kimi) a call naming a delegation target
-writes `role_unavailable` and `--audit` surfaces it as `ROUND_DEGRADED`. Codex documents
-no such event, so there the run's report is the only record — a declared loss, not
-parity. Whether the fallback was *adequate* is never measured; ask the run to say that
-out loud, and treat the answer as the claim it is. And a call that *succeeds* while writing no file is invisible to every hook registered here — the failure event sees
-failures only, and the success-side events fire once per tool call and stay unregistered
-on purpose — so the round's evidence is the file the role was told to write: the run does
-not count a round until that file exists, and `--audit` reports a declared reviewer with
-no review file as `REVIEW_UNEVIDENCED`. A review that returned success and left nothing
-is a missing review, not a pass; it happened to a review round on this project.
-
-   **Never settle any of this silently.** A review that turned out to be a second opinion
-   from its own model, with no row saying so, cannot be told apart afterwards from one that
-   was independent.
-7. **Shape and split** — confirm loop or graph. If graph, the split must follow **context
-   boundaries**, never workflow phases (see the refusals below), and each worker needs its
-   own anchor.
-8. **Read and write surface** — what does each turn *read*, and what does it *write*? This
-   sharpens the boundary from "don't touch X" into "reads A, writes B", and it decides what
-   `## Carry-over` has to hold: whatever a turn can read for itself does not belong there,
-   and whatever it cannot must.
-9. **Divergence handling** — when reality and the plan disagree, does the loop adjust itself
-   or stop and report? Where is the line? **Recommended default: execution details adjust
-   themselves; the intent, the anchor, and the boundary always stop and report.** A loop that
-   can revise its own target drifts further from the owner the longer it runs, and that is
-   the one failure no amount of anchoring catches.
-   **And "report" needs somewhere to land.** A stop-and-report that exists only as prose in
-   a session is gone at the next compaction, so it goes into `## Challenges from the run` in
-   the decisions record: the term, what the run hit, and what would settle it. See
-   *The one thing the goal can learn from* below.
-
-Read [references/loop-primitives.md](references/loop-primitives.md) for which loop
-primitive fits, and [references/graph-topology.md](references/graph-topology.md) when the
-answer is a graph.
-
-## The one thing the goal can learn from
-
-Look at what learns and what does not. `### Lessons` carries **method** forward: this
-approach failed for this cause, try that instead. `### Next` re-aims **within** the terms.
-Both improve how the work is done. Neither can say *the terms themselves are wrong* — that
-is frozen, and correctly so.
-
-So there is exactly one thing a run knows that the design side cannot: **which of the terms
-turned out to be unworkable in contact with reality.** And until now that was the only kind
-of turn that wrote nothing down. Every other outcome writes an event; "the goal is wrong"
-produced a sentence in a session that gets compacted away.
-
-`## Challenges from the run` is that channel, and it is deliberately small:
-
-| | |
-|---|---|
-| **Written by** | the run, and only the run — it is the one part of `decisions.md` the owner does not author |
-| **Ruled on by** | the owner. A challenge is not a decision, and `--status` counts them apart for that reason |
-| **Shape** | the term challenged, what the run hit, what would settle it. All three, or it is a complaint rather than an objection |
-| **Instead of** | editing the term. A run that edits the term has moved the goalpost; a run that challenges it has done the owner a favour |
-| **Read by** | the next Modify pass, which already has to read this file first — so the objection lands exactly where the next design pass is required to look |
-
-**Optional on purpose.** Most runs raise none, and demanding one per run would produce
-invented objections — the same failure as a reviewer who must find something. An empty
-section gets deleted, not filled.
-
-This is the edge that makes the goal itself iterate rather than only the method. Without it
-a wrong term survives every round: the anchor keeps failing, the lessons keep explaining
-*how* it failed, and nothing ever says *what was wrong to ask for*.
+**A decisions row records an action; it never grants authority.** It cannot lower a
+threshold, raise a resource limit, weaken required verification or retire acceptance.
+**Frozen is mechanically observed** through the spec/evaluator baselines; checkbox
+state remains mutable. **Firm is enforced socially** through the decisions record.
+A moved goalpost closes the run; do not restore a baseline to conceal the change.
 
 ## Refuse these shapes
 
-Name the refusal, name the cheap alternative, and go back to the relevant question.
-
-| Shape | Why it fails | Cheap alternative |
-|---|---|---|
-| Split by phase (plan / implement / test as separate agents) | Each phase needs the previous phase's context; handoffs degrade it and coordination outspends the work | One agent for the whole slice, plus one independent verifier |
-| Generator grades itself | It praises its own output; tuning a skeptical separate evaluator is far more tractable | A second agent with a fresh context and blackbox criteria |
-| Stop condition left to the agent's judgement | "Good enough" drifts toward whatever ends the turn | Anchor command plus a turn ceiling |
-| No anchor | Everything stays internally consistent while quietly detaching from reality | Stop and answer question 2 |
-| Loops that only watch other loops | A closed network of mutual confirmation fails like a single loop, later and with more green lights | At least one node reads the world; freeze the rules the optimizer would want to weaken |
-| One optimized metric, alone | Optimized hard enough, it stops measuring what it once did | Pair it with a counter-metric that catches the cheap way to win |
-| Nodes added for sophistication | Every extra agent is another failure point and 3-10x the tokens | Ship the loop; promote to a graph when it provably breaks |
-| **False consensus** — two agents both say "looks fine" | That is one opinion reported twice, and a loop cannot tell it from verification | A critic that audits the *review*, sorting each point into agreement / evidence-backed disagreement / concern-based disagreement |
-| **Wrapping up because the context feels full** | Named *context anxiety*: a model begins closing out as it nears what it *believes* is its limit, so the run ends on a feeling rather than on the anchor. Compaction does not fix it — continuity is preserved, the sense of pressure is not | The gate is the mechanical backstop: a completion claim cannot pass while the anchor is red, and the run's standing instructions make results visible and durable before any turn ends. State the turn out loud, and treat "running low" as a reason to write carry-over, never as a reason to declare done |
-| **An anchor that only tests the code** | A unit suite is green when the code compiles and the product is still broken; this is the single most common way a loop finishes proud and wrong | Make the anchor drive the running thing — build plus start plus one real interaction |
-| **A verdict with no receipt** — "tests pass", "the anchor is green" | The log the gate writes is the evidence; a sentence is a claim, and after a compaction the run cannot tell its own claims from its evidence either | Report the turn and the exit code seen, and let `--audit` compare them |
-| **The reviewer gets the author's argument** | Handed an explanation of why the work is right, a reviewer reviews the explanation; this is context contagion, and it survives changing vendors | Give the reviewer the frozen artifact, the criteria, and the anchor's output — nothing about the author's confidence |
-| **Reviewers split by domain** — one per concern, reports merged | Nobody audits either report, and the orchestrator has no independent evidence to arbitrate; measured as unreliable | Domains become one reviewer's checklist; add a critic instead of a second reviewer |
-
-Read [references/anti-patterns.md](references/anti-patterns.md) for the failure modes
-behind this table.
-
-## Starting a run, on whichever host you are
-
-You are the host. The owner starts one run and walks away, and something has to keep the
-model working until the anchor is green or a ceiling is hit. **That something is this
-Skill's own Stop hook**, which is why a host's goal mode is a convenience here rather than
-the mechanism.
-
-Four of the five hosts measured on this machine do have goal mode as an interactive
-command, and it is worth knowing which:
-
-| Host | Goal mode | Notes |
-|---|---|---|
-| Claude Code | `/goal <objective>` | backed by a stop hook; also has `/loop`, `/schedule` |
-| Codex 0.150.1 | `/goal <objective>` | a `goal` extension accounts progress after every tool call |
-| Kimi | `/goal <objective>` | plus `/goal pause` / `resume` / `cancel` |
-| zCode 0.16.5 | `/goal <objective>` | also `--target` for a headless session |
-| OpenCode 1.18 | not found | fall back to a plain prompt with the ceiling stated in words |
-
-"Not found" means no evidence in that host's help output or shipped binary, not proof of
-absence — **check your own host rather than trusting this table**, and say so when it is
-wrong.
-
-### The gate judges completion, so a host's goal mode is no longer needed
-
-A host's goal mode kept the model working by re-prompting it, and asked **the model**
-whether the objective was met. The run works in ordinary host turns; the Stop hook judges
-completion claims — refusing a claim while the claimed completion's anchor is still red —
-and the anchor answers the second question. Compared item by item,
-goal mode duplicates four of this Skill's own mechanisms, and **cannot do the one that
-matters**: arm `.goals/active` through the validating fence, without which every hook here
-is inert.
-
-So where the plugin is installed, start a run with **`/ultra-goal:goal-run <slug>`**: it validates
-the artifact, arms the gate, and hands over the spec in one step. Where it is not, paste
-`## Handoff`'s text as a plain prompt — the objective is portable even when the command is
-not, and a host's own `/goal` still works as a wrapper around that text if the owner
-prefers it.
-
-The text itself still carries the clauses, because on a host with no hooks it is the only
-thing that does:
-
-```
-/goal <what to achieve, inside <scope>>. You have not met this goal until you have actually
-run `<anchor command>` in this session and seen it <exact result> - do not claim completion
-from reasoning, and do not state <confidence claim> without that output. When you report on
-the anchor, name the turn and the exit code you saw rather than summarising it. Do not
-conclude <inference> from documents alone; reproduce it. You are the run for <slug>, not its
-designer: the terms were already agreed, so do not reopen them as an interview. If a means
-labelled droppable turns out not to serve the intent, drop it and write the argument into
-<slug>.decisions.md; never drop a load-bearing one, and never edit Intent, Boundary or
-Anchor - if one of those is wrong, stop and write a row under `## Challenges from the run`
-naming the term, what you hit, and what would settle it. At the start of each turn, state
-which turn you are on, which `## Acceptance` lines this turn is for, and what output would
-prove them - before changing anything. Rewrite the Carry-over section before you finish,
-including the single objective under `### Next`. Stop after <N> turns even if unmet, and
-say so.
-```
-
-Nine clauses, each closing one hole:
-
-| Clause | Closes |
+| Failure | Correction |
 |---|---|
-| objective inside a scope | scope creep |
-| anchor as the only accepted evidence | claiming success from reasoning |
-| no confidence claim without that output | inappropriate confidence |
-| the verdict reported as a turn and an exit code | a verdict nobody can check against the log |
-| no conclusion from documents alone | inference beyond the data |
-| the run is the run, not the designer | this Skill re-activating inside its own output and interviewing nobody |
-| droppable means droppable; a wrong term gets challenged, not edited | silent scope drift, stopping at every surprise, and an objection that dies in the session |
-| the turn, its acceptance lines, and their evidence stated up front | losing count of the ceiling, and a turn whose "done" was decided after the work |
-| rewrite carry-over, `### Next` included | the run never learning, and never re-aiming |
-
-The turn clause matters more than it looks. A host may hand the model a live iteration count
-— Claude Code attaches `{condition, iterations, durationMs, tokens}` to every turn under an
-active goal — but the model will not use it unless told to. Saying the number out loud each
-turn makes the ceiling real rather than a number it estimates by feel.
-
-Written this way the same text works on all four hosts, and on the fifth as a plain prompt.
-
-Record which host it was written for in the decisions record — the objective is portable, the
-command that starts it is not.
-
-## This is a graph, and here is where its nodes live
-
-The artifact is not a document that happens to describe a loop. It **is** the graph, with one
-node per section. Naming that explicitly is what makes it checkable against the ways loops
-fail:
-
-| Node | Lives in | Kind |
-|---|---|---|
-| North Star | `## Intent` | **frozen** — the run may never edit it |
-| Scope / confidence / inference limits | `## Boundary` | frozen |
-| What may be given up, and what may not | `## Means` | labels frozen; dropping a droppable one costs a `decisions.md` row |
-| Mechanical gate | `## Anchor` | executed, exit code only, on the artifact's own budget |
-| The stop condition, enumerated | `## Acceptance` | required once there is a cadence; unordered, each line's state a claim the anchor settles |
-| Who does what, and who covers for whom | `## Roles` | frozen for the run's shape; each role names a `fallback:` |
-| Adversarial review — reviewer | `## Verification` | fresh context, verdict advisory |
-| Adversarial review — critic | `## Verification` | audits the review, not the artifact |
-| Reflection | `### Lessons` | writes the next turn's input |
-| Carried state | `### State` | rewritten each turn |
-| Re-aim | `### Next` | exactly one objective, inside the frozen intent |
-| The run's objection to its own terms | `## Challenges from the run` in `<slug>.decisions.md` | written by the run, ruled on by the owner |
-| Edges (what happens in what order) | the clause order of `## Handoff` | authored once |
-| Proof an edge was actually taken | `<slug>.events.jsonl` | append-only, **written by the hooks and never by the run** |
-
-Checked against the four ways a single loop fails, plus the way a graph of loops fails:
-
-| Failure | What closes it here |
-|---|---|
-| Goodhart — the metric gets gamed | `## Verification` is the paired counter-check; the anchor is the half that cannot be argued with |
-| **False consensus — the check agrees without evidence** | the critic sorts each point into agreement / evidence-backed / concern-based, and the reviewer must answer with evidence |
-| Blindness upward — the loop cannot question its target | `## Intent` is frozen; question 9 sends target-level divergence back to the owner |
-| Conflict — independent loops undermine each other | one operating loop per artifact, so there is no collision surface |
-| Measurement decay — nobody watches the watcher | the anchor runs for real at every completion claim, and reports *unknown* when it cannot |
-| **Context anxiety — the run closes out on a feeling** | a completion claim cannot pass while the anchor is red, and an unclaimed turn end leaves the durable state visibly unfinished; `## Acceptance` makes what is left explicit rather than a memory |
-| Circularity — everything confirms everything, nothing touches reality | the anchor is the one node whose verdict passes through no model at all |
+| Generator grades its own claim | Use the accepted external observation or independent verifier |
+| **False consensus** / Review conclusions merged without evidence | Reconcile observations against the artifact; add a critic only when it resolves a real risk |
+| **A verdict with no receipt** | Retrieve the current measurement or required review; report missing evidence as missing |
+| **The reviewer gets the author's argument** | Give criteria, original evidence and bounded inputs before an author's explanation |
+| **An anchor that only tests the code** while acceptance concerns a running product | Exercise that product path |
+| **Wrapping up because the context feels full** | Named *context anxiety*: save recovery state; only actual verification establishes completion |
+| A workflow consumer nobody exercised | Keep the goal alone until its consumer is proven |
+| An attachment or decisions row with easier terms | Preserve the one contract; raise a challenge for owner resolution |
 
 ## Compile one artifact
 
-Name it after the work, and always write the paired decisions record. Default location is
-the project's `.goals/` — these are project assets that belong in Git and may be read by
-whichever agent a teammate runs, so they do not go inside any one tool's private directory.
+Default location is the project's `.goals/`, not one host's private directory.
 
-| Answer | Artifact | Template |
+| When | Artifact | Template |
 |---|---|---|
-| Loop | `<slug>.goal.md` — objective, boundary, stop condition, anchor, verifier, and `## Handoff` holding the goal line to paste; add `## Cadence` + `## Acceptance` + `## Carry-over` if it will be started more than once | [assets/goal-package.md](assets/goal-package.md) |
-| Graph, one vendor **(requires a workflow runtime)** | `<slug>.workflow.js` — topology in code, `meta` first and a pure literal, anchor on the top line as `` // anchor: `<command>` `` | [assets/workflow-script.js](assets/workflow-script.js) |
-| Graph, several vendors | `<slug>.delegation.md` — one adversarial-review triad: reviewer, critic, convergence rule | [assets/delegation-package.md](assets/delegation-package.md) |
-| Always | `<slug>.decisions.md` — Decision / Rejected / Why / Who, four columns | [assets/decisions-record.md](assets/decisions-record.md) |
+| Always | `<slug>.goal.md`, including Acceptance, Verification, Carry-over and Handoff | [goal-package.md](assets/goal-package.md) |
+| Always | `<slug>.decisions.md` — Decision / Rejected / Why / Who | [decisions-record.md](assets/decisions-record.md) |
+| Authored routing, with a proven consumer | `<slug>.workflow.js`, naming `// goal: <slug>.goal.md` | [workflow-script.js](assets/workflow-script.js) |
+| Delegated routing | `<slug>.delegation.md`, naming `goal: <slug>.goal.md` | [delegation-package.md](assets/delegation-package.md) |
 
-**A workflow script needs a workflow runtime.** Of the hosts measured, only Claude Code has
-one, so where yours does not, do **not** emit `<slug>.workflow.js` — it would be a file
-nothing can run. Keep it one goal, or use the cross-vendor delegation shape.
+A workflow **requires a workflow runtime**. Exercise the actual entry point; parsing
+JavaScript does not prove `agent()` or `pipeline()` exists. Without a consumer,
+do **not** emit `<slug>.workflow.js`. An attachment adds execution, never its own terms.
+Do not generate topology from a template engine: author the necessary route yourself.
 
-**The fourth column is `Who`, and it holds `owner` or `agent`.** A first real run wrote
-"(my inline assumption, the owner did not object)" and "(I set this outright, not offered as
-an option)" into two Why cells, because the record had nowhere to put the difference. Both
-were the right call; neither was a decision the owner made. Without the column an assumption
-is indistinguishable from an agreement, and the owner cannot see how much of their own spec
-they never actually agreed to — so `--status` counts them apart, the way challenges are
-counted apart from decisions.
-
-An `agent` row is legitimate and often necessary: the interview cannot ask everything, and a
-hard prohibition on irreversible effects should be set rather than offered. What is not
-legitimate is leaving it unmarked.
-
-The decisions record holds decisions, not architecture. The script or prompt is the only
-description of what the thing does; a second prose copy of it goes stale and starts lying.
-When the owner revises a decision later, **edit that row** and move the old decision into
-the Rejected column — never append a history log.
-
-Write the artifact yourself. Do not generate topology from a template engine: which nodes
-exist and how they connect is the design, and it is yours and the owner's to author.
-
-## Inspect what is running
-
-```bash
-python3 scripts/validate_artifact.py .goals --status
-```
-
-Reports each artifact's shape, anchor, stop condition, declared phases or workers, how many
-decisions its record holds, and any validation finding.
-
-**Nothing is stored.** The artifacts on disk are the only record and this is a projection of
-them, recomputed on every call — so the report cannot drift out of date the way a tracked
-state file would.
-
-```bash
-python3 scripts/validate_artifact.py .goals --audit
-```
-
-Puts each measured attempt's committed verdict beside the verdict the gate measured for
-it, and names every row where they disagree. This is the reverse-tracing view: on a run that went
-wrong, the first row where claim and measurement part company is where to start reading.
-It reads Git history and the event log; it runs nothing.
-
-Add `--run-anchors` to `--status` to execute each anchor and report its exit code. That answers the only
-question that really matters about a running loop — *did the work actually land?* — but it
-runs commands the artifact names, in a shell. Ask the owner first, and never run it against
-an artifact you have not read.
-
-## Modify an existing loop
-
-Read both files before changing either. The artifact says what runs; the decisions record
-says what was already rejected and why, which is usually the answer to "why doesn't it just
-do X".
-
-1. Run the status command to confirm which artifact and which shape.
-2. Find the decision the owner wants to change. **If the request contradicts a row already
-   in the Rejected column, say so** and ask whether the reason has stopped holding. Do not
-   quietly reverse a decision the owner made for a reason they may still hold.
-   **Read `## Challenges from the run` before anything else in that file.** If the run
-   objected to a term, that objection is the most informed thing in the record — it came
-   from contact with reality rather than from the interview — and it should be put to the
-   owner in this pass rather than left standing. Once ruled on, the row moves into the
-   decisions table (accepted, with the old term in Rejected) or is deleted with the reason.
-3. Change the artifact.
-4. **Edit the affected row** of the decisions record: the new decision replaces the old one
-   in the Decision column, and the old one moves to Rejected with why it changed. Never
-   append a second table or a dated log.
-5. Re-validate. A modification that breaks the pairing or a required section is not a
-   modification, it is a broken artifact.
-
-If the change alters the intent or the anchor rather than a detail, stop modifying and run
-the interview again. A loop whose anchor changed is a different loop.
+**The fourth column is `Who`, and it holds `owner` or `agent`.** Mark assumptions
+honestly; an agent-authored row is not owner confirmation. Edit a revised decision's
+row and move the old answer into Rejected with its reason. Do not append another
+history table or a second prose architecture; the executable artifact owns the route.
 
 ## Make the loop evolve
 
-An unattended loop wakes with an empty context every iteration — and inside one long goal
-run, compaction has the same effect. Unless something carries forward it rebuilds history
-from git logs and retries paths it has already proven dead, believing each time that it is
-the first attempt.
+Every compiled goal includes `## Carry-over`, even a single start that may compact
+or be interrupted. `## Cadence` only declares repeated scheduling. The handoff must
+say **read it before acting and rewrite it before finishing**:
 
-So any artifact with a `## Cadence` — it will be started more than once — gets a
-`## Carry-over` section, and the goal text itself must tell the loop to
-**read it before acting and rewrite it before finishing**.
-Without that instruction the section stays empty forever and the loop never improves. A goal
-started once and watched needs neither section.
+- `### State`: current facts, evidence pointers and unfinished work.
+- `### Lessons`: compact causal findings that change the next action.
+- `### Next`: exactly one immediate recovery objective inside the frozen intent;
+  link a longer plan when useful.
 
-It has three parts, with different jobs and different budgets:
+**A lesson is a cause and a next action, not an event.** Keep the relevant lessons;
+three is a compaction suggestion, not a correctness limit. **Rewrite, never append**
+the current summary; retain the evidence it cites. Compaction is not necessarily an
+empty context, and a carried claim is not proof that the environment still matches it.
+Reconcile current files, results, resources and pending effects before resuming.
+Recovery does not renew authorization, budgets or canceled work. For an external
+operation with an unknown outcome, inspect its actual effect before retrying.
 
-- **`### State`** — where the work stands. Facts, cheap to carry: what is left, what the
-  last green build was, which shard is next. At most 8.
-- **`### Lessons`** — **why something failed and what to do instead.** At most 3.
-- **`### Next`** — the one objective for the next round, derived from this round's anchor
-  verdict and the review findings that survived it, inside the frozen intent. **Exactly
-  one.** A list of them is a plan, and a goal that has grown a plan should have been
-  authored as a graph — which is also why there is no task ledger here.
+Lessons stay conditional on their project and evidence: one project's dead end is
+another project's correct answer. Never automatically promote them to user-level
+configuration or this Skill. A skill change needs the tested promotion/rollback
+procedure in the evolution reference. Git can preserve the diffs when committing is
+authorized; the event log and retained review evidence remain useful without Git.
 
-`### Next` is the edge that closes the loop. Without it a run re-attempts the same objective
-until the anchor goes green or the ceiling hits; with it, each round aims at what the last
-round's evidence actually implies. The frozen intent is what keeps re-aiming from becoming
-drifting.
+## Inspect what is running
 
-The Lessons budget is not arbitrary. Reflexion (arXiv 2303.11366) bounds its reflection
-memory at 1-3 entries, because entries the model must actually reason over compete with the
-work for the same budget. Twenty lessons is a log nobody reads.
+Resolve these scripts from this skill's installed directory; run them in the project.
 
-**A lesson is a cause and a next action, not an event.** This is the difference between a
-loop that learns and one that keeps a diary:
-
-| Not a lesson | A lesson |
-|---|---|
-| "the build failed" | "the build fails without a committed lockfile because CI runs `--frozen-lockfile` — commit the lockfile in the same change" |
-| "`@types/node` 22 broke" | "`@types/node` 22 breaks tsconfig because the bundler resolver rejects its new conditional exports — pin at 20 until tsconfig moves to `node20`" |
-
-The left column is what an agent writes by default. Asking for the right column is the whole
-mechanism: it forces the credit assignment that makes the next iteration different.
-
-**Rewrite, never append.** An entry that stops being true gets deleted. Three places, three
-jobs:
-
-| What you want to see | Where it lives |
-|---|---|
-| What is true now | `### State` and `### Lessons` — current only, pruned |
-| How it became true | `git log -p <slug>.goal.md` — the diffs *are* the evolution |
-| What each iteration did | the commit message — one line per iteration |
-
-Commit once per iteration that changed anything. Ordinary work turns commit as:
-
-```
-goal(<slug>): <one line on what changed>
+```bash
+python3 <skill-dir>/scripts/validate_artifact.py .goals --status
+python3 <skill-dir>/scripts/validate_artifact.py .goals --audit
 ```
 
-A completion attempt the gate has measured commits with the attempt's number and verdict:
+Status is recomputed on every call; **nothing is stored by the status command**.
+It reports artifacts, contract findings and recorded observations, not fresh proof
+that current outputs pass. Audit reads Git history and the event log; it runs nothing.
+Read evidence when a record is pending, interrupted or older than the current result.
+`--run-anchors` executes the artifact's shell commands. Read them first and use
+existing authorization for their effects; ask only if it is missing.
 
-```
-goal(<slug>) turn <N>: <one line> [anchor: green|red|unknown]
-```
+## Modify an existing loop
 
-`<N>` is the number in the gate's message, never a number the run counts itself, and
-ordinary turns carry no `[anchor: ...]` verdict — nothing measured one. One completion
-attempt is one `<N>`; `--audit` joins the commit subject to the gate's measurements by it,
-and `git log --oneline -- .goals/<slug>.goal.md` then reads as the run with its measured
-verdicts on it. That is what puts the evolution in Git, and why the document never
-has to hold history itself.
+Read the artifact and paired decisions before changing either. Run status to identify
+the goal. **Read `## Challenges from the run` before anything else in that file.**
+Surface an applicable rejected decision and its rationale; resolve whether that reason
+still holds rather than silently reversing it. **Edit the affected row**, placing the
+old decision in Rejected, then validate both files.
 
-What a loop learns stays in that project, beside its artifact:
-one project's dead end is another project's correct answer.
-**Never** promote it to user-level configuration or into
-this Skill. And keep the shape at one artifact, one decisions record, one carry-over
-section, and Git: no directory tree, no index, no ledger, no state machine, and no second
-copy of what Git already holds.
+Changing intent, anchor, boundary or any other frozen term ends the old run and needs
+owner-approved new terms. A loop whose anchor changed is a different loop. Repeat only
+the affected interview decisions and the independent adequacy check; preserve answers
+that remain valid. An objection does not authorize rebaselining an active run.
 
-Read [references/evolution-and-scope.md](references/evolution-and-scope.md) for why each of
-those boundaries is drawn where it is.
+## Starting a run, on whichever host you are
 
-## The gate: what the hooks do, and what they cost
+**Goal mode supplies the turns; the gate judges the claims.** The run works in ordinary
+host turns. A Stop can refuse a completion claim within a bound; it **cannot schedule
+the next turn** or revive an exited process. Arming alone is not unattended execution.
 
-On a host that exposes the events, seven hooks ship with this Skill and register on install.
-They turn the anchor from a sentence in a prompt into a gate that actually runs. Which of
-them register is a per-host fact, not a constant: **each manifest registers only events its
-host documents**, because an event a host does not support is either an error or silence,
-and silence here means a dead gate. zCode documents no `PreCompact` (its compaction
-recovery rides `SessionStart`'s compact source), Codex documents no `PostToolUseFailure`
-and so also no recovery to record, and Kimi ignores `SessionStart` output outright - a
-registration that cannot deliver reads as coverage - which is why the last row exists and
-why Kimi registers no `SessionStart` at all.
-
-| Hook | Does | Can it block? |
+| Host surface previously measured | Native goal entry | Check in this session |
 |---|---|---|
-| `Stop` | The completion gate: judges an explicit completion candidate by executing the anchor once against the current state; ordinary stops get one deterministic omission line | **Yes, while a claim is refusable** - within the gate's own denial bound |
-| `SessionStart` | Re-injects the frozen spec and the carried state after a restart or resume. Not registered on Kimi: its reference makes the event observation-only, so the registration could not deliver anything | No |
-| `PreCompact` | Records the carried state and the fact of the compaction into the event log | No |
-| `PostToolUseFailure` | Records `role_unavailable` when a delegated role's call fails, so a degraded round cannot read as a clean one - on Codex, which documents no such event, the run's report is the only record | No |
-| `PostToolUse` | Records `role_recovered` when a later call naming the same delegation target succeeds - the positive observation that lifts a failure's refusal, where a turn boundary proved nothing. Not registered on Codex, which records no failures to recover | No |
-| `UserPromptSubmit` | Kimi only: one fixed-size line per prompt - the artifact pointer plus the gate's last decision from the event log - because that host's `SessionStart` cannot inject and its Stop has no allow-channel to speak through | No |
-| `TurnStarted` | Kimi only: records the host's own turn boundary - `turn_id` and `origin_kind` - for every new turn whatever its origin. A user prompt is one origin of a turn, not the boundary itself; without this row, a task- or system-triggered turn would inherit a spent budget no turn of its own spent | No |
+| Claude Code | `/goal <objective>` | CLI/native continuation and resource controls |
+| Codex | `/goal <objective>` | Application goal service; do not infer parity in `codex exec` |
+| Kimi | `/goal <objective>` | Native pause/resume/cancel and current hook support |
+| zCode | `/goal <objective>` | Interactive mode or supported headless target mode |
+| OpenCode | No goal entry found in the measured surface | Absence of evidence, not proof of absence |
 
-**The anchor runs at exactly one moment: a completion candidate.** An ordinary Stop means
-"I want to end a host turn", not "the goal is met", so it is never blocked, runs no
-command, and gets at most one short deterministic omission line toward the owner - which
-carry-over subsections are missing, how many acceptance lines are open. Existence, mTIME,
-hashes and checkboxes are not completion oracles. When the run believes the goal is met it
-writes `.goals/<slug>.candidate` (the `goal-run` command's standing instruction) and ends
-its turn; the claim is self-reported and that is fine, because it only triggers the check
-and grants nothing. The gate then, in order: checks the session/run ownership, the
-authorized spec baseline - recorded by the arming fence into `<slug>.spec.baseline` before
-any Stop ran, never found in the event log - and the anchor identity, so any mismatch
-means no old result substitutes; refuses the claim while a delegated role's failure stands
-without a *positively observed* recovery (`PostToolUse`'s `role_recovered` - a turn
-boundary proves a turn ended, not a worker joined); bounds attempts by the owner's
-ceiling, which counts every candidate - refused ones included; **executes the current
-anchor once against the current state and rules on that measurement alone**; and writes
-the measurement - session identity, spec digest, anchor digest, post-anchor state identity,
-exit code, output digest - checking that the write landed. The candidate is consumed by
-its judgment, and the consumption is checked: a claim whose marker cannot be removed is
-refused rather than judged, because a surviving marker would be judged twice. **The gate
-never reads a historical green as a pass input** - old rows are audit only. Green proves
-this anchor exited 0 on this state; whether that satisfies the acceptance line stays with
-the model and the owner.
-
-**An allow carries no model context, and that is a probe result, not a preference.** On
-Claude Code 2.1.260 a Stop that allows while attaching `additionalContext` does not end
-the turn - the injected text re-enters the model and the conversation continues. So the
-obligation lives where it always belonged: in the run's own loop. The standing
-instructions in `goal-run` make important results visible through ordinary tool output
-before the Stop and write durable state - carry-over, lessons, commits - before a turn is
-allowed to end. The next injectable event, where one exists at all, is best-effort
-recovery and never carries correctness: Kimi's task and system-triggered turns fire no
-`UserPromptSubmit`, and `SessionStart` is not guaranteed either. A deny has exactly one
-channel per host, and the shapes are not shared: Codex 0.150.1 blocks on the top-level
-`decision: "block"` plus `reason` - the mixed payload that also nested `permissionDecision`
-was inert there - while Kimi 0.40.1 reads only `hookSpecificOutput.permissionDecision` and
-ignores the top-level pair. So the gate builds one allowlisted shape per asking host -
-the top-level pair on Claude Code, Codex and zCode; the nested pair on Kimi - and the
-reason always carries everything the blocked turn must hear.
-
-**The run owns a session, and the session owns the gate.** `.goals/active` carries the
-slug plus, after the first Stop that carries a session identity, a `session <id>` line -
-the field the Claude Code hooks reference documents for every event and the Codex probe
-receipts carry. Every hook then acts only for that session: another session working in
-the same cwd gets no gating, no streak resets, no spec injection. Kimi's Stop input
-carries no session identity at all and zCode has never loaded a hook on this machine, so
-there ownership stays open - a declared degradation, not a proxy read of an undocumented
-field. And the limit is part of the design: a session id is ownership information, not an
-anti-forgery key; the claim is first-Stop-wins, and an unrelated session that stops first
-over a just-armed goal claims it wrongly. That bound is named, not papered over.
-
-**Refusal is bounded in two directions, and both bounds are the gate's own.** The owner's
-ceiling bounds total completion attempts - only attempts run the anchor now, so only
-attempts advance the count; a run may end any number of turns without claiming. The
-denial budget bounds how many attempts in a row the gate may deny within one host turn it
-can observe, and it is **not** "the host's cap minus one": the one cap read precisely
-(Claude Code 2.1.260) counts consecutive blocks since the last tool *progress*, not
-blocks per turn, so host force-ends are recorded as backstops that size the numbers, and
-no claim is made that the four hosts count alike. zCode exposes neither a readable chain
-flag nor a turn identity, so there the streak resets only on boundaries the gate itself
-observed and a blocked chain that ends without one carries its tail into the next turn -
-a declared gap, stated here because a proxy that *looks* grounded is the mistake this
-design has made twice already. When the bound is spent the turn ends loudly: red anchor
-named, a `continuation_budget_spent` event for `--audit`, and the commit subject carrying
-the gate's attempt number.
-
-**Three outcomes, not two.** An anchor that cannot run - command missing, not executable,
-timed out - is **unknown**, not failed. Folding unknown into either verdict is how a
-mechanical gate starts lying, and a timeout is the clearest case: it measures elapsed
-time and reports it as success or failure, two things it has no access to. Unknown lets
-the turn end and says the result is unverified.
-
-**Every path but one lets the turn end.** The gate refuses only where it is certain: a
-completion claim whose anchor ran red, or whose round lost a role nothing has recovered.
-Frozen spec changed, ceiling reached, denial budget spent, anchor unrunnable, anchor
-green, no anchor at all, no active goal, an ordinary stop - all let the turn end and say
-why.
-
-**What it reminds you of is exactly what you may change.** The deny reason names
-`### Next`, `### Lessons`, `### State` and counts the still-open acceptance lines - and
-nothing frozen. The rule is the owner's and it cuts both ways: a mutable section the gate
-never mentions is the one that goes stale, and a frozen section it does mention is an invitation to edit - no exceptions.
-It names those sections without quoting them, and that is a rule with a reason: a hook
-inlines only what it alone possesses; everything on disk
-gets a path, and the bodies were 4,683 characters a turn on the first real artifact. The
-payload is the same size whatever the artifact holds - which is the property an
-eighty-line acceptance list needs.
-
-**Two axes, never conflated.** What the gate measures and how the run is doing are
-different questions, and merging them is how an exit code becomes a verdict about the
-future:
-
-| Axis | Values | Who answers it |
-|---|---|---|
-| Anchor observation | `green` / `red` / `unknown` | the gate, this command, this state |
-| Run disposition | `in_progress` / `input_required` / `blocked_retryable` / `budget_exhausted` / `unachievable` / `completed` / `canceled` | the run reports it; the owner reads it |
-
-An exit 1 is `red` and nothing more. Missing credentials are `input_required`, a service
-failure is `blocked_retryable`, a spent ceiling or budget is `budget_exhausted`. Only a
-goal that is self-contradictory or permanently unreachable **under the frozen terms, and
-confirmed by independent evidence**, is `unachievable` - a model saying "impossible"
-triggers a check and proves nothing. The disposition is report vocabulary: `goal-run`
-tells the run to use exactly these words, and the gate adds **no fourth mechanical
-outcome** - `unachievable` has no consumer in the mechanism, and a value nothing reads is
-not a control.
-
-**A moved goalpost closes the run.** The gate records a digest of `## Intent`,
-`## Boundary` and `## Anchor` at the run's first Stop and compares it on every later one.
-When it differs, the run is no longer pursuing the goal the owner authorized - so the
-turn ends loudly, **the gate disarms itself** (`.goals/active` and any pending candidate
-go; the observations stay for `--audit` and Git), and the decision goes back to the
-owner. That is the re-baseline semantics, stated: there is no mid-run re-baseline. A
-legitimate goal change ends the old run; the owner reopens the interview and a new run
-starts against a new spec. Re-baseline requires the owner's authority, not a trace - a
-trajectory row or a ruling id is correlation, and any run that can write files can write
-both. An agent may raise a challenge under `## Challenges from the run`; it may not rule
-its own material goal change into an owner change.
-
-### What it costs a project that never asked for one
-
-Every hook's first act is the same check: is there a `.goals/active` marker naming an
-artifact that exists? Without one, nothing is read, nothing is written, no command runs.
-
-| Situation | Cost |
-|---|---|
-| No `.goals/` at all | One process start and one `stat` per registered hook |
-| `.goals/` with no `active` marker | Same |
-| `active` naming a missing artifact | Same, plus one line saying so |
-| A re-entered Stop (`stop_hook_active`) | The anchor runs again and the block counts against the host's continuation budget — a continuation is a gated turn, not a reason to go quiet |
-| Anything raising an exception | Exit 0. A hook that cannot decide must let the host continue |
-| **Escape** | `rm .goals/active`, or `ULTRA_GOAL_HOOKS_DISABLED=1`. Neither needs the agent's cooperation |
-
-`PostToolUse` is deliberately **not** registered: it fires once per tool call, so its cost
-scales with tool use, and its value duplicates what `SessionStart` already injects and what
-the goal text already demands each turn. It gets added when a real run shows the loop
-retrying a path its own `### Lessons` already ruled out — not before.
-
-`UserPromptSubmit` is registered on Kimi only, and it is that host's recovery channel
-rather than a wrong-activation guard. Kimi's reference makes every event but `PreToolUse`,
-`Stop` and `UserPromptSubmit` observation-only, so two things have no other path there: the
-frozen-spec injection the other hosts get on `SessionStart`, and any word from a Stop that
-*allows* — green, unknown, ceiling, frozen-spec-changed and not-progressing would otherwise
-end a Kimi turn in silence. The hook answers both with one fixed-size line per prompt: the
-artifact pointer plus the gate's last decision, read from the event log. The
-wrong-activation detector once sketched for this event — an exact match of the submitted
-prompt against the artifact's `## Handoff` block — stays unbuilt everywhere: the
-instruction-level fix comes first and has not been shown to fail, and the trigger to build
-it remains a real session where a pasted goal line pulled this Skill into an interview
-anyway.
-
-`TurnStarted` is Kimi-only too, and it is not a recovery channel but a boundary: the
-budget could not be scoped to the host turn without it, because a user prompt is one
-origin of a turn and not the boundary itself. It fires once per host turn whatever began
-it, writes one event carrying the host's `turn_id` and `origin_kind`, and pays the same
-early-exit cost as every other hook in a project without `.goals/active`. Registering the
-same event on a host whose turns arrive another way would be a proxy, not a fact — which
-is why zCode, whose seven events include no turn boundary, gets the declared gap above
-instead.
-
-### Wide latitude, zero trust in self-report
-
-The run picks its own method, drops means that stop serving the intent, and rewrites its own
-carried state. Every one of those is a semantic judgement and none of them is mechanically
-checkable. **That is exactly why the few facts that are checkable must be kept out of the
-run's hands:**
-
-| Written by | What | Read as |
-|---|---|---|
-| the run | the artifact, `### Lessons`, the commit message, a review | a claim |
-| the hooks | `<slug>.events.jsonl` — exit codes, output digests, spec digests | evidence |
-
-Nothing sits in between, and `--audit` is the comparison. A divergence is reported, never
-resolved: the gate does not know *why* turn 4 claimed green, only that it measured red.
-
-Two limits, stated because a control that oversells itself is worse than no control. The run
-can write any file it can read, `events.jsonl` included — what stops tampering is that the
-log is committed, so a rewritten history shows up in `git log` instead of passing silently.
-Making a moved goalpost **visible** is the achievable property; making it impossible is not.
-And the review's verdict stays advisory: only the anchor may deny a stop, because only its
-exit code is a fact rather than an opinion about one.
-
-Read [references/zero-trust.md](references/zero-trust.md) for which control distrusts what,
-and [references/document-system.md](references/document-system.md) for which file owns what.
+Check your own host rather than trusting this table. The host reference and actual
+session decide capabilities. Read the host-hooks reference for per-host contracts and
+measured limits. **Windows is unverified**; structural checks are not a native lifecycle.
+Finite probes do not establish statistical 95% unattended reliability.
 
 ## Validate, then offer to start it
 
 ```bash
-python3 scripts/validate_artifact.py .goals --json
+python3 <skill-dir>/scripts/validate_artifact.py .goals --json
 ```
 
-It checks mechanical facts only — pairing, required sections, declared phases, known
-delegation targets, JavaScript syntax — and never edits the artifact. Fix what it reports;
-its silence is not evidence that the design is right.
+The validator checks mechanical facts and never edits the artifact; its silence is
+not evidence that the design is right. Finish independent specification critique.
+**Use an existing explicit start authorization; otherwise offer to start the run.**
+Name the artifact, anchor, attempt ceiling, open requirements and exact command:
+**`/ultra-goal:goal-run <slug>`**. If start authority is missing, ask whether to start
+now or change the artifact first. Never read silence or an unrelated reply as consent.
 
-Then, once the design critic's objections have been ruled on, **offer to start the run, and
-start it if the owner says to.** Two skills, one door: the owner types `/ultra-goal` and
-never has to learn that arming a gate is a different file from designing a goal.
+**Do not send them to clear the context first.** The accepted interview still helps;
+carry source decisions forward rather than forcing a reset by default.
+**When they say start it, this manual stops applying to you.** Invoke the run command
+and follow [goal-run.md](../../commands/goal-run.md): the host keeps this Skill's
+content in the conversation, but you are now the run, not its designer. Frozen-spec
+checks and `## Challenges from the run` preserve that boundary without another interview.
 
-Ask with three answers, because yes-or-no folds "those objections changed my mind" into
-"not now":
+Before the owner walks away, finish the authorized setup: exercise the actual entry
+point, confirm native continuation and resource controls, arm with the current native
+session identity, and establish where results will be read. An attachment runs against
+the same armed contract. Native permissions own effects; Stop cannot undo a write.
+If continuation or result delivery is missing, state the interactive limitation.
+If the owner declines starting, hand off the exact command and expected first result.
 
-> Artifact validated: `.goals/<slug>.goal.md`. Anchor `<command>`, ceiling `<n>`, `<k>`
-> acceptance lines open.
->
-> **Start the run now?** That means `/ultra-goal:goal-run <slug>`, which arms the gate by
-> writing `.goals/active`: from then on a turn cannot end with the anchor red until the
-> stop condition is met, and `rm .goals/active` is the way out.
->
-> - **start it** — I invoke it in this session and work turn 1
-> - **not yet** — nothing is armed; the artifact sits there and `/ultra-goal:goal-run
->   <slug>` starts it later, in any session
-> - **change something first** — say what, and we amend before arming
+## Verification before final delivery
 
-Arming writes one file in this repository and `rm .goals/active` undoes it, so "start it"
-is authorization enough; nothing at this step reaches outside the machine. But never arm
-without asking, and never read silence or an unrelated reply as consent.
+The execution handoff must require the run to finish output edits, join writers and
+obtain required review before `goal_run.py verify <slug> --root <project>
+--session-id <current-native-session-id> --claim <claim>`. Read this attempt's recorded
+`verification_passed` result **before** the final claim. A historical green, native
+completed status, a checkbox or a worker's success message does not replace it.
+The candidate-file Stop path is a fallback: until its real measurement is available,
+report verification as pending. Changes after a pass require fresh review and verification.
 
-**Do not send them to clear the context first.** Turn 1's context is the best it will ever
-be: it holds why each term was chosen, what the design critic objected to, and what the
-owner rejected - none of which survives in the artifact, which keeps at most three lessons.
-Clearing trades that for a re-injection of what was already on disk. It also buys nothing
-that is actually missing, because a clean context is not reachable anyway: the host's own
-setup, the project's instructions and every other installed hook's injection are all in a
-fresh session before the owner types anything.
+### Wide latitude, zero trust in self-report
 
-**When they say start it, this manual stops applying to you.** Invoke
-`/ultra-goal:goal-run <slug>` and follow that file instead. It puts you in the run's seat,
-where the terms you just negotiated are frozen and your job is to satisfy them rather than
-to keep improving them. The host keeps this Skill's content in the conversation after the
-handoff, so wanting to reopen the interview is the live risk - and what answers it is not a
-cleaner window but three things that work with the window as it is: the injection's own
-first line says you are the run and not its designer, `frozen_digest()` is written and
-compared by machine so a moved goalpost surfaces in `--audit` and in `git log`, and a term
-that really is wrong has a channel - a row under `## Challenges from the run` - that is
-faster than editing it.
-
-The other two shapes have nothing to arm: a workflow script has the runtime's own entry
-point and a delegation triad is one call per worker. Offer those the same way, in the same
-three answers, naming the working directory and mission file.
-
-If the owner declines, hand off in one line anyway: the exact command they paste and what
-the first turn should produce. Assume no other Skill is installed to fill the gaps, and
-say which effects they have already authorized and which still need approval.
-
-## Version this Skill
-
-Bump the version in three places together — the plugin manifest, this file's `metadata`,
-and the installer's `VERSION`. A test fails if they disagree.
+The run's report and mutable state are claims. Gate events are observations; required
+receipts carry checked provenance. Writable hashes and session IDs provide **detection
+and audit, not isolation or authentication**. A shared-filesystem writer can forge them.
+Use native permissions, an isolated verifier or authenticated external evidence where
+required, and disclose an unavailable boundary before unattended work. No digest proves
+criterion adequacy or that a quotation supports its claim.

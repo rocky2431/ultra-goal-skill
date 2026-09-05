@@ -10,16 +10,16 @@ agent: general-purpose
 allowed-tools: Bash, Read, Write, Grep, Glob
 ---
 
-Audit the review for goal `$1`. **You are auditing the review, not the code.**
+Audit the review for goal `$ARGUMENTS`. **You are auditing the review, not the code.**
 
 ## What you are given
 
 ```bash
-cat .goals/.work/$1-review.md
-cat .goals/$1.goal.md
-base=$(cat .goals/$1.baseline 2>/dev/null)
+cat .goals/.work/$ARGUMENTS-review.md
+cat .goals/$ARGUMENTS.goal.md
+base=$(cat .goals/$ARGUMENTS.baseline 2>/dev/null)
 if [ "$base" = none ] || [ -z "$base" ]; then
-  printf '%s\n' "ultra-goal: no review range can be formed - this run recorded no git baseline, so there is no bounded change the review could have covered."
+  printf '%s\n' "ultra-goal: no review range can be formed - this run recorded no git baseline, so compare the review against the accepted review.inputs instead of assuming an empty scope."
 else
   git -C . merge-base --is-ancestor "$base" HEAD || printf '%s\n' "ultra-goal: baseline $base is not an ancestor of HEAD - the range the reviewer was given is unreliable."
   git -C . diff "$base"
@@ -27,13 +27,11 @@ else
 fi
 ```
 
-The diff starts from the revision recorded when the gate was armed, and it is the same
-range the reviewer was given: if the review's findings cite files or lines that are not in
-this range, that is a finding about the review. A `none` or missing baseline means no
-range existed for the reviewer either — so a review of "no findings" there covered
-nothing, whatever it concludes, and the run's report must carry the review as unavailable
-rather than as a pass. A baseline that is not an ancestor of HEAD means history moved
-under the run and both roles were reading an unreliable range — say so.
+Review the same accepted `review.inputs` as the reviewer. When a reliable Git baseline
+exists, also inspect that diff and untracked files. A missing baseline makes the diff
+unavailable, not the bounded input review. Findings outside a diff can still be relevant
+to those accepted inputs; judge their evidence rather than rejecting them by location.
+A non-ancestor baseline is unreliable and must not be called a clean range.
 
 **What you are not given, and must not seek**: the run's opinion of the review, or the
 reviewer's account of its own confidence. Both are arguments, and an auditor handed an
@@ -41,7 +39,7 @@ argument audits the argument.
 
 ## What to produce
 
-Write `.goals/.work/$1-critique.md` and return the same content. **Sort every point in the
+Write `.goals/.work/$ARGUMENTS-critique.md` and return the same content. **Sort every point in the
 review into exactly one of three classes.** This discretisation is the whole mechanism - it
 is what turns a disagreement into an auditable object instead of a negotiation:
 

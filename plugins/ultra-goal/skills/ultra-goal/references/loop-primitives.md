@@ -49,8 +49,16 @@ Each host's goal mode differs in how it holds the model to the objective: Claude
 to end the turn, Codex accounts goal progress after every tool call, Kimi can pause and
 resume a goal, zCode also offers a headless `--target`. None of that changes the artifact.
 
+**Goal mode is the continuation service, and there is no substitute for it here.** It is what
+starts the next turn after one ends. A Stop hook — this Skill's included — runs inside a turn
+that is already ending: it can refuse that ending while a completion claim is refusable, but
+it cannot schedule a turn and cannot revive a dead process. So where the host has goal mode,
+an unattended run uses it; where it does not, the run is not unattended and the report says
+the run is awaiting a prompt.
+
 What every host has in common is the gap: **goal mode asks the model whether the objective is
-met.** Close it in the goal text, not with machinery around the host:
+met.** That is the half the anchor closes, in the goal text and in the gate — not by
+replacing the host's continuation:
 
 ```
 /goal <objective, inside <boundary>>. You have not met this goal until you have actually
@@ -61,8 +69,8 @@ reasoning. Stop after <N> turns even if unmet, and say so.
 Two things to keep right when a goal runs unwatched:
 
 - **The ceiling has to be in the text.** Nothing else will refuse to run forever.
-- **Carry-over matters even within a single run**, because compaction empties the context
-  mid-goal just as surely as a week between runs does.
+- **Carry-over matters even within a single run.** Compaction may retain a summary
+  while omitting a decisive fact; recover from the current state and its linked evidence.
 
 ## Lessons are reflections, not a log
 
@@ -72,11 +80,11 @@ build - into "nuanced and specific feedback" stored in memory for the next trial
 reflection step is the one that makes the next attempt different, and it is the one agents
 skip by default.
 
-Two of its findings shape the carry-over contract:
+Two ideas transfer to Carry-over, within the experiment's limits:
 
-- **Bound the memory.** Reflexion caps stored experiences at Ω, "usually set to 1-3", to fit
-  the context budget. Entries the model must reason over are not free; a list of twenty is a
-  log, and a log gets skimmed.
+- **Keep memory selective.** Reflexion's usual capacity of 1–3 was an experimental
+  context-budget choice. Here three lessons is advisory: retain a necessary fourth
+  lesson or link its detail, and preserve the evidence behind a pruned summary.
 - **Amplify the signal into language.** A binary pass/fail carries almost no information for
   the next attempt. The value is in the sentence that says *which action* led to the failure
   and *what to do instead* - what the paper calls the credit assignment problem.

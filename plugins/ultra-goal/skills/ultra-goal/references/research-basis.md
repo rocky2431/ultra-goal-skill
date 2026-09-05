@@ -1,7 +1,9 @@
 # Research basis
 
-Current as of 2026-09-03. Claims in this Skill trace to these sources; re-check them
-before treating any specific number as still true.
+Rechecked 2026-09-05. These sources describe particular systems and experiments;
+they are evidence to test against this task, not universal operating rules. Keep
+the source's model, task, version and comparison when quoting a result. The
+project's transfer judgments and implementation guarantees are separate claims.
 
 ## Loop engineering (primary)
 
@@ -18,48 +20,53 @@ before treating any specific number as still true.
 
 ## Long-running harnesses (primary)
 
-- Anthropic, *Effective harnesses for long-running agents* — the closest published work to
-  what this Skill builds. States plainly that **"compaction isn't sufficient"**, which is
-  the whole basis for `## Carry-over`. Their artifacts: a progress log, a structured
-  `feature_list.json` of requirements all initially failing, descriptive commits, and an
-  `init.sh`. Discipline: one feature per session, and "Only mark features as 'passing'
-  after careful testing". Names the failure this Skill's anchor exists for: "Absent
-  explicit prompting, Claude tended to make code changes but would fail to recognize that
-  the feature didn't work end-to-end" — and lists "relying on unit tests without
-  end-to-end validation" as an anti-pattern.
+- Anthropic, *Effective harnesses for long-running agents* (2025-11-26) — progress
+  notes, an initially failing feature list, environment initialization and actual
+  functional checks helped its application-development agents cross context windows.
+  One feature per session was an experimental response to that model taking on too
+  much, not a rule for every goal. Compaction alone did not preserve everything
+  needed for recovery; that does not mean compaction empties the context. Commits
+  in their setup do not grant commit authority in ours.
   https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents
-- Anthropic, *Harness design for long-running application development* — Planner /
-  Generator / Evaluator, with the generator later **removed** as the model improved. Two
-  things taken directly: the **sprint contract**, where generator and evaluator agree what
-  "done" means for a chunk before any code is written; and **context anxiety**, a named
-  failure where a model wraps up early as it approaches what it believes is its context
-  limit. Also the criterion this Skill's own mechanism audit uses: "every component in a
-  harness encodes an assumption about what the model can't do on its own, and those
-  assumptions are worth stress testing."
+- Anthropic, *Harness design for long-running application development* (2026-03-24)
+  — Planner / Generator / Evaluator remained; context resets and later sprint
+  segmentation were removed as the models improved. The generator was not removed.
+  Agreeing on observable acceptance before implementation transfers; fixed sprints
+  do not. The evaluator needed calibration against human judgment, and the last
+  iteration was not necessarily the best. Re-test whether each added component
+  still addresses a demonstrated weakness.
   https://www.anthropic.com/engineering/harness-design-long-running-apps
+- OpenAI, *Harness engineering* (2026-02-11) and *Run long horizon tasks with
+  Codex* — short entrypoints route to maintained repository knowledge; a stable
+  specification, revisable plan, executable environment and real feedback support
+  sustained work. These are case studies, not a universal entrypoint line limit
+  or a measured unattended reliability rate.
+  https://openai.com/index/harness-engineering/
+  https://developers.openai.com/blog/run-long-horizon-tasks-with-codex
 
 ## The arithmetic of long tasks
 
-- Ord, *Is there a half-life for the success rates of AI agents?* (arXiv 2505.05115) — a
-  constant per-minute failure rate fits the data, so success decays **exponentially** with
-  task length, because long tasks "involve increasingly large sets of subtasks where
-  failing any one fails the task". The consequence for this Skill: success is exponential
-  in the size of one turn, so halving the work per turn more than doubles the chance of a
-  green turn. The turn ceiling decides when a run gives up; the turn *size* decides
-  whether it can succeed at all.
+- Ord, *Is there a half-life for the success rates of AI agents?* (arXiv 2505.05115)
+  — analyzes an exponential relationship between task length and success in the
+  studied data. Human task duration is not a host turn. Even assuming
+  `p(t) = exp(-lambda*t)`, halving length gives `sqrt(p(t))`, not universally more
+  than twice the success rate. Two independently required halves still have joint
+  success `p(t)` without another change. Our inference: decomposition needs a
+  concrete isolation, feedback or recovery benefit; a smaller turn alone proves none.
   https://arxiv.org/abs/2505.05115
-- METR, *Time Horizon 1.1* — near-100% success on tasks under roughly four minutes of
-  human time, under 10% beyond roughly four hours; the 50%-reliability horizon doubling
-  every 4-7 months. Re-check the numbers before quoting them.
+- METR, *Time Horizon 1.1* — measures task horizons against human completion time.
+  Use the dated model and reliability threshold when interpreting a horizon; this
+  is not a per-turn budget recommendation or a promise for arbitrary project work.
   https://metr.org/blog/2026-1-29-time-horizon-1-1/
 
-## Single writer, and the case against multi-agent
+## Shared context and concurrent work
 
-- Cognition, *Don't Build Multi-Agents* — the argument this Skill's phase-split refusal
-  rests on: fanned-out subagents each act on a partial view and make conflicting implicit
-  decisions. Its positive rule endorses the triad exactly: **"extra agents are fine when
-  they contribute intelligence, reading and analyzing, but the writes, the actions that
-  change state, should stay single-threaded."** That is M editing while R and C only read.
+- Cognition, *Don't Build Multi-Agents* (2025-06-12) — warns that agents with partial
+  context can make conflicting implicit decisions; the author qualifies this by
+  the capabilities then available. Our application is to coordinate shared
+  decisions and resources. Independent writes with explicit ownership and an
+  integration check can run in parallel. The earlier purported quotation about
+  all writes staying single-threaded was not found in the original and is withdrawn.
   https://cognition.com/blog/dont-build-multi-agents
 
 ## Context engineering in production
@@ -79,7 +86,8 @@ before treating any specific number as still true.
   lifecycle: `submitted / working / input-required / completed / failed / canceled /
   rejected`. The transport (HTTP, SSE, JSON-RPC) is the opposite of this Skill's
   text-protocol stance and is **not** adopted; the state vocabulary is what transfers, and
-  `input-required` and `rejected` are two states a delegation package currently lacks.
+  `input-required` requires an explicit missing input. Silence or a lost response
+  establishes only an unconfirmed state until the native task can be inspected.
   https://developers.googleblog.com/en/a2a-a-new-era-of-agent-interoperability/
 - OpenAI, *A practical guide to building agents* — guardrails as a **layered defense**,
   added "as you uncover new vulnerabilities" rather than up front; manager versus
@@ -93,11 +101,14 @@ before treating any specific number as still true.
 - Anthropic, *When to use multi-agent systems (and when not to)* — 3-10x token overhead,
   the three justified conditions (context isolation, parallelization, specialization),
   context-centric rather than phase-centric decomposition, the verification subagent and
-  its early-victory failure.
+  its early-victory failure. The multiplier is the authors' equivalent-task
+  comparison against a single agent, not this project's budget rule.
   https://claude.com/blog/building-multi-agent-systems-when-and-how-to-use-them
-- Anthropic, *How we built our multi-agent research system* — orchestrator-worker topology,
-  about 15x tokens, token volume explaining most performance variance, self-contained
-  worker task descriptions, synthesis kept in a single agent.
+- Anthropic, *How we built our multi-agent research system* — orchestrator-worker
+  topology and self-contained worker missions. The reported approximately 15x
+  token use is relative to ordinary chat (agents were about 4x chat in the same
+  discussion), not 15x a single agent. These observations concern their research
+  workload; useful parallelism depends on task structure and total cost.
   https://www.anthropic.com/engineering/multi-agent-research-system
 - Anthropic, *Patterns and problems in multiagent systems* — conformity and low variance
   between agents, epistemic brittleness, goal-incompatibility escalation, and the case for
@@ -106,7 +117,7 @@ before treating any specific number as still true.
 
 ## Graph engineering (community)
 
-The term dates to July 2026; the practice does not. Treat these as argument, not doctrine.
+These essays discuss graph engineering. Treat their framing as argument, not doctrine.
 
 - Carlos E. Perez, *From Loop Engineering to Graph Engineering?* — the four single-loop
   failures, the graph of loops, circularity, and the grounded-versus-ungrounded resolution.
@@ -146,9 +157,11 @@ The term dates to July 2026; the practice does not. Treat these as argument, not
 
 - Shinn et al., *Reflexion: Language Agents with Verbal Reinforcement Learning* (NeurIPS
   2023) — the Actor / Evaluator / Self-Reflection split, verbal feedback as a "semantic
-  gradient", the credit assignment problem, and the episodic memory bound Ω "usually set to
-  1-3". This is the basis for the `### Lessons` cap and for asking for a cause plus a next
-  action rather than an event.
+  gradient", the credit assignment problem, and a small episodic memory used in
+  its experiments. The usual capacity of 1–3 was a context-budget choice, not
+  evidence that a fourth necessary lesson makes a goal invalid. Transfer the causal
+  reflection and selective retrieval; keep compactness advisory and preserve the
+  evidence behind a pruned summary.
   https://arxiv.org/abs/2303.11366
 
 ## Design-time specification
@@ -166,5 +179,44 @@ The term dates to July 2026; the practice does not. Treat these as argument, not
 ## Failure taxonomy
 
 - Cemri et al., *Why Do Multi-Agent LLM Systems Fail?* — 14 failure modes catalogued
-  across seven multi-agent frameworks.
+  across seven multi-agent frameworks, including missing information, premature
+  termination and inadequate or incorrect verification. A reviewer's presence
+  alone is not proof of adequate acceptance.
   https://arxiv.org/abs/2503.13657
+
+## State, knowledge and skill updates
+
+- *SKILL.state: Scalable Long-Horizon Agent Skills*, v2 — the runtime constructs
+  each step from immutable specification, mutable state and latest observation.
+  Its bounded-context result depends on sufficient, bounded state; it is not a
+  property a skill obtains merely by writing Markdown. A five-field InterCode CTF
+  schema reused across 100 instances is a domain example, not a universal schema.
+  https://arxiv.org/html/2608.26263v2
+- *WikiSkill: Compiling Agent Experience into Persistent Knowledge for Skill
+  Evolution*, v1 — separates raw evidence, accumulated knowledge and proposed
+  skill changes, accepting or rolling back changes using validation. The
+  48.7% to 63.7% ablation is a Gemini-3.5-Flash average over four benchmarks under
+  specific wiki-access settings, not this skill's expected gain. It did not
+  establish multi-hour unattended operation. We reuse a small maintenance loop
+  in `evolution-and-scope.md`, not its always-running agent arrangement.
+  https://arxiv.org/html/2608.27454v1
+
+## Recovery and evaluation boundaries
+
+- LangGraph, *Checkpointers* and *Interrupts*, and Temporal, *Activity Definition*
+  — recovery can replay work after a saved boundary. An effect may complete before
+  its acknowledgment is saved; the target service must implement idempotency or
+  provide a way to inspect the outcome. Our existing events record started and
+  settled verification; they are not an external exactly-once executor.
+  https://docs.langchain.com/oss/python/langgraph/checkpointers
+  https://docs.langchain.com/oss/python/langgraph/interrupts
+  https://docs.temporal.io/activity-definition#idempotency
+- *SkillsBench*, v4 — compare skills on the same tasks and model/harness settings.
+  Benefits vary; shorter or more elaborate instructions need measurement rather
+  than a universal module count. *Towards a Science of Scaling Agent Systems*,
+  v3, likewise finds that decomposition and coordination costs affect the value
+  of additional agents. *Tau-bench* evaluates repeated success and notes that
+  correct end state can still conceal unauthorized intermediate actions.
+  https://arxiv.org/abs/2602.12670v4
+  https://arxiv.org/abs/2512.08296v3
+  https://arxiv.org/abs/2406.12045

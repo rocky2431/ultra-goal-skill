@@ -1,25 +1,30 @@
 # The document system
 
-Four files and Git. Each answers exactly one question, and the split follows the one
-SKILL.state draws: an immutable procedural specification, a mutable execution state, and the
-observations that arrive between them.
+Use the existing goal artifacts, observations and required evidence. The distinction
+borrowed from SKILL.state is immutable specification versus mutable execution state;
+the skill does not replace the host's context assembly or persistence.
 
 | File | Role | Who writes it | When | Mutability | In Git |
 |---|---|---|---|---|---|
 | `<slug>.goal.md` — spec sections | the specification | owner + agent, together | Ask and explicit Modify **only** | **frozen for the duration of a run** | yes |
+| `<slug>.workflow.js` / `<slug>.delegation.md` | an optional execution attachment, naming the contract above | owner + agent, at authoring time | Ask and explicit Modify | follows the contract; adds execution, never terms | yes |
 | `<slug>.goal.md` — `## Carry-over` | the execution state | the running agent | before finishing **every** turn | rewritten, never appended | yes |
-| `<slug>.events.jsonl` | the observations | **the hooks, never the run** | at every Stop, prompt, delegation event and compaction | **append-only, never edited** | yes |
+| `<slug>.events.jsonl` | the observations | **the gate and hook scripts, never model-authored rows** | at explicit verify attempts, Stop, prompt, delegation events and compaction | **append-only, never edited** | yes |
 | `<slug>.decisions.md` | the decision tree | owner + agent | Ask and Modify | rows edited, never appended | yes |
 | `.goals/.work/*` | worker intermediates | each delegated worker | while a round runs | disposable | **no** |
-| `.goals/active` | which goal is running, and for which session | owner or agent to arm; the first session-carrying Stop adds the `session <id>` line | on start and stop | slug, plus the session line once claimed | no |
+| `.goals/active` | which goal is running, and for which session | **the arming fence**, which writes the slug and the `session <id>` line together | on arming and disarming; ownership moves only by an explicit `rebind` | slug plus session, both written before any hook runs | no |
 | `<slug>.spec.baseline` | the authorized digest of the frozen sections | **the arming fence, before any Stop ran** | once, at arming | **write-once** | yes |
+| `<slug>.verification.baseline` | hashes of the declared `protected` evaluator files | **the arming fence** | once, at arming | **write-once**; a mismatch refuses instead of re-pinning | yes |
+| `<slug>.review.json` by default | one independent verifier's declared verdict and input references | **the verifier, never the run** | when a required review completes | replaced by a fresh review after its inputs change | only with authority |
+| `<slug>.reviews/<digest>.zip` | the exact reviewed evidence retained for later audit | **the gate, after the current checks** | during successful post-anchor review verification | content-addressed snapshot; historical, never a current receipt fallback | only with authority |
 | `<slug>.candidate` | the run's completion claim, one line | the run, once per claim | at each claim | consumed by the gate when it rules | no |
-| git history | the evolution | git | one commit per turn | immutable | — |
+| git history | the evolution | git | when an existing authorization permits a commit | immutable | — |
 
-The two "no" rows are arranged, not just asserted: arming writes `.goals/.gitignore`
-holding `.work/` and `active`. For three versions this table called them gitignored while
-nothing wrote the rule, so a run that staged with `git add -A` committed the reviewer's
-intermediates — a documented property that only the document believed.
+"In Git" describes intended tracked artifacts, not an automatic commit. Every
+commit or publication still needs authority, and local evidence may contain
+sensitive inputs. Arming writes `.goals/.gitignore` for transient machinery such
+as `.work/` and `active`. Required evidence must survive cleanup whether or not
+there is a Git repository or permission to commit.
 
 ```
 decisions.md ──defines──► goal.md spec sections   [FROZEN during a run]
@@ -32,10 +37,10 @@ decisions.md ──defines──► goal.md spec sections   [FROZEN during a run
                   every turn  │          ▼
                           events.jsonl                [append-only facts]
                               ▲          │
-              worker results  │          │  summary + digest
+              worker results  │          │  source pointers + digests
                               │          ▼
-                     .goals/.work/  ─────►  git commit (one per turn)
-                     [disposable, gitignored]
+                     .goals/.work/  ─────►  retained review + input archive
+                     [scratch only]          [commit only if authorized]
 ```
 
 ## The one distinction that decides who writes what
@@ -45,17 +50,44 @@ line, and the line is what makes the trace worth keeping:
 
 | Authored by | Files | What it is |
 |---|---|---|
-| the run | the spec sections, `## Carry-over`, the commit subject, a review | **claims** |
-| the hooks | `<slug>.events.jsonl` | **measurements** |
-| the owner (with the agent) | `<slug>.decisions.md` | authorizations |
+| the run | `## Carry-over`, the commit subject, its own report, any advisory review it wrote | **claims** |
+| an independent verifier | the required review's receipt | a **checked declaration**: approved identity, distinct session, current input digest — provenance the gate verifies, not an authenticated credential |
+| the hooks | `<slug>.events.jsonl` | **measurements** of the named operation, not semantic truth or authentication |
+| the owner (with the agent) | `<slug>.decisions.md`, and the spec sections it defines | authorizations |
 
-`validate_artifact.py .goals --audit` is the join: each completion attempt's committed
-verdict beside the verdict the gate measured for it. Rows that agree are unremarkable. The
-first row where they part company is the answer to "where did this go wrong", which is the
-only question a finished run is ever asked.
+`validate_artifact.py .goals --audit` compares committed completion claims, when
+they exist, with recorded gate observations. It also checks retained review archive
+integrity. Missing history stays missing; agreement does not prove the original
+criteria or review reasoning were adequate. Investigate a divergence from the
+underlying inputs and events rather than automatically trusting either summary.
 
 Nothing here auto-resolves a divergence. The log cannot know why a turn claimed green; it
 knows only what it measured.
+
+## Started verification and retained review evidence
+
+The gate records `verification_started` with a `verification_id` and attempt number
+before accepting the work of that attempt. Its settlement refers to the same ID.
+A start without a settlement is pending/unknown, and a later owning gate can mark
+it interrupted. An old green must not hide it. Recovery reads these facts; it does
+not silently rerun the anchor or assume the interrupted operation had no effect.
+This is local verification bookkeeping, not exactly-once business execution or a
+guarantee that a host will resume.
+
+Required reviews default to `.goals/<slug>.review.json`, outside disposable scratch.
+At the post-anchor verification boundary, the gate retains
+`.goals/<slug>.reviews/<digest>.zip`: the exact receipt, goal, all declared
+`review.inputs`, and a SHA manifest. The event's `review_evidence.archive` holds
+the archive path and SHA-256. Failure to retain required evidence refuses completion.
+An audit checks the archive and member hashes without extracting it; it does not
+repeat the semantic review.
+
+This archive covers the **declared inputs only**. It cannot preserve an omitted
+dependency, authenticate the reviewer, or recover undeclared remote facts. Include
+the original evidence the review needs in those inputs; retain a stable source
+identity and observation time when an external source cannot be copied. Local
+hashes do not certify future freshness. A historical archive supports the past
+conclusion and never substitutes for a fresh receipt after the current inputs change.
 
 ## What a hook inlines, and what it points at
 
@@ -94,27 +126,32 @@ refusal was half right, and the half that was wrong was conflating two different
 | Shape | ordered, with dependencies | **unordered**; every line stands alone |
 | Answers | *what to do next* | *what is still not true* |
 | Decided | at authoring time | the run picks, every turn |
-| Makes it | a graph — routing already decided | still a loop — routing decided at inference |
+| Routing | can be revised by the model; authored executable edges form a graph | does not prescribe routing |
 | Mechanically | a numbered list | `- [ ]` / `- [x]` lines, and `ACCEPTANCE_ORDERED` refuses a numbered one |
 
-A plan says "first the API, then the web package, then release". An acceptance list says
-"these four things are not true yet" and lets the run decide which to attempt with what it
-knows this turn. The first takes the routing decision away from the run, which is the
-definition of a graph. The second is **the stop condition written out longhand**.
+A plan says "first the API, then the web package, then release" and can change as
+the model learns. An acceptance list says "these four things must be true" without
+prescribing the route. The second is **the stop condition written out longhand**.
+An optional plan file alone does not turn a loop into a fixed graph.
 
-So the rule stays one-directional and unchanged: **`plan.md` and a dependency-ordered
-`tasks.json` are still refused.** What was added is the enumerated form of a section that
-already existed.
+So the rule is about **this section's shape, not about the owner's planning method**:
+`## Acceptance` is unordered, and `ACCEPTANCE_ORDERED` refuses a numbered one. How the
+owner or the run plans its work — a scratch `plan.md`, a `tasks.json`, a checklist in a
+ticket — is their choice. The main model can route from that plan and revise it as
+evidence changes. The plan never substitutes for the acceptance evidence.
 
 Why bother, when `## Stop condition` was already there: one sentence plus one anchor can
 answer *is the whole thing done*, and cannot answer *which parts are*. The second question
 is the one a long run gets wrong, by declaring victory on the strength of the part it
 finished. Anthropic's long-running harness reached for the same object for the same reason
-— a feature list, every entry failing at the start, one entry per session, and a state that
-may only move to passing after real testing.
+— a feature list initially failing, with passing status earned through real testing.
+Its one-feature-per-session cadence was an experimental choice, not our contract.
 
 And `[x]` is a claim. It is written by the run, so it sits on the claims side of the line
-above, and the anchor's output is what settles it. `--audit` is where the two meet.
+above, and the evidence that settles it is named rather than assumed: each line carries a
+stable ID, and `## Verification`'s `covers` map says whether that ID is settled by the
+anchor or by a required review. The line's *text* is frozen with the rest of the spec; only
+the checkbox moves. `--audit` is where claim and measurement meet.
 
 ## What the gate says, and to whom
 
@@ -128,7 +165,7 @@ still ends nothing.
 
 There is no per-turn injection channel, and that is a measured fact, not a preference: on
 Claude Code 2.1.260 an allow carrying `additionalContext` continues the turn instead of
-ending it. What the run owes (carry-over rewritten, lessons written, work committed) rides
+ending it. What the run owes (carry-over rewritten, lessons written, commits only if authorized) rides
 the skill's standing instructions and the deny's reason - the reminder inside the reason
 names `### Next`, `### Lessons`, `### State` and the still-open `## Acceptance` lines,
 never a frozen section: what the gate reminds the run of is exactly what it may change.
@@ -144,11 +181,10 @@ agrees with it.
 
 ## Why the spec is frozen while a run is in flight
 
-A loop that can edit its own intent, anchor, or boundary will edit them — and the edit will
-always be in the direction that makes the current turn easier. That is not misbehaviour; it
-is what optimizing against a reference does when it also owns the reference. The answer is
-topological rather than motivational: **a slower loop owns the faster loop's target**, and
-here the slower loop is you.
+A run changing its own acceptance could make an easier problem look like the
+requested result. Frozen terms keep that decision with the owner while leaving
+methods and routing to the model. A slower, authorized design pass may revise the
+target; ordinary execution cannot silently do so.
 
 So divergence splits by layer:
 
@@ -156,34 +192,37 @@ So divergence splits by layer:
 |---|---|---|
 | an approach — this path is dead, this dependency has a trap | `### Lessons` | yes, adjust and carry on |
 | the extent — bigger than expected, three modules left | `### State` | yes, adjust and carry on |
-| **the target** — the anchor is not measuring what we actually want | **nothing; stop and report** | **no** — this reopens Ask, and the answer lands in `decisions.md` |
+| **the target** — the anchor is not measuring what we actually want | `## Challenges from the run` in decisions, with the counterexample | do not claim success against the wrong target; resolve revised terms with owner authority |
 
 The third row is the one worth enforcing socially even though no mechanism can catch it. An
 anchor that turns out to measure the wrong thing is the most valuable finding a loop can
 produce, and also the one it is most tempted to quietly route around.
 
-## Why history is not in any of these files
+## What history these files actually retain
 
-Version control already holds it, at full fidelity and for free:
+Version control holds committed revisions, not every attempted or abandoned step:
 
-- `git log -p <slug>.goal.md` — every change with its before and after. That *is* the
-  evolution.
-- `git log --oneline <slug>.goal.md` — one line per turn. That is the trajectory.
-- `<slug>.events.jsonl` — the machine-checkable facts of each turn, which is a different
-  thing from a narrative and much cheaper to query.
+- `git log -p <slug>.goal.md` — the before and after of authorized committed changes.
+- `git log --oneline <slug>.goal.md` — one line per commit, not necessarily per turn.
+- `<slug>.events.jsonl` — observed events, including verification start and settlement;
+  it does not contain every tool call or business effect.
+- Required review archives and native receipts/traces — the sources needed to check
+  the conclusions they support, retained independently of a mutable summary.
 
-So the documents answer only "what is true now". A changelog section inside the artifact
-would be a second copy of what Git holds, growing without bound, read by nobody.
+Carry-over answers "what should the next turn know now". Link the important
+observations instead of appending a full narrative. Without commits, an overwritten
+summary cannot be reconstructed unless its needed facts were retained elsewhere.
 
 One consequence worth stating: **a summary is a derived checkpoint, not a source of truth.**
 Where a summary is unavoidable, it carries the id or digest of what it summarizes, so a later
-reader can tell whether it has gone stale. That is why the event log stores digests rather
-than prose.
+reader can locate the evidence and detect relevant changes. A digest detects a
+changed file; it cannot reconstruct a deleted file or establish semantic correctness.
 
 ## Where multi-worker rounds put things
 
-Delegating to several agents does not add a document type; it adds one directory that Git
-never sees.
+Delegating uses scratch missions/results and retains the evidence needed for accepted
+conclusions. Separate goal files do not isolate shared product writes: declare actual
+resource ownership and integration responsibilities when workers write in parallel.
 
 ```
 .goals/
@@ -191,6 +230,8 @@ never sees.
   audit.goal.md                 # spec + carry-over, owned by the orchestrator
   audit.decisions.md
   audit.events.jsonl            # the coordinator's event log
+  audit.review.json             # the current required independent receipt
+  audit.reviews/                # retained receipt, goal and declared input snapshots
   .work/                        # gitignored, one round's lifetime
     codex.mission.md
     codex.result.md
@@ -201,26 +242,31 @@ never sees.
 Three rules make this work, and they come from the same place — separating a worker's private
 context from typed artifacts from an immutable coordinator log:
 
-1. **Workers never share a transcript.** Each gets a self-contained mission and writes a
-   typed result. Passing conversation history between agents costs a large multiple in tokens
-   and buys duplicated work, because a worker that can see another's reasoning starts
-   agreeing with it.
+1. **Give workers the context their mission needs.** Pass the accepted terms,
+   relevant decisions, previous failures and original evidence. For independent
+   review, exclude the generator's persuasive argument. Do not blindly replay
+   complete transcripts or withhold a shared decision the worker needs.
 2. **The orchestrator runs the anchor, not the workers.** A worker's report of success is a
-   claim; the anchor's exit code is evidence. This is the same rule as the single-agent case,
-   and it is the reason worker intermediates can be thrown away.
-3. **What survives the round is the event log line and the lesson** — not the discussion. The
-   discussion's durable content is exactly what got written into `### Lessons`; if nothing
-   did, the round produced no knowledge and the transcript would not have saved it.
+   claim; the actual output and current required review settle the contract. Join
+   writers and validate the integrated result, not just each worker's isolated output.
+3. **Retain the evidence, prune the discussion.** A required receipt and its
+   supporting inputs must survive the round. A lesson or event digest is not a
+   substitute for the only inspectable source. Delete scratch only after checking
+   that necessary evidence has a retained home.
 
 ## What is left behind when a loop is done
 
-Delete `.goals/active`. Keep `<slug>.goal.md`, `<slug>.decisions.md`, and
-`<slug>.events.jsonl` in Git — together they are a complete record: what was attempted, why
-it was designed that way, what was rejected along the road, and every anchor result. Delete
-`.goals/.work/` without ceremony.
+Disarm through the owning run's normal entry point. Keep the goal, decisions,
+events and required review evidence for the agreed audit/recovery lifetime. Commit
+only if authorized. They document the recorded contract and observations, not an
+automatically complete history of every attempted action.
 
-If the loop is never coming back, the durable parts belong in the repository's real
-documentation, and the three files go. An empty `.goals/` means nothing is outstanding.
+Remove only disposable `.goals/.work/` material after the required receipt/input
+archive and other necessary sources are retained and readable. Do not remove an
+unsettled attempt's recovery evidence. Retiring a goal may move useful knowledge
+into the project's existing documentation; it does not authorize deleting its only
+audit source or publishing private inputs. An empty marker is not proof that all
+business work succeeded.
 
 
 ## If you also run a spec-driven development harness
@@ -235,24 +281,18 @@ without deciding produces two half-authorities.
 | `specs/product.md`, `specs/architecture.md` | `## Boundary` + `## Anchor` | Condensed to what a loop needs: what it may touch, and what proves it worked |
 | a change's `intent.md` | `<slug>.goal.md` | The same document under a different name |
 | `decisions/` | `<slug>.decisions.md` | Same role |
-| `evidence/`, `verification.md` | `<slug>.events.jsonl` | Stronger here: execution receipts rather than a written account of them |
+| `evidence/`, `verification.md` | events plus required receipt/input archives | source material and measured facts support the written account |
 | `contexts/TEMPLATE.md` | `### State` + `### Lessons` | Condensed to what the next turn must read |
 | `changes/{active,archive,abandoned}` | `.goals/active` + Git | Three states are a workflow; one marker plus history is enough for one loop |
-| **`tasks.json`** | **deliberately absent** | See below |
-| **`plan.md`** | **deliberately absent** | A loop's plan is its goal text; a written plan for it would be the routing decision made twice |
+| **`tasks.json`** | optional execution plan | Use when dependencies need a durable list |
+| **`plan.md`** | optional execution plan | Link the current plan from Carry-over rather than duplicating it |
 
-### Why there is no task ledger
+### Optional execution planning
 
-A task ledger is a decomposition made at authoring time, which makes it a graph. A loop is
-defined by deciding the next step at inference time. Give a loop a task ledger and it becomes
-a graph — and a worse one than a harness built for graphs, because it inherits neither the
-dependency ordering nor the traceability that make a ledger worth having.
+A short goal usually needs only Carry-over. A longer task can use `plan.md`, `tasks.json`,
+or the repository's existing planning tool. The main model chooses and revises execution
+steps within the frozen intent and authority. A plan is not completion evidence, and a
+list of steps does not require a new runtime.
 
-One part of a ledger's job is genuinely needed: **what is left**. That already lives in
-`### State` as a line or two. What stays out is dependency order, acceptance-criteria
-tracing, and integration checkpoints — those belong to the harness, and a loop that wants
-them is telling you it should have been a planned change instead.
-
-The two compose in one direction: a planned task in a harness can *be* a loop, with this
-Skill's artifact as how that task gets executed. The reverse — a loop that grows a plan —
-is the thing to refuse.
+Keep `## Acceptance` for observable outcomes and `### Next` for the immediate recovery
+action. The Stop hook checks a completion candidate; it does not walk the task list.

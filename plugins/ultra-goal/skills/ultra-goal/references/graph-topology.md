@@ -32,22 +32,34 @@ Only three conditions justify the spend:
 If none of the three applies, better prompting on one agent usually matches an elaborate
 topology. That outcome is common enough to expect it.
 
-## Split on context, never on phase
+## Split where the handoff works
 
-Work may be split **only where context can be truly isolated**. Splitting by workflow
-phase — planning, then implementation, then testing, as separate agents — fails because
-each phase needs the previous phase's context, and every handoff loses some of it. The
-symptom is workers spending more tokens coordinating than working.
+Prefer independent scopes with clear expected results. A phase handoff can also work when
+it includes the preceding decisions, evidence and constraints. Keep a small slice in one
+session when coordinating it costs more than doing it. These are planning choices, not
+hard gates imposed by this skill.
 
-The one topology that reliably pays: a **verification worker** that checks the main
-agent's output against clear criteria as a blackbox, with no implementation context. Its
-failure mode is declaring early victory after a superficial look, so state explicitly what
-it must run before it may pass anything.
-
-Read is parallelizable; write is usually not. Anthropic's research system fans out the
-reading and then deliberately writes the synthesis in a single call with one agent.
+For parallel work, make writable ownership explicit and join the results before synthesis.
+For review, require inspection of the actual artifact and relevant checks.
 
 ## Same-vendor graph: a Workflow script
+
+A script is an **attachment**, not a replacement contract. It carries the same slug as the
+`.goal.md` it serves and names it on its own line:
+
+```js
+// goal: `nightly-audit.goal.md`
+```
+
+Acceptance, stop condition, verification and boundary are read from that file. A script that
+restates them differently has created a second contract, and the weaker one is the one that
+gets satisfied.
+
+**Prove the consumer before you write the file.** Parsing is not availability: a syntax
+check says the script is valid JavaScript, not that `agent()` or `pipeline()` exists in this
+session. Being on a host that ships a workflow feature is not proof either — exercise the
+entry point, or emit the goal alone. An unrunnable script is worse than none, because it
+reads as a delivered mechanism.
 
 - `meta` is the first statement and a pure literal — no variables, calls, or interpolation.
 - `pipeline()` streams each dimension into its own verification as soon as that dimension
@@ -76,7 +88,8 @@ That constrains the design in three ways worth stating in the artifact:
   therefore worth the most where independence matters: verification and cross-review.
 
 Confirm the registered targets before naming any of them in the artifact rather than
-assuming a vendor is installed.
+assuming a vendor is installed. A delegation package is an attachment too: it names its
+contract with `` goal: `<slug>.goal.md` `` and adds who runs what, never its own acceptance.
 
 
 ## The Stop hook is not the sequencer
@@ -100,10 +113,9 @@ Two consequences worth keeping:
   deny's reason names the mutable sections and counts the open acceptance lines, and the
   allow carries one owner-facing line: the same size for eight acceptance lines or eighty.
   See "What a hook inlines, and what it points at" in `document-system.md`.
-- **A goal that has grown eighty ordered tasks was authored wrong.** `### Next` takes
-  exactly one objective, and `## Acceptance` is unordered on purpose. A list of ordered
-  steps is a plan, and a plan belongs in a graph - where a runtime, not a gate, holds the
-  position.
+- **The main model owns the plan.** A goal may use a task list, with `### Next` pointing
+  to its immediate action. The list is neither the anchor nor input for a hook scheduler.
+
 
 The gate's power comes from being small enough to be certain. An exit code is something it
 can know; which of eighty tasks should be next is not.

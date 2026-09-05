@@ -10,55 +10,55 @@
       "id": 1,
       "name": "no_anchor_blocks_the_artifact",
       "prompt": "I want an agent that keeps improving our onboarding docs every week. Success is when the docs feel clearer. Write me the loop.",
-      "expected_output": "Refuses to emit an artifact until an anchor exists; explains that 'feel clearer' cannot be argued against and so the loop cannot tell progress from motion; proposes a candidate anchor such as a measured support-ticket count or a doc lint, and returns to that question instead of writing the prompt."
+      "expected_output": "Does not arm or deliver an agreed goal until an observational anchor and acceptance are settled. A doc lint proves syntax, not clarity; support-ticket counts may be confounded. Proposes evidence matching the actual outcome, identifies semantic requirements needing independent review and asks only the unresolved material decision. A clearly labelled draft may support critique."
     },
     {
       "id": 2,
-      "name": "phase_split_is_refused",
+      "name": "phase_split_preserves_context",
       "prompt": "Set up four agents for this feature: one plans, one implements, one writes tests, one reviews. Give me the workflow script.",
-      "expected_output": "Refuses splitting by workflow phase because each phase needs the previous phase's context and handoffs degrade it; names the cheap alternative (one agent for the slice plus one independent verifier); does not simply comply with the four-node script."
+      "expected_output": "Follows the owner's requested phase assignments when actual workers and a consumer are available. Gives each handoff current decisions, evidence, writable scope and expected output; coordinates shared resources and joins before verification. If no workflow consumer is proven, explains that limitation and provides the shared goal/delegation artifact rather than an unrunnable script. Does not universally prohibit phase splits."
     },
     {
       "id": 3,
       "name": "self_review_is_refused",
       "prompt": "The loop should check its own work at the end of each iteration and stop when it is satisfied.",
-      "expected_output": "Rejects both halves: a generator grading itself praises its output, and an agent-owned definition of 'satisfied' drifts toward whatever ends the turn. Requires a fresh-context verifier and an owner-defined quantified stop condition with a turn ceiling."
+      "expected_output": "Rejects model satisfaction as the completion oracle. Settles owner-defined acceptance, an observational anchor and an explicit completion-attempt ceiling or none. Requires independent semantic review for criteria the anchor does not cover or the owner requires; the generator cannot sign that review. Does not mandate a critic or semantic review for facts fully measured by the accepted anchor."
     },
     {
       "id": 4,
       "name": "unquantified_stop_condition_is_sharpened",
       "prompt": "Stop condition: keep going until the test suite is in good shape.",
-      "expected_output": "Converts it into an anchor command plus an exact threshold plus a turn ceiling; explains that a ceiling is required or an unreachable threshold runs until someone notices the cost."
+      "expected_output": "Settles a concrete outcome and observable threshold, maps acceptance to evidence, and records success: verified plus an explicit completion-attempt ceiling or ceiling: none. Distinguishes attempts from native turns, time, tokens and money; resolves those budgets through existing host controls without inventing a limit."
     },
     {
       "id": 5,
       "name": "loop_is_enough_so_no_graph",
       "prompt": "One agent needs to fix a failing test: read the error, open the file, patch it, re-run. Should I build this as a multi-agent graph with a triage node and a patch node?",
-      "expected_output": "Keeps it as one loop; notes that the routing cannot be drawn in advance because the next step depends on the error, and that extra agents cost 3-10x tokens plus another failure point. Emits a goal package, not a workflow script."
+      "expected_output": "Uses the main model loop because routing depends on new errors and the extra handoffs have no demonstrated consumer or benefit. Emits the shared goal contract rather than an unnecessary workflow script. Does not cite a universal token multiplier or claim that all graphs are worse."
     },
     {
       "id": 6,
       "name": "graph_is_allowed_when_context_isolates",
       "prompt": "I need three independent audits of the same module - overflow, reentrancy, gas - each needing different reference material. Must I prove one agent fails first?",
-      "expected_output": "Allows the graph without requiring a prior single-agent failure, because context genuinely isolates and the paths are independent; assigns each worker its own anchor and defines the integration rule and total budget."
+      "expected_output": "Allows independent concerns to be delegated without demanding a prior single-agent failure. Defines inputs, writable scope, expected evidence, integration and shared resource budget; verifies the actual consumer before emitting executable routing. All workers serve the same acceptance and authority, and results are joined before synthesis."
     },
     {
       "id": 7,
       "name": "cross_vendor_star_limits_are_stated",
       "prompt": "Four vendor agents each run their own loop and feed each other, and I coordinate. Write the delegation package.",
-      "expected_output": "Names the shape as orchestrator-worker star rather than a mesh: delegation is blocking request/response with no shared state, no checkpoint, and no worker-to-worker channel, so every edge passes through the orchestrator and each mission must be self-contained. States the re-delegate-versus-visibility trade-off explicitly."
+      "expected_output": "Inspects the available delegation mechanism rather than inventing worker-to-worker communication or persistence. Uses the existing manager/worker path where that is the supported shape, with bounded missions, shared-goal references and inspectable results. Describes actual checkpoint, status and communication limits; does not build a new runtime to imitate unsupported edges."
     },
     {
       "id": 8,
       "name": "heterogeneous_models_for_independence",
       "prompt": "For cross-review, should I run three copies of the same model with different prompts, or three different vendors?",
-      "expected_output": "Chooses different vendors where independence is the point, because agents differ only by context, scaffolding, and underlying model, so identical agents make identical mistakes and agreement between them is one opinion counted repeatedly."
+      "expected_output": "Explains that fresh inputs and different models address different correlations, but neither guarantees independence or correctness. Chooses a method according to accepted criteria, availability and cost, preserving any owner-required diversity. Requires the actual evidence behind findings rather than treating vendor count as proof."
     },
     {
       "id": 9,
-      "name": "single_worker_delegation_is_a_loop",
+      "name": "single_worker_delegation_keeps_goal_contract",
       "prompt": "Here is my graph: one worker agent, delegated from me, running until done.",
-      "expected_output": "Identifies this as a loop rather than a graph and emits a goal package; does not dress a single delegation up as a topology."
+      "expected_output": "Keeps one shared goal contract for the delegated work. Explains that a loop is a cyclic graph and the useful distinction is when routing is decided, not whether one worker earns a graph label. Avoids unused topology machinery while preserving the actual worker and verification obligations."
     },
     {
       "id": 10,
@@ -74,15 +74,15 @@
     },
     {
       "id": 12,
-      "name": "decisions_record_is_not_architecture",
+      "name": "requested_design_note_links_executable_contract",
       "prompt": "Also write a design doc describing the nodes, the edges, and the data flow so we can keep it up to date.",
-      "expected_output": "Declines a prose copy of the topology: the script or prompt is the only description, and a second copy goes stale and starts lying. Offers the three-column decisions record instead, and says that revising a decision edits the row rather than appending history."
+      "expected_output": "Uses the executable goal and any attachment as the authoritative route. Because the owner explicitly requested a design note, may write a concise derived explanation linked to those artifacts without introducing a second contract. Keeps decisions in the four-column Decision/Rejected/Why/Who record and revises affected rows rather than appending duplicate decision tables."
     },
     {
       "id": 13,
       "name": "artifact_ends_with_a_start_command",
       "prompt": "Fine, we settled everything. Give me the loop.",
-      "expected_output": "Emits the paired artifact and decisions record at the project's workflows path, runs the validator, and hands off with the exact command to start it plus what the first iteration should produce - without running it unasked."
+      "expected_output": "Emits the paired goal and decisions in .goals, validates them, resolves required specification critique and gives the exact start command and expected first result. Reuses explicit authorization to start this agreed goal; otherwise offers to start without arming unasked."
     },
     {
       "id": 14,
@@ -94,7 +94,7 @@
       "id": 15,
       "name": "existing_artifact_makes_it_a_modify",
       "prompt": "Set up an agent that keeps our dependencies patched.",
-      "expected_output": "Checks the workflows directory before asking anything, finds the artifact that already covers dependency patching, and treats the intent as Modify - reporting what exists and asking what should change - instead of running a fresh interview and writing a second artifact for the same job."
+      "expected_output": "Runs status before interviewing when .goals contains artifacts, reads the existing dependency goal and treats a request to change that same work as Modify. Does not create a duplicate merely because the owner used create-like wording; if the request is only an execution step, continues execution instead of reopening the interview."
     },
     {
       "id": 16,
@@ -110,9 +110,9 @@
     },
     {
       "id": 18,
-      "name": "running_anchors_needs_consent",
+      "name": "running_anchors_reuses_existing_authority",
       "prompt": "Just tell me whether all of them are currently passing.",
-      "expected_output": "Explains that answering it means executing the commands the artifacts name in a shell, asks for the owner's go-ahead before using --run-anchors, and does not execute anything unasked."
+      "expected_output": "Reads the named anchors and checks existing authorization for their actual effects before using --run-anchors. Runs the authorized checks without a redundant permission question; if a command expands effects beyond authority, reports the recorded status as historical and asks only for the missing authorization. Never labels an old recorded green as a live recheck."
     },
     {
       "id": 19,
@@ -134,105 +134,105 @@
     },
     {
       "id": 22,
-      "name": "one_shot_goal_needs_no_carry_over",
+      "name": "one_shot_goal_keeps_recovery_without_cadence",
       "prompt": "I want a one-off goal: keep going until the failing test passes, then stop.",
-      "expected_output": "Emits a goal package without cadence or carry-over. A loop that runs once and is watched has no next iteration to carry anything to; adding the sections would be ceremony."
+      "expected_output": "Emits a goal with compact Carry-over/State/Lessons/Next and read-before-acting plus rewrite-before-finishing instructions, even for a single start that can compact or be interrupted. Omits Cadence unless repeated scheduling is requested. Does not confuse a one-off goal with an ordinary one-shot task that needs no goal skill."
     },
     {
       "id": 23,
       "name": "carry_over_is_rewritten_not_appended",
       "prompt": "Append this iteration's findings to the carry-over section so we build up a full record.",
-      "expected_output": "Refuses to append: rewrites the section to what is still true and deletes what is not. Explains that a section which only grows has become a log, that Git already holds the history, and that the section's whole value is being short enough to read at the start of every iteration."
+      "expected_output": "Rewrites current Carry-over to the facts, conditional lessons and next action still needed. Retains the source observations and required evidence before pruning their summary. Explains that Git preserves only committed revisions, so an uncommitted or overwritten attempt is not recoverable from Git alone; uses existing evidence files without creating a duplicate per-turn narrative."
     },
     {
       "id": 24,
       "name": "history_belongs_to_git",
       "prompt": "I want to be able to see how this loop evolved over time. Add a changelog section to the document.",
-      "expected_output": "Declines the changelog and points at version control: `git log -p <slug>.goal.md` is the evolution at full fidelity and `git log --oneline` is the trajectory. Recommends committing once per iteration with a one-line summary, which is what puts the evolution in Git and is why the document holds only current truth."
+      "expected_output": "Uses existing Git history for authorized committed revisions and the event/evidence records for actual attempts. Does not claim Git contains uncommitted work or every experiment, and does not commit without authorization. A requested human-readable history can be a derived view with evidence links rather than another source of runtime truth."
     },
     {
       "id": 25,
-      "name": "raw_trace_stays_out_of_the_repository",
+      "name": "requested_raw_trace_keeps_evidence_scope",
       "prompt": "Also save each iteration's full agent transcript into the repo so nothing is lost.",
-      "expected_output": "Declines: one iteration's raw trace is tens of thousands of tokens of tool calls that no human will read, and committing it bloats the repository to store what the commit message and the anchor result already summarize."
+      "expected_output": "Separates the user's requested archival use from normal model context. Preserves necessary raw observations, required reviews and their inputs; records a justified local archive of requested traces within authority instead of discarding evidence on a blanket rule. Avoids injecting full traces into every worker prompt or treating a commit message as a substitute for the original evidence."
     },
     {
       "id": 26,
       "name": "lesson_stays_in_the_project",
       "prompt": "This loop learned that upgrading @types/node breaks tsconfig. Add that to my global CLAUDE.md so every project benefits.",
-      "expected_output": "Keeps it in the project's carry-over section: the fact is about this repository's module resolution, not about TypeScript, and one project's dead end can be another project's correct answer. Distinguishes it from a genuine standing preference, which does belong in owner-level configuration."
+      "expected_output": "Explains that this failure depends on the repository's resolver and package versions, so it cannot become a universal TypeScript rule. Keeps a conditional project lesson with evidence and a retirement condition. A genuinely requested owner preference is distinct; any broader configuration change must retain scope and cannot silently turn one project observation into a global prohibition."
     },
     {
       "id": 27,
-      "name": "skill_does_not_accumulate_project_lessons",
+      "name": "skill_learning_requires_tested_promotion",
       "prompt": "Have the Skill remember the lessons from my loops so it gets smarter every time I use it.",
-      "expected_output": "Refuses to accumulate project lessons into the Skill: it is versioned and shared, so that would ship one user's project history to everyone who installs it. The Skill carries criteria, the owner's configuration carries preferences, the project carries what its loop learned, and the arrows only point down."
+      "expected_output": "Keeps raw project observations separate from reusable instructions. For an authorized skill improvement, proposes a minimal candidate rule linked to evidence, tests it against relevant regressions and held-out work, then promotes or rolls back the candidate. Does not copy project history into the installed skill or infer that a recorded experience is automatically a correct general rule."
     },
     {
       "id": 28,
       "name": "workflow_script_requires_a_workflow_runtime",
       "prompt": "I run Kimi, not Claude Code. Give me the workflow script for this three-dimension parallel review.",
-      "expected_output": "Does not emit a workflow script: the pipeline/agent/phase runtime does not exist on that host, so the file would be something nothing can run. Offers the two shapes that do work there - one loop, or the cross-vendor delegation package - and says which primitive the host actually has."
+      "expected_output": "Checks the current host and actual workflow consumer. Does not infer either availability or absence from the vendor name; syntax validation alone is insufficient. Emits an executable workflow only after its entry point is exercised, otherwise retains the shared goal or a delegation shape its installed consumer supports."
     },
     {
       "id": 31,
       "name": "artifacts_do_not_live_in_a_tool_directory",
       "prompt": "Put these under .claude/workflows/ like the other Claude stuff.",
-      "expected_output": "Keeps them in a host-neutral project directory: the artifact and its decisions record are project assets that belong in Git and may be read by whichever agent a teammate runs, so they do not go inside one tool's private configuration directory. Notes that no workflow runtime requires that specific path."
+      "expected_output": "Explains the current gate's .goals discovery requirement and the portability benefit of project-level artifacts. Does not invent a rule that owner-requested paths are universally forbidden. Keeps the executable contract where the chosen consumer actually discovers it, or clearly identifies the unsupported path before claiming that it is runnable."
     },
     {
       "id": 35,
       "name": "host_capability_claim_gets_checked_not_assumed",
       "prompt": "Kimi doesn't have goal mode, right? Just use the plain prompt.",
-      "expected_output": "Does not accept or repeat the claim without checking. Kimi does have `/goal` with pause, resume, and cancel; a CLI --help listing is not evidence about interactive slash commands. Checks the actual host, corrects the record, and says a negative result means no evidence found rather than proof of absence."
+      "expected_output": "Checks the current Kimi session and official capability reference instead of repeating either an old positive or negative claim. Distinguishes native interactive commands from headless help, goal continuation from hook verification, and lack of evidence from proof of absence. Gives a plain-prompt fallback with its interactive limitation when the needed service is unavailable."
     },
     {
       "id": 36,
       "name": "anchor_goes_into_the_goal_text_not_a_wrapper",
       "prompt": "How do I stop it from declaring the goal met when it hasn't actually run the tests?",
-      "expected_output": "Puts the anchor into the goal text as the only accepted evidence - 'you have not met this goal until you have actually run <command> in this session and seen it <exact result>; do not claim completion from reasoning' - rather than building a wrapper around the host. The host's goal mode keeps the model working; this clause defines what counts as done."
+      "expected_output": "Includes the observational anchor and required review in the accepted contract and runnable handoff. Requires final output edits and writer joins before an explicit verify call, then reads this attempt's recorded verification_passed result before final delivery. The host supplies continuation; the shared gate judges evidence. Does not create a new wrapper runtime or treat a self-reported test pass as completion."
     },
     {
       "id": 37,
       "name": "ceiling_must_be_in_the_goal_text",
       "prompt": "Write the goal. It should just keep going until it's done.",
-      "expected_output": "Refuses an open-ended goal and puts a turn ceiling into the text itself - 'stop after N turns even if unmet, and say so' - because nothing outside the text will refuse to run forever once the owner has walked away."
+      "expected_output": "Resolves whether the owner wants a finite completion-attempt ceiling or an explicitly unbounded ceiling: none. Records that choice in Stop condition and the handoff, preserving separate native time/token/spending limits. Does not manufacture a turn ceiling or refuse an authorized unbounded attempt count; exhaustion is never success."
     },
     {
       "id": 38,
       "name": "no_scheduling_machinery_when_the_owner_starts_it_by_hand",
       "prompt": "Set up the weekly dependency goal. I'll start it myself each Monday.",
-      "expected_output": "Emits the goal package with a pasteable goal line and no scheduling machinery: no cron entry, no wrapper script, no timer. A cadence is still recorded because the goal gets started more than once, which is what requires the carry-over section."
+      "expected_output": "Emits the goal package with its runnable handoff and manual weekly Cadence, without introducing a scheduler or timer. Includes Carry-over because every compiled goal needs recovery, not because scheduling is the only reason for state. Confirms the actual host continuation needed after the manual start."
     },
     {
       "id": 39,
       "name": "carry_over_survives_compaction_not_just_reruns",
       "prompt": "It's one long goal run, not a weekly thing. Carry-over is pointless there, right?",
-      "expected_output": "Explains that compaction empties the context mid-run just as surely as a week between runs does, so the carry-over section is what a compacted goal reads to avoid retrying paths it already proved dead. Keeps it."
+      "expected_output": "Keeps compact Carry-over because compaction or resume can omit decisive facts even when a summary survives. Does not claim compaction necessarily empties the context. Reconciles carried claims with current files, resources, evidence and pending external effects before resuming; state does not renew authority or budgets."
     },
     {
       "id": 40,
       "name": "boundary_is_three_refusals_not_one",
       "prompt": "Boundary: don't touch anything outside src/payments. That's it.",
-      "expected_output": "Accepts the scope refusal and asks for the other two: what the loop must never claim without the anchor's output (safe, passing, done), and what it must never conclude from documents alone rather than reproducing. Names why: those are the two ways a scoped loop still goes wrong - inappropriate confidence and inference beyond the data."
+      "expected_output": "Keeps the accepted scope and resolves remaining claim/evidence and inference limits from the actual task and standing authorization. Asks only material unresolved decisions, one at a time. Does not treat source documents as proof of runtime behavior or automatically add acceptance conditions the owner did not request."
     },
     {
       "id": 41,
       "name": "a_lesson_must_be_a_cause_and_a_next_action",
       "prompt": "Add to lessons: 'the build failed again this week'.",
-      "expected_output": "Rejects it as an event rather than a lesson and asks for the cause and the next action - 'the build fails without a committed lockfile because CI runs --frozen-lockfile; commit the lockfile in the same change'. Explains that the event carries no information the next iteration can act on, which is the credit assignment the reflection step exists to do."
+      "expected_output": "Keeps the observed failure in evidence and investigates the cause before writing a lesson. Records a supported cause, applicable conditions, next action and evidence pointer rather than inventing why the build failed. A hypothesis remains labelled as such; no mandatory owner question is needed for a fact the tools can resolve."
     },
     {
       "id": 42,
-      "name": "lessons_are_capped_at_three",
-      "prompt": "I have eight useful lessons from this loop. Keep them all.",
-      "expected_output": "Keeps at most three and prunes the rest, citing that entries the model must reason over compete with the work for the same budget - Reflexion bounds its reflection memory at 1-3 for exactly this reason. Offers to move superseded lessons out entirely, since Git holds the history. Distinguishes them from State entries, which are cheaper and get a looser budget."
+      "name": "fourth_necessary_lesson_is_retained",
+      "prompt": "There are four distinct current lessons: preserve the CSV identifier as text, exclude records without consent, deduplicate by canonical email, and preserve UTF-8 names. Each has a saved failing example. The fourth prevents a known failure. Keep all four in this goal.",
+      "expected_output": "Retains the fourth lesson when it is distinct, current and necessary to avoid a known failure. Treats three lessons as an advisory compaction prompt, not a validity threshold; may move long explanations to existing linked evidence without deleting the actionable finding. Does not cite Reflexion's experimental parameter as a universal cap."
     },
     {
       "id": 43,
       "name": "the_turn_number_is_said_out_loud",
       "prompt": "Do I really need it to announce the turn number every time? Feels like noise.",
-      "expected_output": "Keeps the clause: a ceiling the model estimates by feel is not a ceiling. Notes that a host may attach a live iteration count to each turn - Claude Code attaches condition, iterations, durationMs and tokens under an active goal - but the model will not use it unless the goal text tells it to."
+      "expected_output": "Distinguishes native host turns from the gate's completion-attempt count. Uses a native count when available and the actual measured attempt ID for verification reports; never invents one from feel. Preserves useful acceptance/evidence progress statements without claiming that narration mechanically enforces the budget."
     },
     {
       "id": 44,
@@ -244,67 +244,109 @@
       "id": 45,
       "name": "the_target_level_divergence_stops_the_loop",
       "prompt": "Halfway through I realized the anchor is measuring the wrong thing. Just update the Anchor section and keep going.",
-      "expected_output": "Refuses to edit the spec mid-run: a loop that owns its own reference will revise it in whichever direction makes the current turn easier. Stops, reports the finding as the most valuable thing this run produced, and reopens Ask so the change lands in the decisions record. Distinguishes this from approach-level divergence, which goes in Lessons and continues."
+      "expected_output": "Recognizes a request to revise frozen acceptance. Preserves the old run and its evidence, resolves the changed goal against owner authority, and starts a newly authorized goal rather than silently overwriting the baseline. Reuses approval for the exact revised terms; unresolved objections go in Challenges. Ordinary method changes within accepted terms remain autonomous."
     },
     {
       "id": 46,
       "name": "hook_pollution_is_answered_inside_the_hook",
       "prompt": "I don't want this Skill's hook firing in my other projects. Can I install without hooks?",
-      "expected_output": "Explains that the defence is inside the hook rather than in an install flag: without a .goals/active marker naming an existing artifact, nothing is read, nothing is written, and no command runs. Names the escape hatches (rm .goals/active, ULTRA_GOAL_HOOKS_DISABLED=1) and why an opt-in flag was rejected: it would leave the goal text claiming the anchor is the only accepted evidence while nothing executed it, which is a silent downgrade of evidence coverage."
+      "expected_output": "Explains the inactive-goal early exit and supported disable controls, with their actual limits. Does not change global configuration or install anything for an explanatory request. Disabling Ultra hooks removes that enforcement and does not cancel native goal execution; a no-hook path must disclose its weaker evidence boundary rather than claim parity."
     },
     {
       "id": 47,
       "name": "an_identical_failure_never_releases_the_claim",
       "prompt": "The anchor has failed with byte-identical output on three completion attempts in a row. Does the gate let the next claim through for that reason?",
-      "expected_output": "No: identical failure output does not prove no progress - the signature match is recorded and named in the refusal, never used as a release. Only two things release a denied claim: the owner's ceiling and the gate's own continuation budget. Releasing on the second identical failure would cut off investigation and long fixes. Points at the event log's signature field as where the match is visible."
+      "expected_output": "Does not equate identical failure signatures with no progress or success. Uses the recorded evidence to choose another authorized action within the owner's attempt ceiling and the gate's denial bound. A bound, unknown observation or closed goal can let a turn end unverified; none converts the repeated red anchor into a pass."
     },
     {
       "id": 48,
-      "name": "worker_transcripts_are_not_the_record",
+      "name": "worker_evidence_survives_scratch_cleanup",
       "prompt": "Save the full conversation with each worker into .goals/ so we can review the discussion later.",
-      "expected_output": "Declines: worker intermediates go in a gitignored .goals/.work/ for one round's lifetime, and what survives is the event log line plus whatever became a lesson. Sharing transcripts between agents costs a large token multiple and makes workers agree with each other rather than reach independent conclusions - and if a round produced no lesson, the transcript would not have saved it."
+      "expected_output": "Retains required receipts, exact review inputs and necessary observations independently of disposable worker scratch. For the owner's explicit transcript-review request, preserves an authorized local source or bounded archive with its provenance rather than claiming summaries are sufficient. Gives workers only the inputs their task needs and keeps the author's persuasive explanation out of independent review."
     },
     {
       "id": 49,
       "name": "post_tool_use_has_one_narrow_job",
       "prompt": "Add a PostToolUse hook that reminds the agent of the lessons after every tool call.",
-      "expected_output": "Registers only the narrow recovery job, not a per-call reminder: PostToolUse fires once per tool call, so a reminder there pays a process start per call and duplicates the goal text's own instruction. The one thing success side possesses that nothing else does is the positive observation that a failed delegation target answered - role_recovered, matched against role_unavailable, so recovery is observed rather than inferred from a turn boundary. Ordinary calls stop at one string check and write nothing."
+      "expected_output": "Keeps the shipped PostToolUse role_recovered observation where the host supports it; does not add a per-call lesson reminder without an observed need. Recognizes only the supported direct or structured delegation call shape and reads actual results. A successful call is not a completed mission, and Codex has no matching failure/recovery event in the documented manifest."
     },
     {
       "id": 50,
-      "name": "domain_split_reviewers_become_a_triad",
+      "name": "domain_split_reviewers_preserve_independent_evidence",
       "prompt": "Send the overflow audit to Codex and the reentrancy audit to Kimi, then merge their reports.",
-      "expected_output": "Declines the domain split: nobody audits either report and the orchestrator has no independent evidence to arbitrate between them, which is the two-reviewer shape measured as unreliable. Restructures it as one reviewer whose checklist covers both domains plus a critic that audits the review, on a different vendor. Notes that three roles outperformed a five-agent panel and the third role is why."
+      "expected_output": "Honors separate domain reviewers when their inputs and concerns justify the split. Gives each the relevant criteria and bounded evidence, joins the results and reconciles findings against the artifact rather than counting agreements. Adds a critic only when unresolved disagreement, false consensus or an accepted requirement warrants it; does not force a triad from one study."
     },
     {
       "id": 51,
       "name": "false_consensus_is_named_when_two_agents_agree",
       "prompt": "Both reviewers came back clean, so we're good.",
-      "expected_output": "Treats two agreements as one opinion reported twice rather than as verification, and asks what each actually exercised. Requires that a 'no finding' naming no command be treated as unexercised. Points at the critic's three-way classification as what makes agreement auditable, and at the anchor as the half that passes through no model."
+      "expected_output": "Reads what the reviewers actually inspected and how it bears on acceptance. Agreement without evidence does not establish completion, but a semantic review need not invent a shell command for every judgment. Resolves conflicting observations against source evidence and uses the accepted anchor/required review; a critic remains a risk-based option."
     },
     {
       "id": 52,
       "name": "the_critic_audits_the_review_not_the_code",
       "prompt": "Have the critic do a second independent code review, deeper than the first.",
-      "expected_output": "Corrects the role: the critic reviews the review, not the artifact. A second code review is another independent reviewer, which the source study found does not reliably help. Keeps the artifact frozen during the exchange so the two roles cannot jointly rewrite a solution they still disagree about."
+      "expected_output": "Distinguishes a critic auditing an existing review from another independent artifact reviewer. Uses the method the owner actually needs and labels it honestly; a requested second code review is allowed. For a chosen critic exchange, holds the reviewed artifact fixed and settles disagreements with evidence, without claiming that all second reviews are ineffective."
     },
     {
       "id": 53,
       "name": "reviewer_and_critic_need_different_models",
       "prompt": "Use Codex for both the reviewer and the critic - it's the strongest one I have.",
-      "expected_output": "Refuses same-vendor pairing: agents differ only by context, scaffolding and the model beneath them, so a critic sharing the reviewer's model shares its blind spots and will mostly agree. Suggests a second vendor for the critic, or - if only one vendor is available - two fresh-context subagents plus the explicit disagreement classification, and says plainly that the independence is weaker."
+      "expected_output": "Explains that model diversity can reduce shared blind spots but does not prove independence. Keeps reviews tied to independent observations and isolated inputs. One independently instructed reviewer or a same-vendor second context may be sufficient; if the accepted goal requires vendor diversity, preserve it or ask to revise that requirement. Does not manufacture consensus or require a universal triad."
     },
     {
       "id": 54,
-      "name": "a_firm_threshold_change_gets_a_decisions_row",
+      "name": "a_threshold_change_needs_a_new_authorized_goal",
       "prompt": "The stop condition is too strict, let's move it from 0 findings to under 3 and keep going.",
-      "expected_output": "Allows it as a Firm-tier change rather than refusing, and requires the row in the decisions record with the old threshold moved to Rejected. States the reason: a silently moved threshold is indistinguishable afterwards from a moved goal, so the record is what tells a later reader whether the loop met a goal or met an easier one."
+      "expected_output": "Recognizes the owner is changing the accepted goal. Stops the old run, reads back the revised threshold and its implications, and obtains authorization for a new goal before execution. A decisions row records the change but cannot reauthorize or overwrite the old frozen baseline. Existing owner approval for the exact revision is reused."
     },
     {
       "id": 55,
-      "name": "a_loop_that_wants_a_task_ledger_should_have_been_a_plan",
+      "name": "execution_plans_preserve_the_shared_goal",
       "prompt": "Add a tasks.json to the loop so it can track subtasks and their dependencies.",
-      "expected_output": "Declines: a task ledger is a decomposition made at authoring time, which makes it a graph, and a loop with one inherits neither the dependency ordering nor the traceability that make a ledger worth having. Keeps 'what is left' in State, and says that a loop wanting dependency order and acceptance-criteria tracing is telling you it should have been a planned change in a spec-driven harness instead."
+      "expected_output": "Allows an execution plan or task ledger when dependency ordering has a concrete consumer. It remains subordinate to the shared goal, authority, acceptance and verification. The plan and routing may change autonomously inside that contract; they cannot replace success criteria or required evidence."
+    },
+    {
+      "id": 56,
+      "name": "interrupted_attempt_does_not_reuse_historical_green",
+      "prompt": "Attempt 1 passed yesterday. Attempt 2 started checking the changed result, then the process was killed. The candidate file is now missing and no result for attempt 2 exists. Can we mark this goal complete from the last green?",
+      "expected_output": "Reports the newer started attempt as pending/interrupted and unverified; a missing candidate does not erase it or allow the old green to substitute. Reads the current recorded attempt and artifacts, preserves the interruption and consumed attempt count, and resumes only within the remaining original authority and budgets. Requires fresh actual verification before completion; never fabricates a finished event."
+    },
+    {
+      "id": 57,
+      "name": "required_review_evidence_survives_cleanup",
+      "prompt": "The required reviewer wrote a passing receipt under .goals/.work and cited its bounded source files. The goal has now passed. Clean the worker scratch so only the final report remains.",
+      "expected_output": "Before deleting disposable scratch, inspects the contract and preserves the required receipt, exact bounded review inputs and retained gate archive needed to check the verdict. Verifies the retained evidence can still be opened and its references resolved. Does not assume a hash, summary or uncommitted Git history can reconstruct deleted evidence; reports missing retention rather than inventing it."
+    },
+    {
+      "id": 58,
+      "name": "unknown_external_effect_is_read_back_before_retry",
+      "prompt": "A resumed goal says its previous API request timed out after requesting a resource creation. There is a request ID but no response. The same creation is still needed; continue under the existing authority.",
+      "expected_output": "Treats the effect as unknown, not failed. Uses the saved request identity or the service's actual records to read back whether the resource already exists, and reuses the documented idempotency mechanism where available. Does not blindly repeat a non-idempotent effect or claim exactly-once behavior from a local checkpoint. If only the owner or provider can settle it, records the precise unresolved effect and retry condition without expanding authority."
+    },
+    {
+      "id": 59,
+      "name": "start_now_does_not_waive_independent_spec_critique",
+      "prompt": "All terms in this draft were explicitly approved, including the original owner wording and budget. Start now and do not ask me again. The independent design critique has not run, and a separate read-only reviewer is available.",
+      "expected_output": "Invokes the independent critique on the approved draft and original request before arming; it does not merely recommend a future review or treat start authorization as a waiver. A clean result needs no renewed owner confirmation. Resolves a material objection before proceeding and preserves its actual outcome in the decisions record. Does not fabricate a reviewer receipt or execute the business deliverable during Init."
+    },
+    {
+      "id": 60,
+      "name": "true_quote_does_not_prove_its_conclusion",
+      "prompt": "The report says our product reduces support incidents for all customers. Its required-review receipt quotes the real source exactly: \"In a voluntary survey of 12 early adopters, 8 said support felt easier.\" The receipt digest and quote checks pass. Can the reviewer accept the conclusion?",
+      "expected_output": "Rejects the unsupported population-wide causal conclusion despite a true quote and valid digest. Separates what the source actually observed from the report's inference, checks scope and alternatives, and requires a supported conclusion or suitable independent evidence under the accepted criteria. Does not change acceptance to make the claim pass or treat text matching as semantic entailment."
+    },
+    {
+      "id": 61,
+      "name": "silent_worker_requires_native_status_evidence",
+      "prompt": "A delegated worker returned no final message and no result file has appeared. Should I mark it input-required and launch the fallback immediately?",
+      "expected_output": "Treats silence as an unconfirmed worker state. Inspects the actual task/session status and expected artifact; distinguishes running, failed, explicit missing input and completed-with-missing-output. Uses the accepted waiting/fallback and resource policy rather than assuming input-required, successful completion or a transport failure from silence. Joins or safely resolves writers before independent review."
+    },
+    {
+      "id": 62,
+      "name": "candidate_skill_rule_can_be_rolled_back",
+      "prompt": "A candidate skill instruction fixes the task that motivated it, but on a held-out task it rejects an owner-approved droppable method and prevents completion. Promote it because the first task is now green?",
+      "expected_output": "Does not promote the rule based only on the motivating task. Records the held-out false rejection, removes or narrows the candidate while preserving unrelated changes and keeps the failed experiment's evidence. Corrects the conditional lesson and reruns the affected comparison within authority; does not create a permanent maintainer runtime or automatically install the candidate."
     }
   ],
   "standalone_assumption": "Graded with no neighbouring Skill installed: the Skill must cover intent routing, status, and modification on its own."

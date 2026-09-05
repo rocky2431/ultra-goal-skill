@@ -48,6 +48,8 @@ Keep the suite green.
 ## Stop condition
 
 Stop when `true` succeeds, or after 4 turns.
+success: verified
+ceiling: 4
 
 ## Anchor
 
@@ -58,6 +60,14 @@ __ANCHOR__
 ## Verification
 
 A fresh agent re-runs the anchor.
+
+```json
+{"source":"external","basis":"Independent test fixture controls the command.","protected":[],"covers":{"result":"anchor"},"review":null}
+```
+
+## Acceptance
+
+- [ ] result: The command proves the fixture outcome.
 
 ## Cadence
 
@@ -100,7 +110,7 @@ class Harness(unittest.TestCase):
         goals = self.cwd / ".goals"
         goals.mkdir(exist_ok=True)
         (goals / f"{slug}.goal.md").write_text(goal, encoding="utf-8")
-        (goals / "active").write_text(f"{slug}\n", encoding="utf-8")
+        (goals / "active").write_text(f"{slug}\nsession session-aaa\n", encoding="utf-8")
         # The arming-time spec baseline: since round 5 the gate compares every
         # Stop against this file (what `goal_run.py arm` records) and never
         # against a digest in the event log, and a run without one has its
@@ -109,6 +119,8 @@ class Harness(unittest.TestCase):
         (goals / f"{slug}.spec.baseline").write_text(
             lh.frozen_digest(goal) + "\n", encoding="utf-8"
         )
+        (goals / f"{slug}.verification.baseline").write_text("{}\n", encoding="utf-8")
+        (goals / f"{slug}.verification.lock").touch()
         return goals
 
     def claim(self, slug: str = "demo") -> None:
@@ -169,10 +181,7 @@ class ActivationTests(Harness):
             ".goals/demo.events.jsonl",
             found.events_path.relative_to(self.cwd).as_posix(),
         )
-        self.assertIsNone(
-            found.owner_session,
-            "a freshly armed goal names no session until a hook claims it",
-        )
+        self.assertEqual("session-aaa", found.owner_session)
 
 
 class SessionOwnershipTests(Harness):
@@ -180,14 +189,8 @@ class SessionOwnershipTests(Harness):
     session working in the same cwd had its Stops gated on a goal it never
     ran - and its prompt boundaries resetting the owner's streak.
 
-    The fix records the owning session's id in the marker, and every hook
-    acts only for that session. The claim is made by the first Stop that
-    carries a session identity: `session_id` is the field the Claude Code
-    hooks reference documents for every event and the Codex probe receipts
-    show, while Kimi's Stop input carries only `stopHookActive` (0.40.1
-    binary) and zCode has never loaded a hook - so on those hosts no claim is
-    possible and ownership stays open, a declared degradation rather than a
-    proxy read of an undocumented field.
+    Arming records the initiating session before any hook can run. Every
+    measured host supplies session_id in its common hook envelope.
 
     The limit is stated with the fix: a session id is ownership
     information, not an anti-forgery key. Any process that can write files
@@ -225,7 +228,7 @@ class SessionOwnershipTests(Harness):
     def marker(self) -> str:
         return (self.cwd / ".goals" / "active").read_text(encoding="utf-8")
 
-    def test_the_first_stop_with_a_session_claims_the_run(self) -> None:
+    def test_stop_preserves_the_already_bound_session(self) -> None:
         self.make_loop()
         self.stop_with("session-aaa")
         self.assertEqual("demo\nsession session-aaa\n", self.marker())
@@ -253,15 +256,14 @@ class SessionOwnershipTests(Harness):
         self.assertEqual("", result.stdout.strip())
         self.assertEqual(before, len(self.events()))
 
-    def test_a_sessionless_event_still_reaches_the_gate(self) -> None:
-        """Kimi sends no session identity in its Stop input and zCode has
-        never loaded a hook: an event with no id is indistinguishable from
-        the owner and is not excluded. A declared degradation, not a proxy."""
+    def test_a_sessionless_event_cannot_consume_the_owners_claim(self) -> None:
         self.make_loop()
-        self.stop_with("session-aaa")
+        self.claim()
         result = self.stop_with(None)
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertNotEqual("", result.stdout.strip())
+        self.assertEqual("", result.stdout.strip())
+        self.assertTrue((self.cwd / ".goals" / "demo.candidate").is_file())
+        self.assertEqual([], self.events())
 
     def test_a_garbage_session_line_is_ignored_not_fatal(self) -> None:
         self.make_loop()
@@ -269,7 +271,10 @@ class SessionOwnershipTests(Harness):
             "demo\nsession ../../not a session\n", encoding="utf-8")
         result = self.stop_with("session-bbb")
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertNotEqual("", result.stdout.strip())
+        payload = json.loads(result.stdout)
+        self.assertEqual({"systemMessage"}, set(payload))
+        self.assertIn("invalid session binding", payload["systemMessage"])
+        self.assertEqual([], self.events())
 
     def test_the_owner_session_travels_with_the_measurement(self) -> None:
         self.make_loop()
@@ -293,14 +298,43 @@ class SessionOwnershipTests(Harness):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual("", result.stdout.strip(), "not B's spec to receive")
 
-    def test_an_unclaimed_goal_gates_the_first_session_that_stops(self) -> None:
-        """The claim is first-Stop-wins and stays: an unrelated session that
-        stops first over a just-armed goal claims it wrongly - the named
-        bound. What the claim fixes is everything after it."""
+    def test_foreign_first_stop_cannot_take_over_the_run(self) -> None:
         self.make_loop()
+        self.claim()
         result = self.stop_with("session-bbb")
-        self.assertNotEqual("", result.stdout.strip())
-        self.assertEqual("demo\nsession session-bbb\n", self.marker())
+        self.assertEqual("", result.stdout.strip())
+        self.assertEqual("demo\nsession session-aaa\n", self.marker())
+        self.assertEqual([], self.events())
+        self.assertTrue((self.cwd / ".goals" / "demo.candidate").is_file())
+        self.stop_with("session-aaa")
+        checks = [e for e in self.events() if e.get("event") == "anchor_checked"]
+        self.assertEqual(1, len(checks))
+        self.assertEqual("session-aaa", checks[0]["session_id"])
+
+    def test_legacy_unbound_marker_warns_without_activating_the_gate(self) -> None:
+        for host in ("claude", "codex", "kimi", "zcode"):
+            with self.subTest(host=host):
+                self.make_loop()
+                (self.cwd / ".goals" / "active").write_text("demo\n", encoding="utf-8")
+                self.claim()
+                before = {p.relative_to(self.cwd): p.read_bytes()
+                          for p in self.cwd.rglob("*") if p.is_file()}
+                result = subprocess.run(
+                    [sys.executable, str(SCRIPTS / "goal_stop.py"), "--host", host],
+                    input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd),
+                                      "session_id": "session-bbb"}),
+                    capture_output=True, text=True, timeout=60,
+                )
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertTrue(result.stdout.strip(), "An unbound marker needs a diagnostic.")
+                payload = json.loads(result.stdout)
+                self.assertEqual({"systemMessage"}, set(payload))
+                self.assertIn("legacy or invalid session binding", payload["systemMessage"])
+                self.assertIn("no verification was performed", payload["systemMessage"])
+                self.assertIn("rebind", payload["systemMessage"])
+                after = {p.relative_to(self.cwd): p.read_bytes()
+                         for p in self.cwd.rglob("*") if p.is_file()}
+                self.assertEqual(before, after, "A diagnostic must not arm, consume or record work.")
 
     def test_activation_check_has_no_side_effects(self) -> None:
         self.make_loop()
@@ -335,7 +369,7 @@ class FailOpenTests(Harness):
 
     def test_wrong_event_name_exits_zero_without_calling_the_handler(self) -> None:
         calls = []
-        payload = json.dumps({"hook_event_name": "PostToolUse", "cwd": str(self.cwd)})
+        payload = json.dumps({"session_id": "session-aaa", "hook_event_name": "PostToolUse", "cwd": str(self.cwd)})
         self.assertEqual(
             0, lh.run_hook("Stop", lambda e, l, h: calls.append(e), stdin_text=payload)
         )
@@ -343,7 +377,7 @@ class FailOpenTests(Harness):
 
     def test_inactive_project_exits_zero_without_calling_the_handler(self) -> None:
         calls = []
-        payload = json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)})
+        payload = json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)})
         self.assertEqual(
             0, lh.run_hook("Stop", lambda e, l, h: calls.append(e), stdin_text=payload)
         )
@@ -363,7 +397,7 @@ class FailOpenTests(Harness):
         self.make_loop()
         calls = []
         payload = json.dumps(
-            {"hook_event_name": "Stop", "cwd": str(self.cwd), "stop_hook_active": True}
+            {"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd), "stop_hook_active": True}
         )
         self.assertEqual(
             0, lh.run_hook("Stop", lambda e, l, h: calls.append(e), stdin_text=payload)
@@ -373,7 +407,7 @@ class FailOpenTests(Harness):
     def test_disable_env_var_is_honoured(self) -> None:
         self.make_loop()
         calls = []
-        payload = json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)})
+        payload = json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)})
         self.assertEqual(
             0,
             lh.run_hook(
@@ -388,7 +422,7 @@ class FailOpenTests(Harness):
     def test_an_active_goal_reaches_the_handler(self) -> None:
         self.make_loop()
         seen = {}
-        payload = json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)})
+        payload = json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)})
 
         def handler(event, loop, host):
             seen["slug"] = loop.slug
@@ -421,7 +455,7 @@ class ScriptSmokeTests(Harness):
             with self.subTest(script=name):
                 before = self.snapshot()
                 result = self.run_script(
-                    name, {"hook_event_name": event, "cwd": str(self.cwd)}
+                    name, {"session_id": "session-aaa", "hook_event_name": event, "cwd": str(self.cwd)}
                 )
                 self.assertEqual(0, result.returncode, result.stderr)
                 self.assertEqual("", result.stdout.strip())
@@ -573,7 +607,7 @@ class LauncherContractTests(Harness):
         result = subprocess.run(
             ["/bin/sh", "-c",
              self.command_from("plugins/ultra-goal/hooks/hooks.json", "Stop")],
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=60,
             env={"PATH": os.environ.get("PATH", ""),
                  "CLAUDE_PLUGIN_ROOT": str(root)},
@@ -613,7 +647,7 @@ class ZCodeRootLauncherTests(Harness):
         }
         result = subprocess.run(
             ["/bin/sh", "-c", self.command()],
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=60, env=env,
         )
         self.assertEqual(0, result.returncode, result.stderr)
@@ -670,7 +704,7 @@ class CheckedTransitionTests(Harness):
     def stop(self) -> dict:
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=60,
         )
         self.assertEqual(0, result.returncode, result.stderr)
@@ -690,12 +724,13 @@ class CheckedTransitionTests(Harness):
             payload = self.stop()
         finally:
             os.chmod(log, mode)
-        self.assertIn("passed on attempt", payload["systemMessage"])
+        self.assertNotIn("passed on attempt", payload["systemMessage"])
         self.assertIn(
             "unrecorded", payload["systemMessage"],
             "a green announced over an unwritten log is a false announcement",
         )
         self.assertEqual(0, log.stat().st_size)
+        self.assertTrue((self.cwd / ".goals" / "demo.candidate").exists())
 
     def test_an_unconsumable_claim_is_refused_not_judged_twice(self) -> None:
         import os
@@ -704,6 +739,9 @@ class CheckedTransitionTests(Harness):
         self.make_loop()
         self.claim()
         goals = self.cwd / ".goals"
+        # Keep the journal writable while directory permissions forbid unlink:
+        # this isolates candidate consumption from the separate start-write gate.
+        (goals / "demo.events.jsonl").write_text("")
         mode = stat.S_IMODE(goals.lstat().st_mode)
         os.chmod(goals, mode & ~stat.S_IWUSR)
         messages = []
@@ -738,6 +776,8 @@ class CheckedTransitionTests(Harness):
             encoding="utf-8",
         )
         goals = self.cwd / ".goals"
+        # Keep the log appendable while directory permissions prevent unlink.
+        (goals / "demo.events.jsonl").touch()
         mode = stat.S_IMODE(goals.lstat().st_mode)
         os.chmod(goals, mode & ~stat.S_IWUSR)
         try:
@@ -749,13 +789,9 @@ class CheckedTransitionTests(Harness):
             self.assertIn("could not remove", payload["systemMessage"])
             self.assertNotIn("gate is disarmed", payload["systemMessage"])
         self.assertTrue((goals / "active").exists())
-        self.assertLessEqual(
-            len([e for e in self.events()
-                 if e.get("event") == "frozen_spec_changed"]),
-            1,
-            "the closing is recorded at most once - and on an unwritable "
-            "log, not at all, which is also not a false announcement",
-        )
+        closures = [e for e in self.events() if e.get("event") == "frozen_spec_changed"]
+        self.assertEqual(2, len(closures), "each observed closure remains auditable")
+        self.assertTrue(all(not e["completion_candidate"] for e in closures))
 
 
 class CompletionContractTests(Harness):
@@ -780,7 +816,7 @@ class CompletionContractTests(Harness):
         self.make_loop(goal=goal)
         if claim:
             self.claim()
-        payload = {"hook_event_name": "Stop", "cwd": str(self.cwd)}
+        payload = {"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}
         payload.update(payload_extra or {})
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py"),
@@ -823,7 +859,7 @@ class CompletionContractTests(Harness):
         self.make_loop(goal=goal)
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=60,
         )
         message = json.loads(result.stdout)["systemMessage"]
@@ -872,7 +908,7 @@ class CompletionContractTests(Harness):
     def test_green_proves_only_this_anchor_on_this_state(self) -> None:
         payload = self.stop(GREEN)
         self.assertIn("passed on attempt", payload["systemMessage"])
-        self.assertIn("`## Stop condition`'s question", payload["systemMessage"])
+        self.assertTrue(self.events()[-1]["verification_passed"])
         self.assertNotIn("Goal met", payload["systemMessage"])
 
     def test_a_wrong_session_candidate_is_never_judged(self) -> None:
@@ -898,7 +934,7 @@ class CompletionContractTests(Harness):
         self.assertTrue((self.cwd / ".goals" / "demo.candidate").exists(),
                         "B's stop must not consume the owner's claim")
 
-    def test_a_candidate_with_an_unrecovered_role_failure_is_refused(self) -> None:
+    def test_transport_failure_does_not_replace_current_acceptance_evidence(self) -> None:
         log = self.cwd / ".goals" / "demo.events.jsonl"
         self.make_loop()
         log.write_text(json.dumps({
@@ -908,16 +944,15 @@ class CompletionContractTests(Harness):
         self.claim()
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=60,
         )
         payload = json.loads(result.stdout)
-        self.assertEqual("block", self.decision(payload))
-        self.assertIn("reviewer", payload["reason"])
-        self.assertIn("fallback", payload["reason"])
-        self.assertEqual("candidate_refused", self.events()[-1]["event"])
+        self.assertIsNone(self.decision(payload))
+        self.assertTrue(self.events()[-1]["verification_passed"])
+        self.assertEqual(["reviewer"], self.events()[-1]["unrecovered_targets"])
 
-    def test_a_role_failure_blocks_until_recovery_is_positively_observed(
+    def test_a_role_failure_is_not_erased_by_a_turn_boundary(
         self,
     ) -> None:
         """Round-4 F4: a turn boundary proved a turn ended, never that a
@@ -931,10 +966,10 @@ class CompletionContractTests(Harness):
         # are derived exactly as the recovery hook will derive them.
         failed = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_tool_failure.py")],
-            input=json.dumps({
+            input=json.dumps({"session_id": "session-aaa",
                 "hook_event_name": "PostToolUseFailure", "cwd": str(self.cwd),
                 "tool_name": "agent-delegate",
-                "tool_input": {"command": "agent-delegate --target x review"},
+                "tool_input": {"command": "agent-delegate run --to x --task review"},
                 "tool_response": "exit 1",
             }),
             capture_output=True, text=True, timeout=60,
@@ -944,34 +979,32 @@ class CompletionContractTests(Harness):
         self.claim()
         first = json.loads(subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=60,
         ).stdout)
         # An ordinary turn passes with NO recovery observation at all.
         subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=60,
         )
         self.claim()
         second = json.loads(subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=60,
         ).stdout)
-        self.assertEqual("block", self.decision(first))
-        self.assertEqual(
-            "block", self.decision(second),
-            "a boundary is not a join: the claim must still be refused",
-        )
-        self.assertEqual("candidate_refused", self.events()[-1]["event"])
+        self.assertIsNone(self.decision(first))
+        self.assertIsNone(self.decision(second))
+        self.assertEqual(["x"], self.events()[-1]["unrecovered_targets"])
+        self.assertFalse(any(e["event"] == "role_recovered" for e in self.events()))
         # The positive observation: a successful call naming the same target.
         recovered = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_tool_success.py")],
-            input=json.dumps({
+            input=json.dumps({"session_id": "session-aaa",
                 "hook_event_name": "PostToolUse", "cwd": str(self.cwd),
                 "tool_name": "agent-delegate",
-                "tool_input": {"command": "agent-delegate --target x review"},
+                "tool_input": {"command": "agent-delegate run --to x --task review"},
                 "tool_response": "ok",
             }),
             capture_output=True, text=True, timeout=60,
@@ -981,7 +1014,7 @@ class CompletionContractTests(Harness):
         self.claim()
         third = json.loads(subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=60,
         ).stdout)
         self.assertIn("passed on attempt", third["systemMessage"])
@@ -997,7 +1030,7 @@ class CompletionContractTests(Harness):
         self.claim()
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=60,
         )
         payload = json.loads(result.stdout)
@@ -1014,14 +1047,17 @@ class CompletionContractTests(Harness):
             "Stop when `true` succeeds, or after 4 turns.",
             "Stop when `true` succeeds.\n\nceiling: 1",
         ))
+        # A missing evaluator baseline refuses verification even if the
+        # anchor would pass. This is an acceptance failure, not transport.
+        (self.cwd / ".goals" / "demo.verification.baseline").unlink()
         # An unrecovered delegation failure: the refusal path that used to
         # cost no attempt at all.
         failed = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_tool_failure.py")],
-            input=json.dumps({
+            input=json.dumps({"session_id": "session-aaa",
                 "hook_event_name": "PostToolUseFailure", "cwd": str(self.cwd),
                 "tool_name": "agent-delegate",
-                "tool_input": {"command": "agent-delegate --target x review"},
+                "tool_input": {"command": "agent-delegate run --to x --task review"},
                 "tool_response": "exit 1",
             }),
             capture_output=True, text=True, timeout=60,
@@ -1032,7 +1068,7 @@ class CompletionContractTests(Harness):
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
             input=json.dumps({
                 "hook_event_name": "Stop", "cwd": str(self.cwd),
-                "session_id": "session-a",
+                "session_id": "session-aaa",
             }),
             capture_output=True, text=True, timeout=60,
         ).stdout)
@@ -1042,7 +1078,7 @@ class CompletionContractTests(Harness):
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
             input=json.dumps({
                 "hook_event_name": "Stop", "cwd": str(self.cwd),
-                "session_id": "session-a",
+                "session_id": "session-aaa",
             }),
             capture_output=True, text=True, timeout=60,
         ).stdout)
@@ -1062,13 +1098,13 @@ class CompletionContractTests(Harness):
         for _ in range(6):
             subprocess.run(
                 [sys.executable, str(SCRIPTS / "goal_stop.py")],
-                input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+                input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
                 capture_output=True, text=True, timeout=60,
             )
         self.claim()
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=60,
         )
         payload = json.loads(result.stdout)
@@ -1084,12 +1120,13 @@ class CompletionContractTests(Harness):
         self.assertIn("identical", payloads[1]["reason"])
         self.assertNotIn("not progressing", payloads[1]["reason"])
 
-    def test_the_refusal_names_the_attempt_for_the_commit(self) -> None:
+    def test_the_refusal_names_the_attempt_without_authorizing_a_commit(self) -> None:
         payload = self.stop(RED, host="kimi")
         reason = payload["hookSpecificOutput"]["permissionDecisionReason"]
         self.assertIn("at most once", reason)
-        self.assertIn("goal(demo) turn 1", reason)
-        self.assertIn("[anchor: red]", reason)
+        self.assertIn("on attempt 1", reason)
+        self.assertIn("commit only with existing owner authorization", reason)
+        self.assertIn("remains pending", reason)
 
 
 class AnchorGateTests(Harness):
@@ -1099,12 +1136,12 @@ class AnchorGateTests(Harness):
     def stop(self, anchor: str, ceiling: str = "4 turns") -> dict:
         goal = GOAL.replace(f"```\n{GREEN}\n```", f"```\n{anchor}\n```").replace(
             "or after 4 turns", f"or after {ceiling}"
-        )
+        ).replace("ceiling: 4", f"ceiling: {ceiling.split()[0]}")
         self.make_loop(goal=goal)
         self.claim()
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True,
             text=True,
             timeout=60,
@@ -1136,7 +1173,7 @@ class AnchorGateTests(Harness):
         # Not "goal met": the gate measured one command exiting 0, and whether
         # that is the goal belongs to `## Stop condition` and `## Acceptance`.
         self.assertIn("passed on attempt", payload["systemMessage"])
-        self.assertIn("`## Stop condition`'s question", payload["systemMessage"])
+        self.assertTrue(self.events()[-1]["verification_passed"])
         self.assertNotIn("Goal met", payload["systemMessage"])
         self.assertEqual("green", self.events()[-1]["outcome"])
 
@@ -1215,7 +1252,7 @@ class AnchorGateTests(Harness):
         self.claim()
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=30,
         )
         payload = json.loads(result.stdout)
@@ -1233,7 +1270,7 @@ class AnchorGateTests(Harness):
         self.claim()
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=30,
         )
         payload = json.loads(result.stdout)
@@ -1254,7 +1291,7 @@ class AnchorGateTests(Harness):
         self.claim()
         second = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=30,
         )
         payload = json.loads(second.stdout)
@@ -1275,7 +1312,7 @@ class AnchorGateTests(Harness):
         # no `active` marker
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=30,
         )
         self.assertEqual(0, result.returncode)
@@ -1287,7 +1324,7 @@ class AnchorGateTests(Harness):
         (self.cwd / ".goals" / "active").unlink()
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=30,
         )
         self.assertEqual("", result.stdout.strip(), "rm .goals/active must disarm it")
@@ -1298,7 +1335,7 @@ class RecoveryHookTests(Harness):
         self.make_loop()
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_session_start.py")],
-            input=json.dumps({"hook_event_name": "SessionStart", "cwd": str(self.cwd),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "SessionStart", "cwd": str(self.cwd),
                               "source": "resume"}),
             capture_output=True, text=True, timeout=30,
         )
@@ -1312,7 +1349,7 @@ class RecoveryHookTests(Harness):
         self.make_loop()
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_session_start.py")],
-            input=json.dumps({"hook_event_name": "SessionStart", "cwd": str(self.cwd),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "SessionStart", "cwd": str(self.cwd),
                               "source": "something-else"}),
             capture_output=True, text=True, timeout=30,
         )
@@ -1322,7 +1359,7 @@ class RecoveryHookTests(Harness):
         self.make_loop()
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_pre_compact.py")],
-            input=json.dumps({"hook_event_name": "PreCompact", "cwd": str(self.cwd),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "PreCompact", "cwd": str(self.cwd),
                               "trigger": "auto"}),
             capture_output=True, text=True, timeout=30,
         )
@@ -1350,7 +1387,7 @@ class FrozenSpecTests(Harness):
             self.claim()
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True,
             text=True,
             timeout=60,
@@ -1383,7 +1420,7 @@ class FrozenSpecTests(Harness):
         # Not "goal met": the gate measured one command exiting 0, and whether
         # that is the goal belongs to `## Stop condition` and `## Acceptance`.
         self.assertIn("passed on attempt", payload["systemMessage"])
-        self.assertIn("`## Stop condition`'s question", payload["systemMessage"])
+        self.assertTrue(self.events()[-1]["verification_passed"])
         self.assertNotIn("Goal met", payload["systemMessage"])
         self.assertEqual("anchor_checked", self.events()[-1]["event"])
 
@@ -1517,7 +1554,7 @@ class CeilingParsingTests(Harness):
                 self.assertFalse(declared)
 
     def test_the_gate_says_when_the_ceiling_is_its_own(self) -> None:
-        goal = GOAL.replace("or after 4 turns", "when it feels done")
+        goal = GOAL.replace("or after 4 turns", "when it feels done").replace("ceiling: 4", "")
         self.make_loop(goal=goal.replace(f"```\n{GREEN}\n```", f"```\n{RED}\n```"))
         log = self.cwd / ".goals" / "demo.events.jsonl"
         log.write_text("".join(
@@ -1528,7 +1565,7 @@ class CeilingParsingTests(Harness):
         self.claim()
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=30,
         )
         payload = json.loads(result.stdout)
@@ -1548,7 +1585,7 @@ class InjectionBudgetTests(Harness):
         self.make_loop(goal=goal)
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_session_start.py")],
-            input=json.dumps({"hook_event_name": "SessionStart", "cwd": str(self.cwd),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "SessionStart", "cwd": str(self.cwd),
                               "source": "resume"}),
             capture_output=True, text=True, timeout=30,
         )
@@ -1758,7 +1795,7 @@ class AmbiguousAnchorTests(Harness):
         self.claim()
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=30,
         )
         payload = json.loads(result.stdout)
@@ -1788,7 +1825,7 @@ class StopContractTests(Harness):
         self.claim()
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=60,
         )
         self.assertEqual(0, result.returncode, result.stderr)
@@ -1821,39 +1858,18 @@ class StopContractTests(Harness):
         self.assertEqual({"systemMessage"}, set(payload))
         self.assertIn("passed on attempt", payload["systemMessage"])
 
-    def test_the_owner_line_counts_open_acceptance_lines_without_quoting_them(
-        self,
-    ) -> None:
-        """A hook inlines only what it alone possesses. How many lines are open
-        is a measurement; their text is on disk, and the run has to open the
-        file to change them anyway. Quoting them cost 4,683 characters a turn on
-        the first real artifact.
-        """
-        goal = GOAL.replace(
-            "## Carry-over",
-            "## Acceptance\n\n- [x] already true\n- [ ] not yet true\n\n## Carry-over",
-        )
+    def test_checkboxes_are_claims_and_are_not_quoted_in_completion(self) -> None:
+        goal = GOAL.replace("The command proves the fixture outcome.", "Secret acceptance explanation.")
         message = self.stop(GREEN, goal)["systemMessage"]
-        self.assertIn("`## Acceptance` line(s) are still open", message)
-        self.assertNotIn("not yet true", message)
-        self.assertNotIn("already true", message)
+        self.assertIn("verification contract passed", message)
+        self.assertNotIn("Secret acceptance explanation", message)
 
     def test_the_owner_line_is_the_same_size_whatever_the_artifact(self) -> None:
-        """The reason for the rule: an 80-node graph must not make the per-turn
-        payload 80 lines long."""
-        small = GOAL.replace(
-            "## Carry-over", "## Acceptance\n\n- [ ] one\n\n## Carry-over"
-        )
-        big = GOAL.replace(
-            "## Carry-over",
-            "## Acceptance\n\n"
-            + "\n".join(f"- [ ] line {i}" for i in range(80))
-            + "\n\n## Carry-over",
-        )
+        small = GOAL
+        big = GOAL.replace("The command proves the fixture outcome.", "Long requirement. " * 800)
         a = self.stop(GREEN, small)["systemMessage"]
         b = self.stop(GREEN, big)["systemMessage"]
-        self.assertLess(abs(len(a) - len(b)), 40)
-        self.assertIn("80 `## Acceptance` line(s) are still open", b)
+        self.assertEqual(len(a), len(b))
 
 
 class StopPayloadContractTests(Harness):
@@ -1893,7 +1909,7 @@ class StopPayloadContractTests(Harness):
             argv += ["--host", host]
         result = subprocess.run(
             argv,
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=60,
         )
         self.assertEqual(0, result.returncode, result.stderr)
@@ -1905,7 +1921,7 @@ class StopPayloadContractTests(Harness):
             self.claim()
             result = subprocess.run(
                 [sys.executable, str(SCRIPTS / "goal_stop.py"), "--host", "kimi"],
-                input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+                input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
                 capture_output=True, text=True, timeout=60,
             )
             self.assertEqual(0, result.returncode, result.stderr)
@@ -2057,7 +2073,7 @@ class UnboundedCeilingTests(Harness):
         self.claim()
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=30,
         )
         payload = json.loads(result.stdout)
@@ -2104,7 +2120,7 @@ class ContinuationBudgetTests(Harness):
              stop_hook_active: bool | None = None) -> dict:
         goal = GOAL.replace(f"```\n{GREEN}\n```", f"```\n{anchor}\n```").replace(
             "or after 4 turns", f"or after {ceiling}"
-        )
+        ).replace("ceiling: 4", f"ceiling: {ceiling.split()[0]}")
         self.make_loop(goal=goal)
         self.claim()
         if not hasattr(self, "_repo"):
@@ -2117,7 +2133,7 @@ class ContinuationBudgetTests(Harness):
                 handle.write("more work\n")
             self.run_git("add", "-A")
             self.run_git("commit", "-qm", "wip")
-        payload = {"hook_event_name": "Stop", "cwd": str(self.cwd)}
+        payload = {"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}
         if stop_hook_active is not None:
             payload["stop_hook_active"] = stop_hook_active
         result = subprocess.run(
@@ -2140,7 +2156,7 @@ class ContinuationBudgetTests(Harness):
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_prompt_submit.py")],
             input=json.dumps(
-                {"hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
+                {"session_id": "session-aaa", "hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
             ),
             capture_output=True, text=True, timeout=30,
         )
@@ -2161,7 +2177,7 @@ class ContinuationBudgetTests(Harness):
         """
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_turn_started.py")],
-            input=json.dumps({
+            input=json.dumps({"session_id": "session-aaa",
                 "hook_event_name": "TurnStarted", "cwd": str(self.cwd),
                 "turn_id": turn_id, "origin_kind": origin_kind,
             }),
@@ -2383,17 +2399,16 @@ class ContinuationBudgetTests(Harness):
         again = self.turn(anchor=RED)
         self.assertEqual("block", self.decision(again))
 
-    def test_budget_spent_ends_loudly_with_the_commit_turn(self) -> None:
-        """A red anchor may end a turn only by saying so, and by naming the
-        gate's turn number for the commit subject - one anchor check is one
-        turn, so a host turn that held several checks commits under the last
-        one the gate reports."""
+    def test_budget_spent_reports_unmet_and_required_continuation(self) -> None:
+        """Exhaustion is an unmet goal, with an explicit continuation boundary."""
         self.turn(host="kimi")
         payload = self.turn(host="kimi")
         message = payload["systemMessage"]
         self.assertIn("still red", message)
-        self.assertIn("goal(demo) turn 2", message)
-        self.assertIn("[anchor: red]", message)
+        self.assertIn("on attempt 2", message)
+        self.assertIn("goal unmet", message)
+        self.assertIn("owner already authorized", message)
+        self.assertIn("native continuation driver", message)
 
     def test_a_budget_spent_turn_is_not_progressing_toward_green(self) -> None:
         """The event is a measurement, and `--audit` surfaces it: a run that
@@ -2413,8 +2428,9 @@ class ContinuationBudgetTests(Harness):
         self.assertEqual("block", self.decision(payload))
         reason = payload["hookSpecificOutput"]["permissionDecisionReason"]
         self.assertIn("at most once", reason)
-        self.assertIn("goal(demo) turn 1", reason)
-        self.assertIn("[anchor: red]", reason)
+        self.assertIn("on attempt 1", reason)
+        self.assertIn("commit only with existing owner authorization", reason)
+        self.assertIn("remains pending", reason)
 
     def test_identical_output_with_committed_work_keeps_the_turn_alive(self) -> None:
         """The not-progressing rule cannot be allowed to strangle the loop.
@@ -2491,7 +2507,7 @@ class CompactNoticeTests(Harness):
         self.make_loop()
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_session_start.py")],
-            input=json.dumps({"hook_event_name": "SessionStart", "cwd": str(self.cwd),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "SessionStart", "cwd": str(self.cwd),
                               "source": source}),
             capture_output=True, text=True, timeout=30,
         )
@@ -2528,7 +2544,7 @@ class PromptSubmitTests(Harness):
     def test_an_active_goal_gets_one_plain_line(self) -> None:
         self.make_loop()
         result = self.run_script(
-            {"hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
+            {"session_id": "session-aaa", "hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
         )
         self.assertEqual(0, result.returncode, result.stderr)
         # Plain text, not JSON: that is what Kimi documents for this event.
@@ -2539,7 +2555,7 @@ class PromptSubmitTests(Harness):
 
     def test_without_a_loop_it_is_silent(self) -> None:
         result = self.run_script(
-            {"hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
+            {"session_id": "session-aaa", "hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
         )
         self.assertEqual(0, result.returncode)
         self.assertEqual("", result.stdout.strip())
@@ -2550,14 +2566,14 @@ class PromptSubmitTests(Harness):
         cannot grow with the artifact."""
         self.make_loop()
         first = self.run_script(
-            {"hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
+            {"session_id": "session-aaa", "hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
         )
         big = GOAL.replace("## Carry-over", "## Acceptance\n\n"
                            + "\n".join(f"- [ ] line {i}" for i in range(80))
                            + "\n\n## Carry-over")
         self.make_loop(goal=big)
         second = self.run_script(
-            {"hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
+            {"session_id": "session-aaa", "hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
         )
         self.assertEqual(len(first.stdout), len(second.stdout))
 
@@ -2579,7 +2595,7 @@ class PromptSubmitTests(Harness):
         without inferring that some previous turn ended."""
         self.make_loop()
         self.run_script(
-            {"hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
+            {"session_id": "session-aaa", "hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
         )
         log = self.cwd / ".goals" / "demo.events.jsonl"
         self.assertTrue(log.is_file(), "the boundary must be recorded, not implied")
@@ -2594,11 +2610,11 @@ class PromptSubmitTests(Harness):
         # An ordinary stop, then the pointer carries it.
         subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=60,
         )
         result = self.run_script(
-            {"hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
+            {"session_id": "session-aaa", "hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
         )
         self.assertIn("no completion claim", result.stdout)
 
@@ -2607,29 +2623,30 @@ class PromptSubmitTests(Harness):
         log.write_text(json.dumps({
             "event": "role_unavailable", "role": "reviewer",
         }) + "\n", encoding="utf-8")
+        (self.cwd / ".goals" / "demo.verification.baseline").unlink()
         self.claim()
         subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=60,
         )
         result = self.run_script(
-            {"hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
+            {"session_id": "session-aaa", "hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
         )
         self.assertIn("refused", result.stdout)
-        self.assertIn("role", result.stdout)
+        self.assertIn("baseline", result.stdout)
 
     def test_a_resume_names_the_last_completion_check_by_attempt(self) -> None:
         self.make_loop()
         self.claim()
         subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=60,
         )
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_session_start.py")],
-            input=json.dumps({"hook_event_name": "SessionStart", "cwd": str(self.cwd),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "SessionStart", "cwd": str(self.cwd),
                               "source": "resume"}),
             capture_output=True, text=True, timeout=60,
         )
@@ -2647,7 +2664,7 @@ class PromptSubmitTests(Harness):
         self.claim()
         stop = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py"), "--host", "kimi"],
-            input=json.dumps({"hook_event_name": "Stop", "cwd": str(self.cwd)}),
+            input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
             capture_output=True, text=True, timeout=30,
         )
         self.assertEqual(0, stop.returncode, stop.stderr)
@@ -2659,7 +2676,7 @@ class PromptSubmitTests(Harness):
             .get("permissionDecision"),
         )
         result = self.run_script(
-            {"hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
+            {"session_id": "session-aaa", "hook_event_name": "UserPromptSubmit", "cwd": str(self.cwd)}
         )
         lines = result.stdout.strip().splitlines()
         self.assertEqual(2, len(lines), "pointer plus verdict, nothing else")
@@ -2681,7 +2698,7 @@ class UnknownSectionTests(Harness):
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_session_start.py")],
             input=json.dumps(
-                {"hook_event_name": "SessionStart", "source": "resume",
+                {"session_id": "session-aaa", "hook_event_name": "SessionStart", "source": "resume",
                  "cwd": str(self.cwd)}
             ),
             capture_output=True,

@@ -6,10 +6,19 @@ allowed-tools: Bash, Read
 
 Start the run for `$ARGUMENTS`.
 
-This command replaces a host's own goal mode. That mode kept a model working by
-re-prompting it; here the Stop hook does that by refusing to let a turn end while the
-anchor is red — so the loop is already ours, and what the host's goal mode could never do
-is the one step that matters: **arming the gate**.
+The main model owns the work loop. This command validates and arms the completion
+gate; a Stop hook can ask for a bounded correction, but cannot schedule another
+turn or restart a stopped process. Use an available, authorized native goal mode
+when the run needs unattended continuation across host turns. Without such a
+driver, work within the current turn and report any unfinished run as awaiting
+another prompt. Never promise unattended completion from arming alone.
+
+Honor cancellation across both layers. If the owner cancels, stop or clear this
+run's native goal using its available native control, then disarm this gate and
+preserve the canceled state. Disarming only disables hooks; it does not cancel
+a native goal. If the host interrupted execution before these steps could run,
+reconcile the owner's cancellation at the next authorized opportunity and never
+automatically re-arm or restart it. A pause preserves state and is not completion.
 
 `$ARGUMENTS` is the one argument placeholder every host documents for command bodies:
 Claude Code defines it as "all arguments passed when invoking the skill" (its numbered
@@ -30,6 +39,18 @@ design exists to prevent.
 
 ## 2. Validate, then arm - one fence, because they are one step
 
+For an unattended run, check that the independent specification critique actually
+happened. If missing, invoke it against the approved terms before arming. Do not
+reinterpret "start now" or "do not ask again" as a waiver: this is an independent
+check, not another owner interview. A clean critique needs no new confirmation;
+a material objection must be resolved. Disclose an explicitly waived or unavailable
+critique instead of treating it as a pass.
+
+Before executing the fence, replace `<resolved-native-session-id>` with the current
+host's actual native ID from its own command substitution or tool environment. Never
+select the first available ID across hosts: even a single variable can belong to a
+parent agent. If the identity cannot be established, report the gate inactive.
+
 The fence is a script, not prose in this file: it validates through the
 real validator (a function call whose exception is the refusal - nothing to
 talk past, no fail-open branch to reach), refuses while another goal is
@@ -41,95 +62,86 @@ root="${CLAUDE_PLUGIN_ROOT}"
 [ -n "$root" ] || root="${KIMI_CODE_HOME:-$HOME/.kimi-code}/plugins/managed/ultra-goal"
 runner="$root/skills/ultra-goal/scripts/goal_run.py"
 if [ ! -f "$runner" ]; then
-  printf '%s\n' "ultra-goal: arming refused - no documented plugin root reaches this command, so the artifact cannot be machine-validated, and an unvalidated artifact is one the gate cannot honestly enforce. This is a refusal, not a downgrade. Validate it by hand from the plugin's install root (Kimi manages installs at ${KIMI_CODE_HOME:-$HOME/.kimi-code}/plugins/managed/ultra-goal; Codex at ~/.codex/plugins/cache/<marketplace>/ultra-goal/<version>): python3 <plugin-root>/skills/ultra-goal/scripts/validate_artifact.py .goals/$ARGUMENTS.goal.md. Fix what it reports, then either export PLUGIN_ROOT=<plugin-root> for this session's shell and run this command again, or - once it is clean - arm from the install root: cd here and run python3 <plugin-root>/skills/ultra-goal/scripts/goal_run.py arm $ARGUMENTS"
+  printf '%s\n' "ultra-goal: arming refused - no documented plugin root reaches this command, so the artifact cannot be machine-validated, and an unvalidated artifact is one the gate cannot honestly enforce. This is a refusal, not a downgrade. Validate it by hand from the plugin's install root (Kimi manages installs at ${KIMI_CODE_HOME:-$HOME/.kimi-code}/plugins/managed/ultra-goal; Codex at ~/.codex/plugins/cache/<marketplace>/ultra-goal/<version>): python3 <plugin-root>/skills/ultra-goal/scripts/validate_artifact.py .goals/$ARGUMENTS.goal.md. Fix what it reports, then either export PLUGIN_ROOT=<plugin-root> for this session's shell and run this command again, or - once it is clean - arm from the install root: cd here and run python3 <plugin-root>/skills/ultra-goal/scripts/goal_run.py arm $ARGUMENTS --session-id <current-native-session-id>"
   exit 1
 fi
-if command -v python3 >/dev/null 2>&1; then exec python3 "$runner" arm "$ARGUMENTS"; else exec python "$runner" arm "$ARGUMENTS"; fi
+session_id='<resolved-native-session-id>'
+if command -v python3 >/dev/null 2>&1; then exec python3 "$runner" arm "$ARGUMENTS" --session-id "$session_id"; else exec python "$runner" arm "$ARGUMENTS" --session-id "$session_id"; fi
 ```
 
-The fence is shaped to make validation-then-arming mechanical rather than
-aspirational:
+The script validates before creating any active marker, then records three things: the
+frozen spec digest in `.goals/$ARGUMENTS.spec.baseline`, the declared evaluator files'
+hashes in `.goals/$ARGUMENTS.verification.baseline`, and the review start revision in
+`.goals/$ARGUMENTS.baseline`. Re-arming preserves all of them; another active goal, another
+owning session, or an evaluator file that has already moved refuses. A baseline written by
+an earlier version of this plugin may also refuse — do not silently rewrite it. Finish the
+old run under its original version, or start an explicitly authorized fresh goal. These are
+local records, not permission to commit. `.goals/.gitignore` excludes `.work/`, `active`,
+and `*.candidate`.
 
-- **One fence, not two.** Round 2 shipped validation and arming as separate
-  steps, so anything that ran the second could skip the first (Codex
-  round-2 F1). Round 4 kept them one step but left them in shell, where a
-  missing script path, an unreachable root and an unconditional
-  `.goals/active` overwrite were each one edit away from the same class.
-  The Python fence makes those structurally impossible: `goal_run.py`
-  validates through `validate_paths` and raises, and its arming write is
-  the last thing it does - after validation, after the double-arm guard,
-  after both baselines exist.
-- **The candidate roots are each documented**, in order: the four
-  plugin-root variables (Claude Code substitutes `${CLAUDE_PLUGIN_ROOT}` in
-  command content per its plugin reference; `${ZCODE_PLUGIN_ROOT}` and
-  `${KIMI_PLUGIN_ROOT}` exist for hook processes and are read where a host's
-  tool shell inherits them; `PLUGIN_ROOT` is Codex's hook-process name), then
-  Kimi's managed-install default - local installs are copied to
-  `$KIMI_CODE_HOME/plugins/managed/<id>/` (default `~/.kimi-code`), and this
-  plugin's id is `ultra-goal` - which is what keeps Kimi's primary path
-  usable: it validates for real, against the same copy its hooks run from.
-- **Where nothing reaches, arming refuses** and says what the owner does
-  instead: validate by hand from the install root, then re-run with
-  `PLUGIN_ROOT` exported or arm from the install root with
-  `goal_run.py arm`. Kimi's and Codex's references document no root
-  variable for command bodies at all, and zCode's documents `$ARGUMENTS`
-  only - so on those hosts this branch is the honest outcome, not a bug to
-  improvise around. Do not invent a path the references do not name.
+**Bind the initiating session before any hook.** `--session-id` is required for arm
+and rebind. The script never guesses from inherited environment variables.
+The native command/skill substitutions, where this host expands them, are:
 
-The fence records two baselines and a guard file, none of it housekeeping:
+- Claude Code: `${CLAUDE_SESSION_ID}`
+- Kimi: `${KIMI_SESSION_ID}`
+- zCode: `${ZCODE_SESSION_ID}`
+- Codex: read `CODEX_SESSION_ID` from the current tool environment.
 
-- `.goals/$ARGUMENTS.spec.baseline` is **the run's authorized spec**: the
-  digest of the frozen sections as they stand at arming, written before the
-  marker exists so no Stop - not even a completion candidate arriving first
-  - can author its own baseline. The gate compares every Stop against this
-  file and never against a digest found in the event log, because the run
-  can write the log; a run with no armed baseline has its claims refused
-  rather than judged. It is deliberately not gitignored, so it is committed
-  with the run's first turn and a rewrite shows in `git log`.
-- `.goals/$ARGUMENTS.baseline` records where the run's reviewable change
-  starts, and it is **write-once**: it is only written when it does not
-  already hold a revision. The run commits once per turn, so by the time
-  the reviewer is invoked almost everything is already committed — and a
-  reviewer handed `git diff HEAD` sees only the leftovers and can honestly
-  report "no findings" on a change it never saw. The reviewer and critic
-  read their diff from this revision instead. Write-once is what keeps that
-  true across restarts: re-running this command on an active run must not
-  move the baseline to the current HEAD and hand both roles an empty range
-  for a real change. It is committed with the run's first turn, so deleting
-  or rewriting it afterwards shows in `git log`. A deliberate fresh start
-  removes both baselines and the events log by hand; nothing here does it
-  for you. Work that was already uncommitted when the gate was armed also
-  falls inside the range: the reviewer attributes it against `## Boundary`
-  rather than guessing.
-- **Another goal armed refuses**: the fence exits 1 rather than overwrite
-  `.goals/active`, because that overwrite silently retargeted every hook in
-  the directory from one owner-authorized run to another. Disarming is an
-  explicit act (`goal_run.py disarm <slug>`), and it compares the marker's
-  slug *line* - not its whole text, which grows a `session <id>` line the
-  first time a Stop claims the run.
-- `.goals/.gitignore` keeps `.work/`, `active` and `*.candidate` out of
-  commits - `.work/` holds the reviewer's and critic's reports for one
-  round, `active` is a switch, and a live completion claim must not ride
-  into a commit.
+Literal, unexpanded placeholders are not identities. Do not choose an ID from a
+directory scan or another task. If the current identity cannot be obtained,
+arming refuses; the model may continue authorized ordinary work, but must say the
+gate is inactive. The marker contains the slug and `session <id>` at creation.
+Foreign, identity-less, and legacy unbound hook events are inert. Session IDs
+identify ownership; they are not authorization credentials or anti-forgery keys.
 
-Until the marker is written, **every hook in this plugin does nothing at
-all** — which is why a project that never asked for a goal pays nothing, and
-why this step cannot be skipped. The marker holds the slug alone; the first
-Stop that carries a session identity adds a `session <id>` line claiming the
-run for this session, and every hook then ignores other sessions working in
-the same directory. That line is ownership information, not a key — removing
-it re-opens the claim.
+After an owner-authorized resume into a *different* native session, explicitly
+run `goal_run.py rebind <slug> --session-id <new-id>`. This preserves the frozen
+baseline and discards the old session's pending completion claim. Binding history preserves prior executing
+sessions so they cannot become independent reviewers merely by transferring the run.
+Never rebind a
+concurrent unrelated task or automatically reopen an owner-canceled run.
+
+At any explicit start or resume, read `.goals/active` and compare its owner with
+the current native identity. If they differ, report that this session is not gated
+and use rebind only when recovery into it was authorized. Foreign hooks stay silent
+so unrelated tasks are never prompted to take over.
+
+### Continuation driver
+
+When the owner requested unattended work, use the host's existing goal tool or
+command if it is available in this session. Preserve its budget and user stop
+controls. Point its objective at the artifact and require ordinary tools to read
+Carry-over and the last gate measurement before continuing. Host goal completion
+is a separate claim: it never replaces Ultra's evidence. If the host only exposes
+a user command, give the owner the exact `/goal` handoff; do not invent a model
+tool or launch a second agent process as a hidden driver. An accepted manual run
+needs no extra goal activation. If a driver ends, report the unmet condition and
+leave resumable state instead of calling the goal completed.
 
 ## 3. Read the spec, then work
 
-Read `.goals/$ARGUMENTS.goal.md` in full. `## Intent`, `## Boundary`, `## Anchor` and
-`## Means`'s labels are frozen: if one of them turns out to be wrong, stop and write a row
-under `## Challenges from the run` in the decisions record rather than editing it. You may
-raise a challenge; you may not edit the term or treat your own challenge as an owner's
-ruling — a moved goalpost closes the run and disarms the gate, and only the owner reopens.
+Read `.goals/$ARGUMENTS.goal.md` in full. Frozen: `## Intent`, `## Boundary`,
+`## Anchor`, `## Stop condition`, `## Verification`, the wording of every `## Acceptance`
+requirement, and each labelled `## Means` bullet. If one of them turns out to be wrong, stop
+and write a row under `## Challenges from the run` in the decisions record rather than
+editing it. You may raise a challenge; you may not edit the term or treat your own challenge
+as an owner's ruling — a moved goalpost closes the run and disarms the gate, and only the
+owner reopens. Checkbox state is yours to move; the requirement's sentence is not.
+
+Inside those terms you choose the method, the ordering, the tools and the workers, and you
+may drop a `[droppable]` means or use a `fallback:` that `## Roles` already authorizes —
+each costs one row in the decisions record naming the evidence. **A row records what you
+did; it never authorizes less.** Never write one that lowers a threshold, raises a budget,
+retires an acceptance requirement or makes a required review optional.
 
 Then follow `## Roles` for who does what this turn, `## Acceptance` for what is still not
 true, and `### Next` for the one objective this round is aimed at.
+
+**The evaluator is pinned.** Arming recorded the files `## Verification` names under
+`protected` into `.goals/$ARGUMENTS.verification.baseline`. Do not edit them: the gate
+compares before and after the anchor runs, and a changed checker refuses the claim instead
+of passing it. If one of them genuinely has to change, that is a challenge, not an edit.
 
 **Results are made visible before the Stop, not after.** An allow from the gate carries
 no model context — on Claude Code an injected "one more thing" would keep the turn
@@ -143,20 +155,37 @@ load-bearing, and they are yours, not the hook's:
   check for the change at hand.
 - Before you end any turn: make this turn's important results visible in the ordinary
   tool output above, and write the durable state — `## Carry-over` rewritten, `### Next`
-  re-aimed, the work committed. What is only in your context when the turn ends is gone.
+  re-aimed, the current evidence saved. Commit only when existing owner authorization covers
+  it. What is only in your context when the turn ends is gone.
 
 When you invoke a reviewer or critic, **the round's evidence is the file the role was
-told to write** (`.goals/.work/$ARGUMENTS-review.md`, `-critique.md`) — never the call's
+told to write** — never the call's
 exit status. A delegation can return success and produce nothing; it happened to a review
 round on this project, and no hook can see it, because the failure event fires on
 failures only. So check the file exists before you treat the round as done: if it is
 absent, the round did not happen — fall back as `## Roles` declares and say the round ran
 degraded in your report. A review that returned success and left nothing is a missing
-review, not a pass. Wait for every delegated role you invoked to finish before you claim
-completion: the gate refuses a claim while a role's failure stands without a
-positively observed recovery - a later successful call naming the same
-target, recorded by the PostToolUse hook. A turn ending proves nothing
-about a worker.
+review, not a pass. **Wait for every writer you invoked to finish before you request the
+required review or claim completion**, and request a fresh review after you change its
+inputs — a receipt bound to inputs you have since edited is stale, and the gate reads it
+as such. A turn ending proves nothing about a worker.
+
+**A failed delegation is an observation, not a blocker.** It stays in the audit, and on the
+hosts that fire `PostToolUseFailure` a hook records it. It does not hold your claim open
+until that particular target recovers: what settles the claim is the current required
+output and the current review evidence, which an authorized fallback may produce. Report
+the failure, name the fallback you used, and never let the absence of a block read as a
+round that went fine.
+
+**Where `## Verification` names a required review**, the receipt is written by the
+independent verifier at the declared path — not by you, and not from your account of the
+work. It carries the verifier's approved identity, that verifier's own native session ID
+(distinct from this run's), the input digest it obtained itself with
+`goal_run.py review-inputs $ARGUMENTS --root <project>`, the acceptance IDs it covers, its
+verdict and its evidence. Prior bound execution sessions are also excluded. A detailed markdown report alongside it is welcome; it is not the
+receipt. Never manufacture a passing receipt for a review that did not happen — the gate
+checks the declared identity, session, digest, coverage and verdict. A receipt naming
+the generating session refuses; these writable fields do not authenticate the writer.
 
 **You are the run, not its designer.** The terms were agreed before you started; do not
 reopen them as an interview.
@@ -170,26 +199,44 @@ You have not met this goal until the anchor says so on the current state — and
 anchor's verdict at completion belongs to the gate, not to you. So when you believe the
 goal is met:
 
-1. Run the command in `## Anchor` yourself with ordinary tools and read its output. You
-   are claiming a state of the world; look at it first.
-2. Write `.goals/$ARGUMENTS.candidate` — one short line naming what you claim (which
-   `## Acceptance` lines, at what evidence). The claim is yours and self-reported: it
-   triggers the gate's check and grants nothing.
-3. End your turn.
+1. Finish the deliverables and Carry-over, join all writers, and obtain any required
+   independent review of the final inputs. Its receipt needs `checks` for each
+   acceptance ID assigned to review, with concrete claims and actual input quotes.
+2. Call `goal_run.py verify $ARGUMENTS --root <project> --session-id <current-native-session-id>
+   --claim "<acceptance IDs and evidence>"` using the resolved installed script path.
+   It consumes a completion candidate through the same gate and returns JSON before
+   your final response. Exit 0 requires a newly recorded `verification_passed: true`.
+3. Read that observation. On success, reconcile the native goal with its actual tool
+   and deliver the result paths, measured attempt and limits. On failure, use the
+   evidence to continue within the remaining budget or report a precise unmet exit.
+   Do not edit reviewed outputs after the check; edits require review and verification again.
 
-The gate consumes the claim, executes the anchor once against the current state, and
-rules on that measurement alone. Green proves the anchor exited 0 on this state — whether
-that satisfies the stop condition stays with you and the owner, so report the attempt
-number, the exit code, and what a green does not cover. Red refuses the claim and the
-turn continues; a failed role this turn refuses it before the anchor even runs. A
-historical green is never a pass input: new work and a new claim are re-measured, always.
+The gate consumes the claim, checks the verification contract — the pinned evaluator files
+and any required review receipt — executes the anchor once against the current state,
+re-checks that contract afterwards, and rules on that measurement alone. A pass means the
+accepted checks held on this state: the anchor exited 0 and every required review passed on
+the current inputs. It does not mean the specification was right, so report the attempt
+number, the exit code, and what those checks do not cover. Red refuses the claim and the
+turn continues; so does a changed evaluator file or a missing, stale, declaring the generating session, or failing
+required review. A historical green is never a pass input: new work and a new claim are
+re-measured, always.
 
-Commit an attempt the gate has measured as
-`goal($ARGUMENTS) turn <N>: <one line> [anchor: green|red|unknown]`; ordinary work turns
-commit as `goal($ARGUMENTS): <one line>`. One completion attempt is one `<N>` — the
-number in the gate's most recent message, not a number you count yourself — and
-`--audit` joins your commit subject to the gate's measurements by it. Ordinary turns
-carry no `[anchor: ...]` verdict: nothing measured one.
+`verify` is an ordinary tool call, not a fabricated Stop and not a scheduler. The
+following ordinary Stop does not run the consumed candidate again. If only the
+Stop path is available, write `.goals/$ARGUMENTS.candidate` with the claim and end
+the turn; in that fallback a gate decision arrives after the response. An allow gives
+no new model turn. Do not promise to read or commit that future measurement in
+the response you are ending: report the ordinary-tool evidence and say the gate
+check is pending. At the next actual model opportunity, read the event log and
+reconcile the result. On a host that permits only one blocking Stop, a corrected
+candidate may remain unchecked until another native turn: keep it pending and
+never infer success from the host ending.
+
+When commits are explicitly authorized, the optional audit convention for an
+already observed attempt is `goal(<slug>) turn <N>: <summary> [anchor: green|red|unknown]`.
+Ordinary authorized commits may use `goal(<slug>): <summary>`. No commit is
+required to make progress, preserve Carry-over, or finish the task; absent Git
+claims limit the history audit, not the evidence from the anchor.
 
 When you report how the run stands, use the disposition vocabulary and nothing looser:
 `in_progress`, `input_required` (you lack something only the owner can give),

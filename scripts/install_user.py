@@ -15,7 +15,7 @@ import tempfile
 from typing import Any
 
 
-VERSION = "2.11.0"
+VERSION = "2.15.1"
 PACKAGE = "ultra-goal"
 MARKER_NAME = ".ultra-goal-managed.json"
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -28,11 +28,9 @@ SKILL_SOURCE = (
 )
 SUPPORTED_HOSTS = ("hermes", "claude", "codex", "kimi", "zcode", "opencode")
 
-# Hook registration is host-specific and only Claude Code carries the event this
-# Skill's gate needs. Measured, not assumed: Kimi exposes only SessionStart and
-# PostCompact (and in TOML), OpenCode has no declarative hooks at all. The goal
-# text works everywhere; the gate does not, and `doctor` says so rather than
-# leaving a host quietly ungated.
+# This legacy skill-only installer configures Claude settings hooks only.
+# The current four-host hook adapters ship in the native plugin manifests;
+# not installing those adapters here is not evidence a host lacks hooks.
 HOOK_EVENTS = {
     "Stop": "goal_stop.py",
     "SessionStart": "goal_session_start.py",
@@ -316,7 +314,7 @@ def _hook_status(home: Path, host: str) -> dict[str, str]:
     drop a registration and nobody notices for weeks.
     """
     if host not in HOOK_HOSTS:
-        return {"hooks": "unsupported-host"}
+        return {"hooks": "not-configured-by-this-installer"}
     path = _settings_path(home, host)
     if not path.is_file():
         return {"hooks": "no-settings-file"}
@@ -381,8 +379,8 @@ def _install(
                 print(f"  {host}: registered {line}")
         else:
             print(
-                f"  {host}: no hooks registered - this host does not expose the "
-                "events the anchor gate needs; the goal text still works"
+                f"  {host}: hooks are not configured by this legacy installer. "
+                "Use the native plugin adapter; a copied skill alone does not activate the gate."
             )
 
 

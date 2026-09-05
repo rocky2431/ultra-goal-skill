@@ -5,81 +5,48 @@ of this file offered four "modes" side by side - same-model subagents, cross-ven
 parallel triads, and a graph. That was a menu, not a taxonomy: three orthogonal axes
 flattened into one column. The owner caught it. This is the repair.
 
-## Every development round has four stages
+## Assign the work that this goal needs
 
-Research → shape a plan → carry it out → review and feed back → round again. Loops nested
-inside loops. Most of what looks like a choice about "multi-agent or not" is really a
-question about **one stage**, and the stages differ in whether there is anything to choose
-at all.
+Init and research establish acceptance and authority. The main model then chooses the
+next useful action, the worker if any, and the evidence needed before the next iteration.
+These activities can overlap; they are not mandatory workflow phases.
 
-| Stage | Who | Choice? |
-|---|---|---|
-| **Lead** — turn the owner's intent into a spec | the main session, with the owner | **No.** An interview is a conversation with the owner; it cannot be delegated to something the owner is not talking to |
-| **Research** — find out what is true before acting | **fanned-out subagents** | Yes: how wide, and whether any of it needs a different vendor |
-| **Plan** — the spec, and one adversarial pass over it | main session + a design critic | Yes: whether the design critic runs |
-| **Carry out** — write the code *and its tests* | **the main session** | **No**, and see below |
-| **Verify at code level** — the anchor | a command, no model | **No.** Mechanical |
-| **Review at semantic level** — what the anchor cannot see | not whoever wrote it | Yes: two independent axes |
-| **Fan out** — anything with independent subjects | one worker per subject | Yes, with a hard precondition |
+Follow owner-assigned roles. Within delegated authority, resolve routine routing yourself:
+use the current session for a small change; delegate a self-contained implementation or an
+independent research question when that helps. Give each worker current state, prior failed
+attempts, its writable scope and its expected result. Delegation need not lose the main
+session's context when the handoff includes it.
 
-## Who writes the code: a recommendation, and the scale that flips it
+A plan file or task list is allowed. Keep mutable execution planning separate from frozen
+intent and acceptance. Use an existing graph runtime only when one is actually available
+and the task calls for it; this skill does not introduce one.
 
-**This is the owner's call.** Who does the work is a material trade-off, and an earlier
-version of this page wrote it down as a rule - which was the Skill taking a decision it has
-no standing to take. What follows is the recommendation and the evidence for it, on both
-sides.
+## Verification and review
 
-**For a small slice: the main session.** Anthropic runs both patterns deliberately, split by
-task type:
+Run the accepted anchor and inspect what it covers. Choose test order for the change:
+a reproduced bug benefits from a regression check; a prose change needs structural
+validation. There is no mandatory test-first rule or fixed implementation agent.
 
-> Claude Code uses this orchestrator-subagent pattern. **The main agent writes code, edits
-> files, and runs commands itself**, dispatching subagents in the background when it needs
-> to search a large codebase or investigate independent questions. This contrasts with the
-> research system, where the lead agent delegates rather than directly handling code
-> execution.
+Independent review is required when the owner or accepted goal requires it, and useful
+when a costly mistake can survive the anchor. One independent reviewer can be sufficient.
+A reviewer plus critic is an optional adversarial protocol for unresolved disagreement or
+false consensus. Its delegation template checks that protocol's fields; ordinary goal
+verification does not have to use it.
 
-So research is delegated and code is not, on purpose. The reason matters more than the
-authority: **`### Lessons` and every dead end live in the main context.** A fresh coder
-subagent cannot see that turn 3 already tried this path and why it failed, which is the
-only thing that makes turn 7 better than turn 1. Delegating the writing restarts the run
-at turn 1, every turn.
-
-**The conflict-of-interest objection is real and is answered elsewhere.** A main session
-that both writes and judges would be referee and player. It does not judge: the **anchor's
-exit code decides**, and no model is in that path. The reviewer never receives the author's
-argument, and the critic audits the review rather than the code. The referee was moved out
-of the writer's hands, which is what the zero-trust layer is for - not the writing.
-
-**At scale it flips, and there is a working counterexample.** A long build in production on
-this machine runs the opposite way, and runs well: the lead holds the loop, owns one ledger
-exclusively, **writes no code**, and two cross-vendor executors alternate between build
-rounds and review rounds - each taking a whole slice, so it is a role rotation rather than
-the phase split this design refuses. Where a build is large enough that one context cannot
-hold it, the argument above inverts: the lead's context is better spent on judging than on
-editing.
-
-What the main session must never author is its own acceptance. The anchor is the owner's,
-set at question 2, and frozen.
+**A required review is a role with a contract, not just an assignment.** Where an acceptance
+ID is mapped to `review`, `## Verification` names which identities may sign it, which inputs
+it reads and where its receipt lands, and the gate checks that receipt at completion. That
+makes two things role decisions rather than prose: the verifier must be an identity the
+owner approved (or an approved fallback), and it must run somewhere with its own session -
+a fork that cannot obtain a session distinct from the run's cannot satisfy the condition,
+however good its review is. Route that one to a separate session or another vendor, and say
+so rather than signing from inside the run. Any additional advisory review is free to vary.
 
 ## Judging blind
 
-The referee-and-player objection has a sharper answer than "the anchor decides", and it came
-from that same production run: **the judge records its verdict before reading the executors'
-reports.** Run the anchor yourself, write the verdict to `<slug>.judge-review.md`, and only
-then read what they said and note where the three readings differ.
-
-This is context isolation applied to the judge rather than to the reviewer, and it closes a
-hole the rest of this page leaves open. A judge that reads the reports first has been
-persuaded before it decided - and no amount of "the exit code decides" helps, because
-the exit code does not settle which findings mattered,
-or whether a report was honest about what it did not check.
-
-Cost: one extra file per round, and the discipline of doing the work before hearing about
-it. Recommend it wherever the work is delegated.
-
-**Test-first is not a choice either.** Whoever writes the code writes its tests, first.
-Splitting the test from the code is a phase split, and phase splits are already refused:
-each phase needs the previous phase's context.
+For sensitive delegated work, consider recording a verdict from the artifact and anchor
+before reading the worker's explanation. This can reduce persuasion by the report; it
+is not proof that the verdict is correct. Reconcile disagreements against evidence.
 
 ## How to actually run a fresh-context role
 
@@ -109,41 +76,22 @@ user-scope install would otherwise squat in every project on the machine.
 Read the reference before choosing a mechanism. This one was reconstructed from installed
 plugins for several versions while the field that does the job was documented all along.
 
-## The two axes of semantic review
+## Review choices
 
-These are independent, and conflating them was the original error. They defend against
-different diseases.
+Decide whether review is required or useful, what each reviewer receives, and what would
+resolve a finding. Fresh context and a different model can reduce correlated judgment;
+neither eliminates shared errors. Select them by risk, availability and cost.
 
-| Axis | The disease | The control | Cost |
-|---|---|---|---|
-| **Context isolation** | **Contagion of the author's argument.** Handed an explanation of why the work is right, a reviewer reviews the explanation | a fresh context - a subagent that never saw the reasoning cannot be persuaded by it | negligible |
-| **Model independence** | **Shared blind spots.** Two agents on one model make the same mistake and agree about it | a different vendor | roughly an order of magnitude |
-
-A fresh-context subagent on the same model is **not** a cheap substitute for a different
-vendor. It cures the first disease completely and the second not at all: it catches "you
-did not do what the spec says" and misses "the spec and the code are wrong in the same
-way". Reach for a different vendor where a mistake is expensive **and** looks correct from
-inside - a silent overwrite, a survivorship or look-ahead bias, an off-by-one in money.
-
-Context isolation is **not optional**. Model independence is the choice.
-
-## Parameters, not peer choices
-
-Two things depend on the review and are not alternatives to it:
-
-- **When it runs**: every turn · at proposed completion · at named acceptance lines.
-  Default the middle one: intermediate turns already have the anchor, and review earns its
-  cost at the moment the run wants to declare done.
-- **Round cap**: a number, default 5, accepting round 1 if it converges with no findings.
+For a repeated exchange, choose a round cap and stop early when the issue is settled.
+The optional triad template uses at most five rounds. That cap does not apply to a
+single check or force a critic into every review.
 
 ## Fan-out, and its precondition
 
-Legal when the subjects are genuinely independent and **each has its own anchor**. Twenty
-factors, each with its own acceptance line and its own command. Research is the other case,
-and the usual one.
-
-This is where parallelism lives. It is not several reviewers on one artifact - that is the
-shape measured as unreliable - it is several subjects, each with its own verdict.
+Delegate in parallel when scopes are independent and each worker has a clear result to
+return. Join the required workers and inspect their evidence before synthesis. Several
+reviewers may examine separate concerns on one artifact; the main model must reconcile
+their findings rather than count agreement as proof.
 
 ## What is *not* on this page
 
@@ -182,15 +130,38 @@ last row. Saying which half you hold is the point - a `ROUND_DEGRADED` finding n
 could produce would be worse than none, because it reads as coverage, and so would a
 "measured" verdict about adequacy nothing can measure.
 
-There is one degradation no hook can measure at all, named here because a review round on
-this project produced it: a call that *succeeds* while writing no file. The
-failure event fires on failures only, and the success-side events fire once per tool call
-and are deliberately not registered, so from inside the plugin a degraded round reads as
-a clean one. The only real detector is the expected artifact's absence - the round's evidence is the file the role was told to write - and it lives where the round is
-consumed: the run does not count a round until the file exists, and `--audit` reports a
-declared reviewer with no review file as `REVIEW_UNEVIDENCED`. For rounds delegated to a
-target that writes somewhere else, even that cannot see the artifact; the report is the
-only record there, which is exactly the Codex row above.
+**Recovery is measured on the same hosts, and it measures less than its name suggests.**
+`PostToolUse` is registered there and writes `role_recovered` when a later call naming the
+same target succeeds - a positive observation rather than the turn-boundary inference it
+replaced. But a tool call returning success is a
+fact about the *call*. It is not proof that the worker finished, and not proof that it wrote
+anything: a call that *succeeds* while writing no file still reads as clean from inside the
+plugin, and a review round on this project produced exactly that.
+
+**Neither the failure nor its recovery gates completion.** Both are observations kept for
+the audit. An earlier design held a completion claim open until the failed target was
+positively observed working again, which made an unreachable vendor into a stop condition
+the owner never wrote - a run with a perfectly good fallback result could not finish.
+Completion is settled by the current required outputs and the current review evidence, so
+an authorized fallback can satisfy it while the original target stays down. The failure
+still belongs in the report and in `### Lessons`; what changed is that it is a fact about
+transport, not a missing acceptance condition.
+
+
+Detection is deliberately narrow: a recognized direct `agent-delegate run --to <target>`
+command (or a structured call to that exact tool). Search strings, tool output, opaque
+scripts and compound shell commands are not delegation evidence. Unsupported shapes
+remain unobserved and the main model must inspect their actual results. A success for
+the same target/tool clears an observed call failure; it does not prove every mission
+for that target completed.
+
+**So joining is the run's job, not the hook's.** Wait for every role invoked, then open the
+artifact it was told to write and read it —
+the round's evidence is the file the role was told to write.
+The run does not count a round until it exists, and `--audit` reports a
+declared reviewer with no review file as `REVIEW_UNEVIDENCED`. For rounds delegated to a target that writes somewhere else,
+even that cannot see the artifact; the report is the only record there, which is exactly the
+Codex row above.
 
 Degrading to the main session alone is **always** the last resort and always allowed. A run
 that stops because a reviewer was out of quota has turned an optional check into a single

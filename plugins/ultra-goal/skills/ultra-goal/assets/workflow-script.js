@@ -1,5 +1,8 @@
-// Template for a same-vendor graph. Save as `<slug>.workflow.js` next to
-// `<slug>.decisions.md`. `meta` must stay the first statement and a pure literal.
+// Optional execution attachment; requires the shared goal and decisions record.
+// Use only with an installed, exercised workflow consumer. All shapes arm the
+// same goal and submit completion candidates against that contract.
+// goal: `review-changed-files.goal.md`
+// `meta` must stay the first statement and a pure literal.
 // The runtime evaluates this inside an async function, so top-level await and return
 // are legal. Every phase used below must appear in meta.phases.
 
@@ -40,9 +43,10 @@ const VERDICT = {
 // so 'security' verifies while 'correctness' is still reviewing.
 const results = await pipeline(
   DIMENSIONS,
-  d => agent(d.prompt, { label: `review:${d.key}`, phase: 'Review', schema: FINDINGS }),
+  d => agent(`Read .goals/review-changed-files.goal.md and follow its authority and acceptance contract. ${d.prompt}`,
+    { label: `review:${d.key}`, phase: 'Review', schema: FINDINGS }),
   review => parallel(review.findings.map(f => () =>
-    agent(`Adversarially verify, running the code: ${f.title} in ${f.file}`,
+    agent(`Read .goals/review-changed-files.goal.md and follow its contract. Adversarially verify, running the code: ${f.title} in ${f.file}`,
       { label: `verify:${f.file}`, phase: 'Verify', schema: VERDICT })
       .then(v => ({ ...f, verdict: v }))
   )),

@@ -20,9 +20,9 @@ problem to degrade around, not the gate's to refuse.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-import json
 from pathlib import Path
 import re
+import shlex
 import sys
 from typing import Any
 
@@ -31,59 +31,57 @@ from goal_hooks import (  # noqa: E402
     ActiveGoal,
     append_event,
     run_hook,
-    sections,
 )
 
 
-# The delegation command this Skill's own templates name, plus whatever targets
-# the artifact declares. Matched against the failed invocation as a fact about
-# what was called - not as a guess about what the failure meant.
-DELEGATION_TOOL = "agent-delegate"
-TARGET_FIELD = re.compile(r"(?mi)^\s*[-*]\s*target:\s*`?([\w-]+)`?")
+def delegation_target(event: dict[str, Any]) -> str | None:
+    """Identify a direct delegation, never a mention in search text or output.
 
-
-def _invocation(event: dict[str, Any]) -> str:
-    """Everything the host said about the call, flattened for one search.
-
-    Deliberately not a guess at which field holds the command: the payload
-    shape is the host's and has changed before, so this reads all of it rather
-    than betting on `tool_input.command`.
+    Opaque scripts, compound shell commands and unknown tools are deliberately
+    unobserved. The model must inspect those results; guessing would let a
+    successful grep clear a failed worker.
     """
-    for key in ("tool_input", "tool_response", "tool_name"):
-        if key in event:
-            break
-    else:
-        return ""
-    try:
-        return json.dumps(
-            {k: v for k, v in event.items() if k.startswith("tool")},
-            ensure_ascii=False,
-        )
-    except (TypeError, ValueError):
-        return ""
-
-
-def _declared_targets(goal: ActiveGoal) -> list[str]:
-    try:
-        spec = goal.goal_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeError):
-        return []
-    found = sections(spec)
-    body = "\n".join(
-        found.get(name, "") for name in ("roles", "verification", "reviewer", "critic")
-    )
-    return [t.lower() for t in TARGET_FIELD.findall(body)]
+    tool = event.get("tool_name")
+    data = event.get("tool_input")
+    if not isinstance(data, dict):
+        return None
+    target = None
+    if tool == "agent-delegate":
+        target = data.get("to") or data.get("target")
+    if target is None:
+        if tool not in {"agent-delegate", "Bash", "bash", "Shell", "shell",
+                        "exec_command", "run_shell_command", "execute_command"}:
+            return None
+        command = data.get("command") or data.get("cmd")
+        if not isinstance(command, str) or "\n" in command or "\r" in command:
+            return None
+        try:
+            lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>()")
+            lexer.whitespace_split = True
+            tokens = list(lexer)
+        except ValueError:
+            return None
+        if len(tokens) < 4 or Path(tokens[0]).name != "agent-delegate" or tokens[1] != "run":
+            return None
+        if any(token and all(c in ";&|<>()" for c in token) for token in tokens):
+            return None
+        for index, token in enumerate(tokens[2:], 2):
+            if token == "--to" and index + 1 < len(tokens):
+                target = tokens[index + 1]
+                break
+            if token.startswith("--to="):
+                target = token[5:]
+                break
+    if isinstance(target, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", target):
+        return target.lower()
+    return None
 
 
 def handle(
     event: dict[str, Any], goal: ActiveGoal, host: str | None
 ) -> dict[str, Any] | None:
-    invocation = _invocation(event)
-    if not invocation:
-        return None
-    lowered = invocation.lower()
-    named = [t for t in _declared_targets(goal) if t and t in lowered]
-    if DELEGATION_TOOL not in lowered and not named:
+    role = delegation_target(event)
+    if role is None:
         return None
 
     append_event(
@@ -91,7 +89,7 @@ def handle(
         {
             "ts": datetime.now(timezone.utc).isoformat(),
             "event": "role_unavailable",
-            "role": named[0] if named else "unnamed",
+            "role": role,
             "tool": str(event.get("tool_name") or "unknown"),
             "detail": str(event.get("tool_response") or "")[:200],
         },
@@ -99,7 +97,7 @@ def handle(
     return {
         "systemMessage": (
             f"[ultra-goal] {goal.slug}: a call naming "
-            f"{named[0] if named else 'a delegation target'} failed, and it is recorded. "
+            f"{role} failed, and it is recorded. "
             "Fall back as `## Roles` declares, and say in your report that the round ran "
             "degraded - a review that could not happen is a missing review, not a pass."
         )

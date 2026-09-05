@@ -9,15 +9,15 @@ turn ended and nothing about a worker. Round 4's probe recorded a role
 failure, ended an ordinary turn with nothing recovered, claimed again, and
 the anchor ran. Recovery is a positive observation now: this hook fires on
 the success side, uses the *same* detection as the failure hook (a call
-whose text names `agent-delegate` or a target the artifact declares), and
+identified as a direct `agent-delegate run --to` invocation), and
 writes `role_recovered` only when an unrecovered failure for that same
 role and tool exists. The Stop gate matches the pair.
 
 The cost story is why this was once "deliberately not registered": success
-events fire once per tool call. The detection runs on the invocation text
+events fire once per tool call. The detection runs on the structured invocation
 before anything else, so an ordinary Edit or Bash call stops here - no
-event log is read, nothing is written. Only a call that itself names a
-delegation target pays for the log read, and it pays once.
+event log is read, nothing is written. Only a recognized direct
+delegation call pays for the log read, and it pays once.
 
 It cannot block and would not want to: a recovered worker is a fact, not a
 verdict. Whether the recovery was adequate is `## Roles`'s fallback rules
@@ -39,45 +39,26 @@ from goal_hooks import (  # noqa: E402
     run_hook,
 )
 from goal_tool_failure import (  # noqa: E402
-    DELEGATION_TOOL,
-    _declared_targets,
-    _invocation,
+    delegation_target,
 )
 
 
 def handle(
     event: dict[str, Any], goal: ActiveGoal, host: str | None
 ) -> dict[str, Any] | None:
-    invocation = _invocation(event)
-    if not invocation:
+    role = delegation_target(event)
+    if role is None:
         return None
-    lowered = invocation.lower()
-    named = [t for t in _declared_targets(goal) if t and t in lowered]
-    if DELEGATION_TOOL not in lowered and not named:
-        # An ordinary successful call: not a delegation, so not this
-        # hook's fact to record. This early return is the whole cost
-        # story - it is where almost every tool call stops.
-        return None
-    role = named[0] if named else "unnamed"
     tool = str(event.get("tool_name") or "unknown")
 
     # The pair (role, tool) is what the Stop gate matches a failure against,
     # so it is what cancels one here: one observed success for the pair
     # recovers every failure of that pair.
     events = read_events(goal)
-    failed = any(
-        e.get("event") == "role_unavailable"
-        and e.get("role") == role
-        and e.get("tool") == tool
-        for e in events
-    )
-    already = any(
-        e.get("event") == "role_recovered"
-        and e.get("role") == role
-        and e.get("tool") == tool
-        for e in events
-    )
-    if not failed or already:
+    last = next((e for e in reversed(events)
+                 if e.get("event") in {"role_unavailable", "role_recovered"}
+                 and e.get("role") == role and e.get("tool") == tool), None)
+    if last is None or last["event"] != "role_unavailable":
         return None
 
     append_event(
@@ -92,7 +73,7 @@ def handle(
     return {
         "systemMessage": (
             f"[ultra-goal] {goal.slug}: a call naming {role} succeeded, so its "
-            "earlier failure is no longer grounds to refuse a completion claim."
+            "earlier call failure has recovered. Completion still requires current acceptance evidence."
         )
     }
 

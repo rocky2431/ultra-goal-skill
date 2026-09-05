@@ -42,7 +42,7 @@ import sys
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from goal_hooks import ActiveGoal, append_event, read_events, run_hook  # noqa: E402
+from goal_hooks import ActiveGoal, append_event, completion_attempts, read_events, run_hook  # noqa: E402
 
 
 LINE = (
@@ -59,8 +59,7 @@ _ENDINGS = {
         "claimed met"
     ),
     "candidate_refused": (
-        "a completion claim was refused - a delegated role had failed this "
-        "turn; retry it or its fallback, then claim again"
+        "a completion claim was refused; read the latest refusal reason in the event log"
     ),
     "continuation_budget_spent": (
         "the gate's own bound of consecutive denied attempts was spent - the "
@@ -84,13 +83,23 @@ def _last_decision(goal: ActiveGoal) -> str | None:
     The prompt marker this hook just wrote is skipped by construction: the
     walk looks for decisions, and `prompt_submitted` is not one.
     """
-    for entry in reversed(read_events(goal)):
+    events = read_events(goal)
+    attempts = completion_attempts(events)
+    unfinished = [e for e in attempts if e.get("event") == "verification_started"]
+    latest = unfinished[-1] if unfinished else attempts[-1] if attempts else None
+    if latest and latest.get("event") in {"verification_started", "verification_interrupted"}:
+        return (f"Last verification: attempt {latest.get('turn')} has no recorded outcome "
+                "or was interrupted; the goal is unverified. Reconcile actual state before "
+                "a new attempt. Earlier green is historical, not this attempt's result.")
+    for entry in reversed(events):
         kind = entry.get("event")
         if kind == "anchor_checked":
             if entry.get("blocked"):
                 state = "refused to let the turn end"
             elif entry.get("outcome") == "green":
-                state = "anchor green, claim measured, turn ended"
+                state = ("accepted verification contract passed, turn ended"
+                         if entry.get("verification_passed") else
+                         "anchor green; full verification not established, turn ended")
             else:
                 state = "anchor unknown, turn ended"
             return (
@@ -100,6 +109,8 @@ def _last_decision(goal: ActiveGoal) -> str | None:
             )
         ending = _ENDINGS.get(str(kind))
         if ending is not None:
+            if kind == "candidate_refused":
+                ending += ": " + str(entry.get("reason") or "reason not recorded")[:200]
             return f"Last gate decision: turn {entry.get('turn')}, {ending}."
     return None
 

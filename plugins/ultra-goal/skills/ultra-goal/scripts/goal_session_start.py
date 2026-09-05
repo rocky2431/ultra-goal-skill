@@ -15,7 +15,7 @@ import sys
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from goal_hooks import ActiveGoal, read_events, run_hook, sections  # noqa: E402
+from goal_hooks import ActiveGoal, completion_attempts, read_events, run_hook, sections  # noqa: E402
 
 
 # Every source the hooks reference documents. `fork` was missing, so a forked
@@ -84,8 +84,9 @@ def handle(
 
     spec = goal.goal_path.read_text(encoding="utf-8")
     found = sections(spec)
-    checks = [e for e in read_events(goal) if e.get("event") == "anchor_checked"]
-    last = checks[-1] if checks else None
+    attempts = completion_attempts(read_events(goal))
+    unfinished = [e for e in attempts if e.get("event") == "verification_started"]
+    last = unfinished[-1] if unfinished else attempts[-1] if attempts else None
     # The anchor runs at completion candidates now, so the count this names
     # is attempts, not host turns - a run may end many turns between them.
 
@@ -94,25 +95,36 @@ def handle(
         "",
         f"Its artifact is `{goal.goal_path.name}` and it is the authority on what to do.",
         "The spec sections are frozen for the duration of the run: if the intent, the",
-        "anchor, or the boundary turns out to be wrong, stop and report it rather than",
-        "editing them yourself.",
+        "anchor, boundary, acceptance, verification or success/exit conditions are wrong,",
+        "stop and report rather than changing them. Read the complete contract before acting.",
         "",
         "You are the run, not its designer. Do not reopen the design as an interview.",
         "",
     ]
-    if last is not None:
+    if last is not None and last.get("event") in {"verification_started", "verification_interrupted"}:
+        lines += [
+            f"Latest verification: attempt {last.get('turn')} has no recorded result "
+            "or was interrupted; completion is unverified. Earlier green is historical.",
+            "Read the event log and actual state before retrying. Do not repeat an "
+            "external action whose effect is unknown without first checking its result.",
+            "",
+        ]
+    elif last is not None and last.get("event") == "anchor_checked":
         lines += [
             f"Last completion check: attempt {last.get('turn')}, outcome "
             f"{last.get('outcome')}, exit {last.get('exit_code')}.",
             "",
         ]
+    elif last is not None:
+        lines += [f"Latest completion attempt {last.get('turn')}: {last.get('event')}; "
+                  "read its reason in the event log before acting.", ""]
     if event.get("source") == "compact":
         # A compacted model does not know it lost anything - it reads its own
         # summary as memory. PreCompact already recorded that a compaction
         # happened; this is the first time that fact reaches the model.
         lines += [
-            "**This session was just compacted.** Your intermediate reasoning is gone,",
-            "and what remains is a summary of it. Do not trust a recollection of having",
+            "**This session was just compacted.** Some context may have been summarized",
+            "or dropped. Do not trust a recollection of having",
             "tried something: if it is not in `### Lessons`, in the event log, or in a",
             "commit, treat it as unknown and check.",
             "",

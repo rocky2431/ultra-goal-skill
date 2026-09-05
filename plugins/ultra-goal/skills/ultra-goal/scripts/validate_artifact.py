@@ -24,7 +24,10 @@ from goal_hooks import (  # noqa: E402
     ANCHOR_BUDGET_CEILING,
     frozen_digest,
     sections,
+    bullet_blocks,
+    completion_attempts,
 )
+from goal_contract import read_review_archive, verification  # noqa: E402
 
 
 # The fallback list, used only when `agent-delegate list --json` cannot answer.
@@ -98,32 +101,8 @@ BUDGET_UNITS = {"second": 1, "minute": 60, "hour": 3600}
 BULLET_LINE = re.compile(r"(?m)^\s*[-*]\s+(.*\S)\s*$")
 
 
-def bullet_blocks(text: str) -> list[str]:
-    """Each bullet with its continuation lines folded in.
-
-    A markdown bullet is not one line. Checking only the first line reported
-    four correctly-written roles as missing their `fallback:` because the word
-    had wrapped - the check was wrong, not the document. Means labels had the
-    same latent defect and use this too.
-    """
-    blocks: list[str] = []
-    current: list[str] = []
-    for line in text.splitlines():
-        if BULLET_LINE.match(line):
-            if current:
-                blocks.append(" ".join(current))
-            current = [line.strip().lstrip("-*").strip()]
-        elif current:
-            if line.strip():
-                current.append(line.strip())
-            else:
-                blocks.append(" ".join(current))
-                current = []
-    if current:
-        blocks.append(" ".join(current))
-    return blocks
-# `## Cadence` and `## Carry-over` are conditional: an unattended run needs both,
-# a one-shot goal needs neither.
+# Cadence is optional scheduling. Every compiled goal needs recovery state,
+# including a single native run that compacts or is interrupted.
 # `inputs` is what keeps the review independent. Different vendors buy different
 # blind spots; only stating what a role is given keeps the main agent's own
 # argument for its work out of the reviewer's context.
@@ -145,9 +124,8 @@ INLINE = re.compile(r"`([^`\n]+)`")
 ANCHOR_COMMENT = re.compile(r"(?m)^\s*//\s*anchor:\s*(.+?)\s*$")
 ANCHOR_TIMEOUT_SECONDS = 300
 BULLET = re.compile(r"(?m)^\s*[-*]\s+\S")
-# Reflexion (arXiv 2303.11366) bounds its reflection memory at 1-3 entries, because
-# entries the model must actually reason over compete for the same budget as the work.
-# That citation is why exceeding LESSONS_MAX is an error.
+# Compact defaults are advisory: an experimental reflection-memory capacity
+# does not establish a universal limit on necessary recovery information.
 LESSONS_MAX = 3
 # STATE_MAX has no such basis: it is a number this Skill picked. State entries are
 # facts rather than reasoning, so they are cheaper to carry, and how many is too
@@ -221,24 +199,6 @@ def slug_of(path: Path) -> str:
         if path.name.endswith(suffix):
             return path.name[: -len(suffix)]
     return path.stem
-
-
-def sections(text: str) -> dict[str, str]:
-    """Map lowercased '## ' headings to their body text."""
-    found: dict[str, str] = {}
-    current: str | None = None
-    body: list[str] = []
-    for line in text.splitlines():
-        if line.startswith("## "):
-            if current is not None:
-                found[current] = "\n".join(body)
-            current = line[3:].strip().lower()
-            body = []
-        elif current is not None:
-            body.append(line)
-    if current is not None:
-        found[current] = "\n".join(body)
-    return found
 
 
 def meta_block(text: str) -> tuple[str, int] | None:
@@ -515,6 +475,10 @@ INJECTION_TARGET = 12000
 
 def check_goal(path: Path, text: str, out: list[Finding]) -> None:
     found = sections(text)
+    try:
+        verification(text)
+    except ValueError as exc:
+        out.append(Finding(str(path), "VERIFICATION_CONTRACT_INVALID", str(exc)))
     for name, code, message in GOAL_SECTIONS:
         if name not in found:
             out.append(Finding(str(path), code, f"`## {name.title()}` missing: {message}"))
@@ -567,31 +531,10 @@ def check_goal(path: Path, text: str, out: list[Finding]) -> None:
                 "stop condition names no command and no number",
             )
         )
-    # A reviewer nobody audits is the shape the source study found unreliable:
-    # agents optimize for agreement rather than correctness unless something
-    # audits the review itself.
-    verification = found.get("verification")
-    if verification is not None:
-        lowered = verification.lower()
-        if not ("reviewer" in lowered and "critic" in lowered):
-            out.append(
-                Finding(
-                    str(path),
-                    "REVIEW_NOT_ADVERSARIAL",
-                    "verification must name both a reviewer (reviews the artifact) and a "
-                    "critic (reviews the review); a reviewer nobody audits converges on "
-                    "agreement rather than correctness",
-                )
-            )
-        if not ROUND_CAP.search(verification):
-            out.append(
-                Finding(
-                    str(path),
-                    "CONVERGENCE_NOT_BOUNDED",
-                    "verification must cap the reviewer/critic exchange, e.g. "
-                    "`at most 5 inner rounds`",
-                )
-            )
+    # Verification prose describes the agreed method. It need not be a review
+    # loop or name fixed roles. The optional delegation triad has its own
+    # structural validator; keyword matching here would force that example on
+    # every goal, including a single independent review or an ordinary check.
 
     # Every role names what happens when it cannot run. An agent that is out of
     # quota should degrade the round, not end it - and which fallback to use is
@@ -661,36 +604,18 @@ def check_goal(path: Path, text: str, out: list[Finding]) -> None:
                 )
             )
 
-    # An unattended run wakes with an empty context every iteration. Without a
-    # carry-over section it rebuilds history from scratch and retries paths it has
-    # already proven dead.
-    # A cadence means this goal gets started more than once, so something has to
-    # survive between runs - and inside one long run, across compaction. Its
-    # wording is not pattern-matched: the section's presence is the fact.
+    # Recovery is independent of scheduling: a single start can still compact.
     cadence = found.get("cadence")
     carry_over = found.get("carry-over")
-    if cadence is not None:
-        if carry_over is None:
-            out.append(
-                Finding(
-                    str(path),
-                    "CARRYOVER_MISSING",
-                    "an unattended run needs a `## Carry-over` section: what the next "
-                    "iteration must read before acting",
-                )
-            )
-        elif not (
-            "read" in carry_over.lower()
-            and ("rewrite" in carry_over.lower() or "update" in carry_over.lower())
-        ):
-            out.append(
-                Finding(
-                    str(path),
-                    "CARRYOVER_NOT_WIRED",
-                    "carry-over must tell the run to read it before acting and rewrite "
-                    "it before finishing, or it stays empty forever",
-                )
-            )
+    if not carry_over:
+        out.append(Finding(str(path), "CARRYOVER_MISSING",
+                           "every goal needs a `## Carry-over` section, including a single "
+                           "start: compaction or interruption still needs recovery state"))
+    elif not ("read" in carry_over.lower()
+              and ("rewrite" in carry_over.lower() or "update" in carry_over.lower())):
+        out.append(Finding(str(path), "CARRYOVER_NOT_WIRED",
+                           "carry-over must tell the run to read it before acting and rewrite "
+                           "it before finishing, or it stays empty forever"))
     # A goal that spans sessions needs its stop condition enumerable. One
     # sentence plus one anchor answers "is the whole thing done"; it cannot
     # answer "which parts are", which is the granularity at which a long run
@@ -794,8 +719,8 @@ def check_goal(path: Path, text: str, out: list[Finding]) -> None:
                     f"missing: {', '.join(missing)}",
                 )
             )
-        # One entry, not a list. A list of next objectives is a plan, and a goal
-        # that has grown a plan is a graph that should have been authored as one.
+        # Keep one immediate recovery action here. Longer plans may live in
+        # other files; this check does not choose the model's planning method.
         nxt = parts.get("next")
         if nxt is not None:
             entries = len(BULLET.findall(nxt))
@@ -806,13 +731,13 @@ def check_goal(path: Path, text: str, out: list[Finding]) -> None:
                         "NEXT_NOT_SINGLE",
                         f"`### Next` holds {entries} entries: it takes exactly one "
                         "objective, derived from this round's verdict and inside the "
-                        "frozen intent. A list of them is a plan, and a goal with a "
-                        "plan is a graph that should have been authored as one",
+                        "frozen intent. Link a longer plan separately; Next is the "
+                        "immediate recovery action",
                     )
                 )
         for name, cap, code, severity in (
             ("state", STATE_MAX, "STATE_UNPRUNED", "advisory"),
-            ("lessons", LESSONS_MAX, "LESSONS_UNPRUNED", "error"),
+            ("lessons", LESSONS_MAX, "LESSONS_UNPRUNED", "advisory"),
         ):
             body = parts.get(name)
             if body is None:
@@ -823,8 +748,8 @@ def check_goal(path: Path, text: str, out: list[Finding]) -> None:
                     Finding(
                         str(path),
                         code,
-                        f"{count} {name} entries exceeds {cap}: prune what is no longer "
-                        "true instead of appending - Git holds the history",
+                        f"{count} {name} entries exceeds the compact default of {cap}: "
+                        "keep necessary facts and evidence references; prune obsolete or duplicate detail",
                         severity,
                     )
                 )
@@ -952,6 +877,18 @@ def validate_file(path: Path, kind: str) -> list[Finding]:
         check_decisions(path, text, out)
         return out
     check_pairing(path, out)
+    if kind in {"workflow", "delegation"}:
+        contract = path.with_name(f"{slug_of(path)}.goal.md")
+        if not contract.is_file():
+            out.append(Finding(str(path), "GOAL_CONTRACT_MISSING",
+                               "Execution attachments require the same-slug .goal.md contract; they cannot replace it."))
+        else:
+            check_goal(contract, contract.read_text(encoding="utf-8"), out)
+        reference = (re.search(r"(?m)^// goal:\s*`([^`]+)`\s*$", text) if kind == "workflow"
+                     else re.search(r"(?m)^goal:\s*`([^`]+)`\s*$", text))
+        if reference is None or reference.group(1) != contract.name:
+            out.append(Finding(str(path), "GOAL_CONTRACT_REFERENCE",
+                               f"Name the shared contract with {'// ' if kind == 'workflow' else ''}goal: `{contract.name}`."))
     CHECKS[kind](path, text, out)
     return out
 
@@ -1130,9 +1067,37 @@ def last_anchor_check(artifact: Path) -> dict[str, object] | None:
     return {
         "turn": newest.get("turn"),
         "outcome": newest.get("outcome"),
+        "verification_passed": newest.get("verification_passed", False),
+        "review_evidence": newest.get("review_evidence"),
         "exit_code": newest.get("exit_code"),
         "at": newest.get("ts"),
     }
+
+
+def last_verification(artifact: Path) -> dict[str, object]:
+    """Latest completion decision, separate from an older green anchor."""
+    unfinished = [e for e in completion_attempts(read_log(artifact))
+                  if e.get("event") == "verification_started"]
+    if unfinished:
+        latest = unfinished[-1]
+        return {"status": "unknown", "attempt": latest.get("turn"), "at": latest.get("ts"),
+                "verification_id": latest.get("verification_id"), "fresh_check": False,
+                "reason": "Verification started without a recorded outcome; it may still be running or interrupted. Reconcile actual state before retrying."}
+    if artifact.with_name(f"{slug_of(artifact)}.candidate").is_file():
+        return {"status": "pending", "fresh_check": False}
+    statuses = {"candidate_refused": "refused", "ceiling_reached": "budget_exhausted",
+                "frozen_spec_changed": "contract_changed", "anchor_unavailable": "unknown",
+                "verification_interrupted": "interrupted"}
+    for event in reversed(read_log(artifact)):
+        kind = event.get("event")
+        if kind == "anchor_checked":
+            status = "passed" if event.get("verification_passed") else "unverified"
+        else:
+            status = statuses.get(kind)
+        if status:
+            return {"status": status, "attempt": event.get("turn"), "at": event.get("ts"),
+                    "fresh_check": False, "reason": event.get("reason")}
+    return {"status": "unverified", "fresh_check": False}
 
 
 def describe(path: Path, kind: str) -> dict[str, object]:
@@ -1156,6 +1121,7 @@ def describe(path: Path, kind: str) -> dict[str, object]:
     item["next"] = None
     item["start_command"] = None
     item["last_check"] = last_anchor_check(path)
+    item["last_verification"] = last_verification(path)
     if kind == "goal":
         found = sections(text)
         item["anchor"] = first_command(found.get("anchor", ""))
@@ -1195,6 +1161,15 @@ def describe(path: Path, kind: str) -> dict[str, object]:
             if match:
                 roles.append(match.group(1).strip("`").lower())
         item["workers"] = roles
+    if kind in {"workflow", "delegation"}:
+        contract = path.with_name(f"{slug_of(path)}.goal.md")
+        item["goal_contract"] = str(contract)
+        if contract.is_file():
+            shared = describe(contract, "goal")
+            for key in ("anchor", "stop_condition", "cadence", "carry_over", "next", "start_command"):
+                item[key] = shared[key]
+        else:
+            item["anchor"] = None
     return item
 
 
@@ -1207,7 +1182,7 @@ def run_anchor(item: dict[str, object]) -> dict[str, object] | None:
         completed = subprocess.run(
             str(command),
             shell=True,
-            cwd=Path(str(item["path"])).parent,
+            cwd=Path(str(item["path"])).parent.parent,
             capture_output=True,
             text=True,
             timeout=ANCHOR_TIMEOUT_SECONDS,
@@ -1327,6 +1302,24 @@ def audit_artifact(path: Path) -> tuple[dict[str, object], list[Finding]]:
     events = read_log(path)
     checks = [e for e in events if e.get("event") == "anchor_checked"]
     measured = {e.get("turn"): e for e in checks}
+    archive_audits = []
+    for check in checks:
+        evidence = check.get("review_evidence")
+        if not isinstance(evidence, dict):
+            continue
+        archive_audit = {"attempt": check.get("turn"), "status": "not_archived"}
+        if evidence.get("archive"):
+            try:
+                retained = read_review_archive(path.parent.parent, evidence)
+                archive_audit.update(status="verified", path=retained["path"], sha256=retained["sha256"])
+            except (OSError, ValueError) as exc:
+                archive_audit.update(status="unavailable", reason=str(exc))
+                out.append(Finding(str(path), "REVIEW_ARCHIVE_UNAVAILABLE", str(exc)))
+        else:
+            out.append(Finding(str(path), "REVIEW_NOT_ARCHIVED",
+                               "Historical review has no retained input/receipt archive; inspect its original sources before relying on it.",
+                               "advisory"))
+        archive_audits.append(archive_audit)
     claims = git_claims(path)
 
     if claims is None:
@@ -1542,6 +1535,8 @@ def audit_artifact(path: Path) -> tuple[dict[str, object], list[Finding]]:
         "rows": rows,
         "spec_digest_armed": baseline,
         "spec_digest_now": now,
+        "last_verification": last_verification(path),
+        "review_archives": archive_audits,
     }, out
 
 

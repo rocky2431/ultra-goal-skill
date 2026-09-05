@@ -10,13 +10,13 @@ agent: general-purpose
 allowed-tools: Bash, Read, Grep, Glob
 ---
 
-Attack the specification for goal `$1`. **You review the spec, not any code** - none exists
+Attack the specification for goal `$ARGUMENTS`. **You review the spec, not any code** - none exists
 yet, and that is the point: design-time specification is the higher-leverage intervention,
 and this is the only pass that happens before work begins.
 
 ```bash
-cat .goals/$1.goal.md
-cat .goals/$1.decisions.md
+cat .goals/$ARGUMENTS.goal.md
+cat .goals/$ARGUMENTS.decisions.md
 ```
 
 This context never saw the interview that produced these, so you cannot be persuaded by how
@@ -26,9 +26,16 @@ they were arrived at. Do not go looking for that conversation.
 
 1. **Does the anchor prove the intent?** The sharpest question here. Write down what would
    be true if the anchor went green *and the intent were still unmet* - if you can describe
-   such a world concretely, the anchor is measuring the wrong thing.
+   such a world concretely, the anchor is measuring the wrong thing. Also try the
+   reverse: a result that satisfies the owner but fails the proposed checks. That
+   catches a preferred implementation disguised as an acceptance requirement.
 2. **Is the intent narrower or wider than what the owner asked for?** Compare it against
-   what `decisions.md`'s Rejected column shows was on the table.
+   the original owner request preserved verbatim in `## Intent` or supplied by the
+   caller, as well as the decisions record. For each acceptance ID, identify the
+   owner requirement it serves and which source/example would settle it.
+   If the original request is absent, say intent alignment is unverified; the author's
+   summary and Rejected column cannot independently establish it. Do not invent additional
+   acceptance standards such as repeatability for a one-off result.
 3. **Which `[load-bearing]` means is really droppable, and which `[droppable]` one is
    load-bearing?** A mislabelled means is either a run that stops for nothing or a run that
    quietly abandons the point.
