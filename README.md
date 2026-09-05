@@ -90,6 +90,46 @@ SessionStart and PreCompact hooks**. It does not install the complete native
 command/role package or the other hosts' hook profiles. Its doctor checks its own
 files and registrations, not unattended behavior.
 
+### Short names: UG and ultragoal
+
+Keep the product name **UltraGoal**; use `UG` / `ug` as the short entry and
+`ultragoal` as the entry without a hyphen. From a local checkout, add native
+user shortcuts for the host you use:
+
+```bash
+python3 scripts/install_shortcuts.py --host claude
+python3 scripts/install_shortcuts.py --host codex
+```
+
+`--host kimi` and `--host zcode` are also available. Reload skills or start a new
+host session after adding them. The spelling follows each host's native interface:
+
+| Host | Short entry | Full entry |
+|---|---|---|
+| Claude Code | `/UG` | `/ultragoal` |
+| Codex | `$ug` | `$ultragoal` |
+| Kimi Code | `/skill:ug` | `/skill:ultragoal` |
+| zCode | Select `ug` in its Skill picker | Select `ultragoal` in its Skill picker |
+
+These are tiny pointers to the original `SKILL.md`, so interviews, authority and
+completion checks use the same instructions. The installer prints the created
+paths, accepts an existing identical shortcut, and refuses conflicting files.
+It adds no hooks or runtime and does not change the `ultra-goal` package identity,
+old commands or goal files. Install the native plugin above for its hook/role support.
+
+The pointers default to this checkout, which must stay on disk. Use
+`--skill /path/to/ultra-goal/SKILL.md` to point at another installed copy instead.
+To remove a shortcut, delete its printed file; to change its source, remove it
+and rerun the command. Kimi uses `~/.kimi-code/skills`; for a custom
+`KIMI_CODE_HOME`, put the printed Skill folders under that root's `skills/`.
+
+Claude's bare `/UG` requires this standalone shortcut: plugin commands are
+[namespaced](https://code.claude.com/docs/en/plugins).
+[Codex uses explicit `$skill` invocation](https://learn.chatgpt.com/docs/build-skills),
+and [Kimi uses `/skill:name`](https://moonshotai.github.io/kimi-code/en/customization/skills.html).
+Do not assume bare `/UG` works in every host; zCode discovery still needs checking
+in the installed build.
+
 ### First goal
 
 In the **business project's directory**, ask the host to use UltraGoal:

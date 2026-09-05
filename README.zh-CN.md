@@ -66,6 +66,35 @@ python3 scripts/install_user.py doctor --json
 
 这条路径复制主 Skill，**只配置 Claude 的 Stop、SessionStart 和 PreCompact Hook**。它不安装完整的原生命令及角色包，也不配置其他宿主的 Hook。这里的 doctor 检查自身文件与注册，不能证明无人值守运行。
 
+### 短入口：UG 与 ultragoal
+
+产品名称仍为 **UltraGoal**；短入口用 `UG` / `ug`，不带连字符的长入口用 `ultragoal`。
+在本地仓库中，为需要的宿主添加原生用户快捷入口：
+
+```bash
+python3 scripts/install_shortcuts.py --host claude
+python3 scripts/install_shortcuts.py --host codex
+```
+
+还支持 `--host kimi` 和 `--host zcode`。添加后重新加载 Skill 或开启新会话，具体写法遵循宿主的原生接口：
+
+| 宿主 | 短入口 | 长入口 |
+|---|---|---|
+| Claude Code | `/UG` | `/ultragoal` |
+| Codex | `$ug` | `$ultragoal` |
+| Kimi Code | `/skill:ug` | `/skill:ultragoal` |
+| zCode | 在 Skill 选择器中选 `ug` | 在 Skill 选择器中选 `ultragoal` |
+
+快捷入口只指向原来的 `SKILL.md`，面谈、授权和完成判定仍使用同一份指令。安装器打印生成路径，允许重复安装内容相同的入口，拒绝覆盖冲突文件。
+它不添加 Hook 或 Runtime，也不修改 `ultra-goal` 包标识、旧命令及目标文件。Hook 和评审角色由上面的原生插件提供。
+
+默认指向当前仓库，因此仓库需要保留在磁盘上。可以用 `--skill /path/to/ultra-goal/SKILL.md` 指向另一份已安装的主 Skill。
+删除时移除打印出的快捷文件即可；更换来源时先移除，再重新执行命令。Kimi 默认写入 `~/.kimi-code/skills`；使用自定义 `KIMI_CODE_HOME` 时，将打印出的 Skill 文件夹放入该根目录的 `skills/`。
+
+Claude 的裸 `/UG` 需要这份独立快捷入口，因为[插件命令带命名空间](https://code.claude.com/docs/en/plugins)。
+[Codex 的显式调用使用 `$skill`](https://learn.chatgpt.com/docs/build-skills)，[Kimi 使用 `/skill:name`](https://moonshotai.github.io/kimi-code/en/customization/skills.html)。
+不要假定四家都支持裸 `/UG`；zCode 的实际发现情况仍需在安装版本中检查。
+
 ### 第一个目标
 
 在**业务项目目录**中，请宿主使用 UltraGoal：

@@ -1617,9 +1617,8 @@ class ApertureTests(unittest.TestCase):
     The three roles are internal to the graph: a user invoking `/critic` by hand
     gets a fork with no frozen diff to audit. The reference documents
     `user-invocable: false` for exactly this - "background knowledge users
-    shouldn't invoke directly" - and hiding them also drops the bare aliases
-    (`/review`, `/critic`), which a user-scope install would otherwise squat in
-    every project on the machine.
+    shouldn't invoke directly". Plugin roles are namespaced; bare names require
+    standalone user or project entries, such as the optional main-skill shortcut.
     """
 
     INTERNAL_ROLES = ("review", "critic", "design-critic")
@@ -1658,8 +1657,7 @@ class ApertureTests(unittest.TestCase):
             claimed[command.stem] = f"commands/{command.name}"
 
     def test_the_arming_command_is_brand_prefixed(self) -> None:
-        """The bare alias lands in the user's global menu, so it cannot be a
-        generic word like `run`."""
+        """Keep the existing run entry distinct from standalone owner shortcuts."""
         commands = sorted(p.stem for p in (PLUGIN_ROOT / "commands").glob("*.md"))
         self.assertEqual(["goal-run"], commands)
 

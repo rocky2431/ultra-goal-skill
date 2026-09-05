@@ -69,9 +69,9 @@ The three role skills also carry `user-invocable: false`, which the skills refer
 defines as "Claude Code hides it from the `/` menu and doesn't run it when you type
 `/name`". That is not tidiness. A role invoked by hand forks with no frozen diff to audit
 and no round to attach its file to, so the one aperture a user should see is the goal
-skill itself - everything else is the graph calling its own nodes. Hiding them also drops
-the bare aliases the reference grants every plugin skill (`/review`, `/critic`), which a
-user-scope install would otherwise squat in every project on the machine.
+skill itself - everything else is the graph calling its own nodes. Plugin skills are
+namespaced (`/ultra-goal:review`, `/ultra-goal:critic`); bare names require standalone
+user or project entries. The optional `UG` shortcut points only to the main skill.
 
 Read the reference before choosing a mechanism. This one was reconstructed from installed
 plugins for several versions while the field that does the job was documented all along.
