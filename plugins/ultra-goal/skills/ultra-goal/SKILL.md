@@ -5,7 +5,7 @@ when_to_use: "When the owner wants work to keep running without them - \"make an
 license: MIT
 metadata:
   author: rocky2431
-  version: "2.15.3"
+  version: "2.15.4"
 ---
 
 # UltraGoal
@@ -250,6 +250,7 @@ python3 <skill-dir>/scripts/validate_artifact.py .goals --audit
 ```
 
 Status is recomputed on every call; **nothing is stored by the status command**.
+It flags a missing or invalid active session binding and names the recovery command.
 It reports artifacts, contract findings and recorded observations, not fresh proof
 that current outputs pass. Audit reads Git history and the event log; it runs nothing.
 Read evidence when a record is pending, interrupted or older than the current result.

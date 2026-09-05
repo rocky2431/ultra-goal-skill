@@ -22,6 +22,7 @@ import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from goal_hooks import (  # noqa: E402
     ANCHOR_BUDGET_CEILING,
+    active_goal,
     frozen_digest,
     sections,
     bullet_blocks,
@@ -1212,6 +1213,7 @@ def status_paths(paths: list[str], run_anchors: bool = False) -> dict[str, objec
     report = validate_paths(paths)
     items: list[dict[str, object]] = []
     seen: set[Path] = set()
+    warned_bindings: set[Path] = set()
     for raw in paths:
         path = Path(raw).expanduser()
         candidates = (
@@ -1228,6 +1230,23 @@ def status_paths(paths: list[str], run_anchors: bool = False) -> dict[str, objec
                 continue
             seen.add(resolved)
             item = describe(candidate, kind)
+            goal = active_goal(candidate.parent.parent)
+            contract = candidate.with_name(f"{item['slug']}.goal.md")
+            if (
+                goal is not None
+                and goal.goal_path.resolve() == contract.resolve()
+                and goal.owner_session is None
+                and goal.marker_path.resolve() not in warned_bindings
+            ):
+                warned_bindings.add(goal.marker_path.resolve())
+                report.findings.append(Finding(
+                    str(goal.marker_path), "SESSION_BINDING_INVALID",
+                    f"{goal.slug}: the active marker has no valid session binding; "
+                    "hooks are inactive. Use "
+                    f"goal_run.py rebind {goal.slug} --session-id <current-native-session-id> "
+                    "for authorized recovery.",
+                    severity="advisory",
+                ))
             if run_anchors:
                 item["anchor_result"] = run_anchor(item)
             items.append(item)

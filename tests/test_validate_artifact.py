@@ -1230,6 +1230,78 @@ class StatusTests(Harness):
         self.assertIn("loop", result.stdout)
         self.assertIn("c", result.stdout)
 
+    def test_status_reports_inactive_binding_without_changing_run_files(self) -> None:
+        self.dir = self.dir / ".goals"
+        self.dir.mkdir()
+        goal = self.write("c.goal.md", GOOD_GOAL)
+        self.write("c.decisions.md", GOOD_DECISIONS)
+        self.write("another-goal.goal.md", GOOD_GOAL)
+        self.write("another-goal.decisions.md", GOOD_DECISIONS)
+        self.write("c.candidate", "keep this claim\n")
+        self.write("c.events.jsonl", '{"event": "sentinel"}\n')
+        self.write("c.spec.baseline", "keep this baseline\n")
+        marker = self.dir / "active"
+        for contents, expected in (
+            ("c\n", True),
+            ("c\nsession ../invalid\n", True),
+            ("c\nsession native-session-1\n", False),
+            ("another-goal\n", False),
+            (None, False),
+        ):
+            with self.subTest(marker=contents):
+                if contents is None:
+                    marker.unlink()
+                else:
+                    marker.write_text(contents)
+                before = {p.name: p.read_bytes() for p in self.dir.iterdir()}
+                state = va.status_paths([str(goal)])
+                findings = [
+                    f for f in state["findings"]
+                    if f["code"] == "SESSION_BINDING_INVALID"
+                ]
+                self.assertEqual(int(expected), len(findings))
+                self.assertTrue(state["ok"])
+                self.assertIsNone(state["artifacts"][0]["anchor_result"])
+                if expected:
+                    self.assertEqual("advisory", findings[0]["severity"])
+                    self.assertEqual(str(marker), findings[0]["path"])
+                    self.assertIn("hooks are inactive", findings[0]["message"])
+                    self.assertIn("goal_run.py rebind c", findings[0]["message"])
+                self.assertEqual(
+                    before, {p.name: p.read_bytes() for p in self.dir.iterdir()}
+                )
+
+    def test_status_checks_attachment_binding_without_duplicate_findings(self) -> None:
+        self.dir = self.dir / ".goals"
+        self.dir.mkdir()
+        workflow = self.write("c.workflow.js", GOOD_WORKFLOW)
+        delegation = self.write("c.delegation.md", GOOD_DELEGATION)
+        self.write("c.decisions.md", GOOD_DECISIONS)
+        self.write("active", "c\n")
+        for paths in ([workflow], [delegation], [self.dir]):
+            with self.subTest(paths=paths):
+                state = va.status_paths([str(p) for p in paths])
+                self.assertEqual(
+                    1,
+                    sum(f["code"] == "SESSION_BINDING_INVALID" for f in state["findings"]),
+                )
+
+    def test_cli_status_binding_advisory_is_visible_in_text_and_json(self) -> None:
+        self.dir = self.dir / ".goals"
+        self.dir.mkdir()
+        self.write("c.goal.md", GOOD_GOAL)
+        self.write("c.decisions.md", GOOD_DECISIONS)
+        self.write("active", "c\n")
+        for extra in ([], ["--json"]):
+            with self.subTest(extra=extra):
+                result = subprocess.run(
+                    [sys.executable, str(VALIDATOR), str(self.dir), "--status", *extra],
+                    capture_output=True, text=True,
+                )
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertIn("SESSION_BINDING_INVALID", result.stdout)
+                self.assertIn("goal_run.py rebind c", result.stdout)
+
 
 class CarryOverTests(Harness):
     def test_unattended_loop_needs_a_carry_over_section(self) -> None:

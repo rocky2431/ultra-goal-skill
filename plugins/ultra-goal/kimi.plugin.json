@@ -1,6 +1,6 @@
 {
   "name": "ultra-goal",
-  "version": "2.15.3",
+  "version": "2.15.4",
   "description": "Interview an objective into a grounded goal, emit the runnable artifact, and gate the run on its anchor. On Kimi the Stop gate is tagged --host kimi because this host triggers a blocking Stop at most once per turn, and its deny therefore travels as the nested hookSpecificOutput permissionDecision pair - the only Stop output shape Kimi's parser blocks on (it ignores the top-level decision pair that Codex requires; one Stop output cannot be shared across vendors). UserPromptSubmit is the recovery channel: Kimi's reference makes every event but PreToolUse, Stop and UserPromptSubmit observation-only, so SessionStart is not registered here at all - a registration whose return value the host ignores would read as context recovery that cannot happen - and the injection other hosts get on session start arrives instead as one fixed-size line per prompt carrying the artifact pointer and the gate's last decision. PostToolUseFailure and PostToolUse are the delegation-failure and delegation-recovery recorders: a completion claim is refused while a role's failure has no positively observed recovery, never because a turn boundary passed. TurnStarted is the turn boundary: it fires for every new turn whatever its origin (user, task, system_trigger) and carries turn_id, which a user prompt does not prove, so the continuation budget is scoped to the host turn through it. A declared degradation, not parity.",
   "keywords": [
     "kimi-code",

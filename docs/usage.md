@@ -422,7 +422,7 @@ a directory look complete. Commit, install and publish only with authority.
 | Symptom | Check and response |
 |---|---|
 | `active` exists, but nothing is verified | Check hook discovery, actual event `cwd`, marker format and owning session; an ordinary Stop also does not verify |
-| Legacy marker contains only a slug, or its session binding is invalid | Version 2.15.1 emits a Stop `systemMessage` diagnostic; the gate remains inactive and files stay untouched |
+| Legacy marker contains only a slug, or its session binding is invalid | `--status` reports `SESSION_BINDING_INVALID` with recovery guidance; Stop also emits a `systemMessage` diagnostic. The gate remains inactive and files stay untouched |
 | UI hides the allowing diagnostic | Inspect raw hook output/logs; emitting a diagnostic is not proof that every host UI displays it |
 | Ordinary `arm` refuses a legacy marker | Use authorized `rebind` if its original baselines remain valid; otherwise explicitly disarm, validate the agreed goal and arm it |
 | Baselines mismatch or the goal was closed after a spec change | Create a newly authorized goal, preferably a new slug; do not delete history or re-pin changed terms to conceal the change |
@@ -433,7 +433,7 @@ a directory look complete. Commit, install and publish only with authority.
 | Anchor passed, then verification was interrupted | Latest attempt is unverified; older green cannot settle it |
 | Agent stops although the goal is unmet | Check native budgets, attempt ceiling and denial bound; a Stop hook cannot provide later execution |
 
-The unbound-marker diagnostic uses the existing allowing `systemMessage` channel
+The hook's unbound-marker diagnostic uses the existing allowing `systemMessage` channel
 and only runs on Stop. It does not auto-migrate the marker, run the handler,
 consume a candidate, write an event or inject continuation context. Bound foreign
 sessions remain silent. `ULTRA_GOAL_HOOKS_DISABLED=1` disables these hooks in the
@@ -446,6 +446,12 @@ python3 "$ULTRAGOAL_SCRIPTS/validate_artifact.py" "$ULTRAGOAL_PROJECT/.goals" --
 python3 "$ULTRAGOAL_SCRIPTS/validate_artifact.py" "$ULTRAGOAL_PROJECT/.goals" --audit
 python3 "$ULTRAGOAL_SCRIPTS/goal_run.py" diff "$ULTRAGOAL_SLUG" --root "$ULTRAGOAL_PROJECT"
 ```
+
+`--status` reports a missing or invalid session binding on the active goal as an
+advisory in both text and JSON output, including when inspecting its workflow or
+delegation attachment. It does not transfer ownership or change the exit code
+for an otherwise valid artifact. A valid session token alone does not prove that
+the host has loaded or run the hooks.
 
 `--status --run-anchors` is different: it executes artifact-named shell commands
 and requires their effects to be authorized. Audit findings identify divergences;
