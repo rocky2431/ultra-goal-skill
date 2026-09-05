@@ -529,6 +529,7 @@ class LauncherContractTests(Harness):
         log = root / "skills" / "ultra-goal" / "scripts" / "runs.txt"
         return len(log.read_text().splitlines()) if log.is_file() else 0
 
+    @unittest.skipUnless(os.name == "posix", "Exercises the POSIX command field; Windows uses commandWindows")
     def test_the_shipped_stop_command_preserves_exit_2_and_runs_once(self) -> None:
         root = self.stub_root()
         result = self.run_launcher(
@@ -539,6 +540,7 @@ class LauncherContractTests(Harness):
                          "the hook must execute once: a second run sees drained "
                          "stdin and swallows the deliberate exit 2")
 
+    @unittest.skipUnless(os.name == "posix", "Exercises the POSIX command field; Windows uses commandWindows")
     def test_the_codex_and_kimi_stop_commands_preserve_exit_2(self) -> None:
         for relative in ("plugins/ultra-goal/hooks/codex.json",
                          "plugins/ultra-goal/kimi.plugin.json"):
@@ -551,6 +553,7 @@ class LauncherContractTests(Harness):
                 self.assertEqual(2, result.returncode, result.stderr)
                 self.assertEqual(1, self.runs(root) - before)
 
+    @unittest.skipUnless(os.name == "posix", "Exercises the POSIX command field; Windows uses commandWindows")
     def test_a_missing_script_fails_open_not_block(self) -> None:
         root = self.cwd / "plugin"
         (root / "skills" / "ultra-goal" / "scripts").mkdir(parents=True)
@@ -572,6 +575,23 @@ class LauncherContractTests(Harness):
                 self.assertEqual(0, result.returncode, result.stderr)
                 self.assertEqual("", result.stdout.strip())
 
+    @unittest.skipUnless(os.name == "nt", "Requires native Windows cmd.exe")
+    def test_windows_stop_launcher_preserves_exit_2_and_missing_script_allows(self):
+        root = self.stub_root()
+        manifest = json.loads((REPO_ROOT / "plugins/ultra-goal/hooks/codex.json").read_text())
+        command = manifest["hooks"]["Stop"][0]["hooks"][0]["commandWindows"]
+        env = {**os.environ, "CLAUDE_PLUGIN_ROOT": str(root)}
+        result = subprocess.run(["cmd.exe", "/d", "/c", command], env=env,
+                                input="{}", capture_output=True, text=True, timeout=30)
+        self.assertEqual(2, result.returncode, result.stderr)
+        self.assertEqual(1, self.runs(root))
+        (root / "skills/ultra-goal/scripts/goal_stop.py").unlink()
+        missing = subprocess.run(["cmd.exe", "/d", "/c", command], env=env,
+                                 input="{}", capture_output=True, text=True, timeout=30)
+        self.assertEqual(0, missing.returncode, missing.stderr)
+        self.assertEqual(1, self.runs(root))
+
+    @unittest.skipUnless(os.name == "posix", "Exercises the POSIX command field; Windows uses commandWindows")
     def test_a_missing_interpreter_falls_back_exactly_once(self) -> None:
         """The fallback the `||` was originally written for: python3 absent,
         python present. It must still run the hook once and keep its status."""
@@ -600,6 +620,7 @@ class LauncherContractTests(Harness):
         self.assertEqual(0, result.returncode)
         self.assertEqual("", result.stdout.strip())
 
+    @unittest.skipUnless(os.name == "posix", "Exercises the POSIX command field; Windows uses commandWindows")
     def test_the_shipped_command_still_runs_the_real_hook(self) -> None:
         root = (REPO_ROOT / "plugins" / "ultra-goal").resolve()
         self.make_loop()
@@ -636,6 +657,7 @@ class ZCodeRootLauncherTests(Harness):
         )
         return manifest["hooks"]["Stop"][0]["hooks"][0]["command"]
 
+    @unittest.skipUnless(os.name == "posix", "Exercises the POSIX command field; Windows uses commandWindows")
     def test_zcode_s_documented_root_actually_loads_the_gate(self) -> None:
         import os
 
@@ -701,7 +723,25 @@ class CheckedTransitionTests(Harness):
             return []
         return [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
 
-    def stop(self) -> dict:
+    def stop(self, denied_unlink: Path | None = None) -> dict:
+        if denied_unlink is not None:
+            import io
+            from contextlib import redirect_stdout
+            from unittest.mock import patch
+            import goal_stop
+
+            unlink = Path.unlink
+            def refuse_target(path, *args, **kwargs):
+                if path == denied_unlink:
+                    raise PermissionError("fixture denies deletion")
+                return unlink(path, *args, **kwargs)
+
+            output = io.StringIO()
+            event = json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)})
+            with patch.object(Path, "unlink", refuse_target), redirect_stdout(output):
+                code = lh.run_hook("Stop", goal_stop.handle, stdin_text=event, env={})
+            self.assertEqual(0, code)
+            return json.loads(output.getvalue())
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "goal_stop.py")],
             input=json.dumps({"session_id": "session-aaa", "hook_event_name": "Stop", "cwd": str(self.cwd)}),
@@ -733,26 +773,16 @@ class CheckedTransitionTests(Harness):
         self.assertTrue((self.cwd / ".goals" / "demo.candidate").exists())
 
     def test_an_unconsumable_claim_is_refused_not_judged_twice(self) -> None:
-        import os
-        import stat
-
         self.make_loop()
         self.claim()
         goals = self.cwd / ".goals"
-        # Keep the journal writable while directory permissions forbid unlink:
-        # this isolates candidate consumption from the separate start-write gate.
+        # Inject the failed unlink on every OS; chmod on a Windows directory
+        # does not forbid deletion. Keep journal writes real and writable.
         (goals / "demo.events.jsonl").write_text("")
-        mode = stat.S_IMODE(goals.lstat().st_mode)
-        os.chmod(goals, mode & ~stat.S_IWUSR)
         messages = []
-        try:
-            for _ in range(2):
-                payload = self.stop()
-                messages.append(
-                    payload.get("reason", payload.get("systemMessage", ""))
-                )
-        finally:
-            os.chmod(goals, mode)
+        for _ in range(2):
+            payload = self.stop(denied_unlink=goals / "demo.candidate")
+            messages.append(payload.get("reason", payload.get("systemMessage", "")))
         self.assertTrue(all("could not be removed" in m for m in messages),
                         messages)
         self.assertFalse(
@@ -765,9 +795,6 @@ class CheckedTransitionTests(Harness):
         )
 
     def test_a_failed_disarm_is_not_announced_as_a_disarm(self) -> None:
-        import os
-        import stat
-
         self.make_loop()
         spec = (self.cwd / ".goals" / "demo.goal.md").read_text(encoding="utf-8")
         (self.cwd / ".goals" / "demo.goal.md").write_text(
@@ -776,15 +803,10 @@ class CheckedTransitionTests(Harness):
             encoding="utf-8",
         )
         goals = self.cwd / ".goals"
-        # Keep the log appendable while directory permissions prevent unlink.
+        # Keep real log writes while deterministically refusing marker deletion.
         (goals / "demo.events.jsonl").touch()
-        mode = stat.S_IMODE(goals.lstat().st_mode)
-        os.chmod(goals, mode & ~stat.S_IWUSR)
-        try:
-            first = self.stop()
-            second = self.stop()
-        finally:
-            os.chmod(goals, mode)
+        first = self.stop(denied_unlink=goals / "active")
+        second = self.stop(denied_unlink=goals / "active")
         for payload in (first, second):
             self.assertIn("could not remove", payload["systemMessage"])
             self.assertNotIn("gate is disarmed", payload["systemMessage"])
