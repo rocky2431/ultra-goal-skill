@@ -577,16 +577,21 @@ class LauncherContractTests(Harness):
 
     @unittest.skipUnless(os.name == "nt", "Requires native Windows cmd.exe")
     def test_windows_stop_launcher_preserves_exit_2_and_missing_script_allows(self):
+        import shutil
+
+        self.assertIsNotNone(shutil.which("py"), "The launcher probe requires Windows' py launcher")
         root = self.stub_root()
         manifest = json.loads((REPO_ROOT / "plugins/ultra-goal/hooks/codex.json").read_text())
         command = manifest["hooks"]["Stop"][0]["hooks"][0]["commandWindows"]
         env = {**os.environ, "CLAUDE_PLUGIN_ROOT": str(root)}
-        result = subprocess.run(["cmd.exe", "/d", "/c", command], env=env,
+        # Pass the hook as shell text. A Python argv list escapes its embedded
+        # quotes for a C runtime, which cmd.exe does not parse the same way.
+        result = subprocess.run(command, shell=True, env=env,
                                 input="{}", capture_output=True, text=True, timeout=30)
-        self.assertEqual(2, result.returncode, result.stderr)
+        self.assertEqual(2, result.returncode, (result.stdout, result.stderr, self.runs(root)))
         self.assertEqual(1, self.runs(root))
         (root / "skills/ultra-goal/scripts/goal_stop.py").unlink()
-        missing = subprocess.run(["cmd.exe", "/d", "/c", command], env=env,
+        missing = subprocess.run(command, shell=True, env=env,
                                  input="{}", capture_output=True, text=True, timeout=30)
         self.assertEqual(0, missing.returncode, missing.stderr)
         self.assertEqual(1, self.runs(root))
