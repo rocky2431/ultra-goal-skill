@@ -588,6 +588,18 @@ class LauncherContractTests(Harness):
         # quotes for a C runtime, which cmd.exe does not parse the same way.
         result = subprocess.run(command, shell=True, env=env,
                                 input="{}", capture_output=True, text=True, timeout=30)
+        if result.returncode != 2:
+            probes = [
+                'echo %CLAUDE_PLUGIN_ROOT%',
+                'if exist "%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_stop.py" (echo FOUND) else (echo MISSING)',
+                'where py',
+                'where py >nul 2>nul || exit 0 & echo AFTER_WHERE',
+                'if not exist "%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_stop.py" exit 0 & echo AFTER_EXIST',
+            ]
+            diagnostics = [(probe, subprocess.run(probe, shell=True, env=env,
+                            capture_output=True, text=True, timeout=10)) for probe in probes]
+            self.fail(str([(probe, run.returncode, run.stdout, run.stderr)
+                           for probe, run in diagnostics]))
         self.assertEqual(2, result.returncode, (result.stdout, result.stderr, self.runs(root)))
         self.assertEqual(1, self.runs(root))
         (root / "skills/ultra-goal/scripts/goal_stop.py").unlink()
