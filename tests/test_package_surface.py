@@ -1431,6 +1431,7 @@ class RolesByStageTests(unittest.TestCase):
         )
         for path in (
             REPO_ROOT / "README.md",
+            REPO_ROOT / "docs" / "usage.md",
             SKILL_ROOT / "SKILL.md",
             SKILL_ROOT / "references" / "agent-modes.md",
         ):
@@ -1439,7 +1440,7 @@ class RolesByStageTests(unittest.TestCase):
                 for phrase in stale:
                     self.assertNotIn(phrase, text)
         for path in (
-            REPO_ROOT / "README.md",
+            REPO_ROOT / "docs" / "usage.md",
             SKILL_ROOT / "SKILL.md",
             SKILL_ROOT / "references" / "agent-modes.md",
         ):
@@ -1451,7 +1452,7 @@ class RolesByStageTests(unittest.TestCase):
         skill = " ".join(skill_text().split())
         self.assertIn("references/agent-modes.md", skill)
         self.assertIn("Call success is not a join: inspect the expected artifact", skill)
-        for path in (REPO_ROOT / "README.md", SKILL_ROOT / "references" / "agent-modes.md"):
+        for path in (REPO_ROOT / "docs" / "usage.md", SKILL_ROOT / "references" / "agent-modes.md"):
             with self.subTest(path=path.name):
                 doc = " ".join(path.read_text(encoding="utf-8").split())
                 self.assertIn("a call that *succeeds* while writing no file", doc)
