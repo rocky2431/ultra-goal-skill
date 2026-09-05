@@ -15,7 +15,7 @@ provides the goal definition and verification procedure.
 Use it for work that needs several rounds of investigation, implementation and
 review. For a small one-off task, the agent can handle the request directly.
 
-Version: 2.15.1. Core scripts require Python 3.10 or later.
+Version: 2.15.2. Core scripts require Python 3.10 or later.
 
 - [Install and start](#install-and-start)
 - [Your first goal](#your-first-goal)
@@ -97,6 +97,10 @@ They do not install hooks; install the plugin separately if you need its hook
 and review support. For another source location, removal or a custom Kimi data
 directory, see [shortcut maintenance](docs/usage.md#shortcut-maintenance).
 zCode shortcut discovery still needs testing in the installed build.
+
+Kimi Code user installs honor `KIMI_CODE_HOME` (default `~/.kimi-code`),
+including the `skills` subdirectory. The legacy Python CLI directory `~/.kimi`
+is not migrated or deleted. See [Kimi Skill discovery](https://www.kimi.com/code/docs/kimi-code-cli/customization/skills.html).
 
 ## Your first goal
 

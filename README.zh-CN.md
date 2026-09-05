@@ -8,7 +8,7 @@ UltraGoal 帮助编码 Agent 把一句开放式要求整理成有验收标准、
 
 适合需要多轮调查、实施和评审的任务。小型的一次性工作可以直接交给 Agent 处理。
 
-版本：2.15.1。核心脚本需要 Python 3.10 或更新版本。
+版本：2.15.2。核心脚本需要 Python 3.10 或更新版本。
 
 - [安装与开始使用](#安装与开始使用)
 - [第一个目标](#第一个目标)
@@ -150,3 +150,5 @@ python3 -m unittest discover -s tests -v
 ## 许可证
 
 [MIT](LICENSE)。
+
+Kimi Code 的用户安装目录遵循 `KIMI_CODE_HOME`，默认是 `~/.kimi-code`；Skill 和 `/ug` 快捷入口都写入该目录下的 `skills`。安装器不会迁移或删除旧 Python CLI 的 `~/.kimi` 目录。参见 [Kimi Skill 目录](https://www.kimi.com/code/docs/kimi-code-cli/customization/skills.html)。

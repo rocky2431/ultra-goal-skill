@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 spec = importlib.util.spec_from_file_location(
@@ -52,6 +53,17 @@ class ShortcutTests(unittest.TestCase):
                 shortcuts.install_shortcuts("claude", root, shortcuts.DEFAULT_SKILL)
             self.assertEqual("Owner's existing command", collision.read_text(encoding="utf-8"))
             self.assertFalse((collision.parent / "UG.md").exists())
+
+
+class KimiCustomHomeTests(unittest.TestCase):
+    def test_shortcuts_follow_kimi_code_home(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            custom = home / "custom kimi home"
+            with patch.dict(shortcuts.os.environ, {"KIMI_CODE_HOME": str(custom)}):
+                files = shortcuts.install_shortcuts("kimi", home, shortcuts.DEFAULT_SKILL)
+            self.assertTrue(all(p.is_file() and p.is_relative_to(custom) for p in files))
+            self.assertFalse((home / ".kimi-code").exists())
 
 
 if __name__ == "__main__":

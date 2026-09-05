@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 
@@ -19,7 +20,7 @@ def install_shortcuts(host: str, home: Path, skill: Path) -> list[Path]:
     roots = {
         "claude": home / ".claude/commands",
         "codex": home / ".agents/skills",
-        "kimi": home / ".kimi-code/skills",
+        "kimi": Path(os.environ.get("KIMI_CODE_HOME") or home / ".kimi-code").expanduser() / "skills",
         "zcode": home / ".zcode/skills",
     }
     files = {}

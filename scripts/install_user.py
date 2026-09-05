@@ -15,7 +15,7 @@ import tempfile
 from typing import Any
 
 
-VERSION = "2.15.1"
+VERSION = "2.15.2"
 PACKAGE = "ultra-goal"
 MARKER_NAME = ".ultra-goal-managed.json"
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -67,7 +67,7 @@ def _skill_destination(home: Path, host: str) -> Path:
         "hermes": home / ".hermes" / "skills",
         "claude": home / ".claude" / "skills",
         "codex": home / ".agents" / "skills",
-        "kimi": home / ".kimi" / "skills",
+        "kimi": Path(os.environ.get("KIMI_CODE_HOME") or home / ".kimi-code").expanduser() / "skills",
         "zcode": home / ".zcode" / "skills",
         "opencode": home / ".config" / "opencode" / "skills",
     }

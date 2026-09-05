@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -190,6 +191,19 @@ class DoctorTests(Harness):
         report = self.doctor("kimi")
         self.assertEqual("not-configured-by-this-installer", report["hosts"]["kimi"]["hooks"])
         self.assertTrue(report["ok"], "an unsupported host is not a broken install")
+
+
+class KimiHomeTests(unittest.TestCase):
+    def test_native_default_and_custom_kimi_home(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            with patch.dict(iu.os.environ, {"KIMI_CODE_HOME": ""}):
+                self.assertEqual(iu._skill_destination(home, "kimi"),
+                                 home / ".kimi-code/skills/ultra-goal")
+            custom = home / "custom kimi home"
+            with patch.dict(iu.os.environ, {"KIMI_CODE_HOME": str(custom)}):
+                self.assertEqual(iu._skill_destination(home, "kimi"),
+                                 custom / "skills/ultra-goal")
 
 
 if __name__ == "__main__":

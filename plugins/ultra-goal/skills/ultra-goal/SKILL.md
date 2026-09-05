@@ -5,7 +5,7 @@ when_to_use: "When the owner wants work to keep running without them - \"make an
 license: MIT
 metadata:
   author: rocky2431
-  version: "2.15.1"
+  version: "2.15.2"
 ---
 
 # UltraGoal
