@@ -576,37 +576,34 @@ class LauncherContractTests(Harness):
                 self.assertEqual("", result.stdout.strip())
 
     @unittest.skipUnless(os.name == "nt", "Requires native Windows cmd.exe")
-    def test_windows_stop_launcher_preserves_exit_2_and_missing_script_allows(self):
+    def test_windows_launchers_preserve_exit_2_and_allow_missing_scripts(self):
+        import re
         import shutil
 
         self.assertIsNotNone(shutil.which("py"), "The launcher probe requires Windows' py launcher")
         root = self.stub_root()
-        manifest = json.loads((REPO_ROOT / "plugins/ultra-goal/hooks/codex.json").read_text())
-        command = manifest["hooks"]["Stop"][0]["hooks"][0]["commandWindows"]
         env = {**os.environ, "CLAUDE_PLUGIN_ROOT": str(root)}
-        # Pass the hook as shell text. A Python argv list escapes its embedded
-        # quotes for a C runtime, which cmd.exe does not parse the same way.
-        result = subprocess.run(command, shell=True, env=env,
-                                input="{}", capture_output=True, text=True, timeout=30)
-        if result.returncode != 2:
-            probes = [
-                'echo %CLAUDE_PLUGIN_ROOT%',
-                'if exist "%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_stop.py" (echo FOUND) else (echo MISSING)',
-                'where py',
-                'where py >nul 2>nul || exit 0 & echo AFTER_WHERE',
-                'if not exist "%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_stop.py" exit 0 & echo AFTER_EXIST',
-            ]
-            diagnostics = [(probe, subprocess.run(probe, shell=True, env=env,
-                            capture_output=True, text=True, timeout=10)) for probe in probes]
-            self.fail(str([(probe, run.returncode, run.stdout, run.stderr)
-                           for probe, run in diagnostics]))
-        self.assertEqual(2, result.returncode, (result.stdout, result.stderr, self.runs(root)))
-        self.assertEqual(1, self.runs(root))
-        (root / "skills/ultra-goal/scripts/goal_stop.py").unlink()
-        missing = subprocess.run(command, shell=True, env=env,
-                                 input="{}", capture_output=True, text=True, timeout=30)
-        self.assertEqual(0, missing.returncode, missing.stderr)
-        self.assertEqual(1, self.runs(root))
+        for filename in ("hooks.json", "claude.json", "codex.json"):
+            manifest = json.loads((REPO_ROOT / "plugins/ultra-goal/hooks" / filename).read_text())
+            for event, groups in manifest["hooks"].items():
+                for group in groups:
+                    for hook in group["hooks"]:
+                        command = hook["commandWindows"]
+                        script_name = re.search(r"goal_\w+\.py", command).group()
+                        script = root / "skills/ultra-goal/scripts" / script_name
+                        with self.subTest(manifest=filename, event=event):
+                            script.write_text(self.STUB, encoding="utf-8")
+                            before = self.runs(root)
+                            # cmd.exe needs shell text, not C-runtime argv escaping.
+                            result = subprocess.run(command, shell=True, env=env, input="{}",
+                                                    capture_output=True, text=True, timeout=30)
+                            self.assertEqual(2, result.returncode, (result.stdout, result.stderr))
+                            self.assertEqual(before + 1, self.runs(root))
+                            script.unlink()
+                            missing = subprocess.run(command, shell=True, env=env, input="{}",
+                                                     capture_output=True, text=True, timeout=30)
+                            self.assertEqual(0, missing.returncode, missing.stderr)
+                            self.assertEqual(before + 1, self.runs(root))
 
     @unittest.skipUnless(os.name == "posix", "Exercises the POSIX command field; Windows uses commandWindows")
     def test_a_missing_interpreter_falls_back_exactly_once(self) -> None:

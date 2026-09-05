@@ -8,7 +8,7 @@
           {
             "type": "command",
             "command": "P=\"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/skills/ultra-goal/scripts/goal_pre_compact.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\"; else exec python \"$P\"; fi",
-            "commandWindows": "if not exist \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_pre_compact.py\" exit 0 & where py >nul 2>nul || exit 0 & py -3 \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_pre_compact.py\"",
+            "commandWindows": "(if not exist \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_pre_compact.py\" exit 0) & where py >nul 2>nul || exit 0 & py -3 \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_pre_compact.py\"",
             "timeout": 10,
             "statusMessage": "Recording the loop's carried state"
           }

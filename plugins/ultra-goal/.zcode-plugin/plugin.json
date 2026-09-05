@@ -1,6 +1,6 @@
 {
   "name": "ultra-goal",
-  "version": "2.15.2",
+  "version": "2.15.3",
   "description": "Interview an objective into a grounded goal, emit the runnable artifact, and gate the run on its anchor.",
   "author": {
     "name": "rocky2431"

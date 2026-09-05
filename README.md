@@ -15,7 +15,7 @@ provides the goal definition and verification procedure.
 Use it for work that needs several rounds of investigation, implementation and
 review. For a small one-off task, the agent can handle the request directly.
 
-Version: 2.15.2. Core scripts require Python 3.10 or later.
+Version: 2.15.3. Core scripts require Python 3.10 or later.
 
 - [Install and start](#install-and-start)
 - [Your first goal](#your-first-goal)

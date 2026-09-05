@@ -1284,8 +1284,8 @@ class PerHostHookRegistrationTests(unittest.TestCase):
                         self.assertIsNotNone(windows, event)
                         # The guard comes first and leaves on a missing script.
                         self.assertTrue(
-                            windows.startswith("if not exist "), windows)
-                        self.assertIn("exit 0 &", windows)
+                            windows.startswith("(if not exist "), windows)
+                        self.assertIn("exit 0) &", windows)
                         # And the interpreter is reachable behind it.
                         self.assertIn("py -3 ", windows)
                         self.assertIn(r"%CLAUDE_PLUGIN_ROOT%", windows)

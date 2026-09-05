@@ -134,5 +134,7 @@ CC/Kimi/zCode native goal commands. Do not infer the same goal service exists in
 Isolated hook probes do not establish native plugin discovery. A child-process
 join probe does not certify arbitrary LLM worker teams. Native goal completion is
 not an Ultra pass; a corrected Kimi candidate can wait for a later real Stop.
-Windows is unverified: `commandWindows` checks are structural, not a Windows
-lifecycle. Finite probes do not establish a statistical 95% reliability claim.
+Windows CI executes all `commandWindows` launchers with stub scripts, checking
+one execution, preservation of exit 2, and missing-script allow. This does not
+verify a Windows host lifecycle. Finite probes do not establish a statistical
+95% reliability claim.
