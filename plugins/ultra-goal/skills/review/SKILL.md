@@ -94,7 +94,7 @@ not write it for you. Four things have to be true before you do:
 
    ```bash
    root="${CLAUDE_PLUGIN_ROOT:-${ZCODE_PLUGIN_ROOT:-${KIMI_PLUGIN_ROOT:-$PLUGIN_ROOT}}}"
-   python3 "$root/skills/ultra-goal/scripts/goal_run.py" review-inputs $ARGUMENTS --root .
+   python3 "$root/skills/ultragoal/scripts/goal_run.py" review-inputs $ARGUMENTS --root .
    ```
 
 4. **The verdict is what you found.** `pass` only when the acceptance IDs you cover are

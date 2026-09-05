@@ -106,7 +106,7 @@ need; do not translate read-only review into an unrelated Shell or network ban.
 
 The role skills carry `user-invocable: false`; menu visibility and invocation behavior are
 host-specific. Plugin role names such as `/ultra-goal:review` and `/ultra-goal:critic`
-are not portable tool APIs. The optional `UG` shortcut points only to the main skill.
+are not portable tool APIs. Invoke the main Skill through the host's plugin surface.
 
 ## Review choices
 

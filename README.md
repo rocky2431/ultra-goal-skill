@@ -15,7 +15,7 @@ provides the goal definition and verification procedure.
 Use it for work that needs several rounds of investigation, implementation and
 review. For a small one-off task, the agent can handle the request directly.
 
-Version: 2.15.4. Core scripts require Python 3.10 or later.
+Version: 2.15.5. Core scripts require Python 3.10 or later.
 
 - [Install and start](#install-and-start)
 - [Your first goal](#your-first-goal)
@@ -58,45 +58,30 @@ distributions do not provide a `kimi plugin` CLI command.
 
 The host must load both the manifest and its hooks for the verification hook to
 run. See the [hook coverage table](docs/usage.md#hooks-and-host-coverage) for the
-events each adapter registers. If your host can only load Skills, the
-[Skill-only installer](docs/usage.md#skill-only-installation) provides a more
-limited setup.
+events each adapter registers.
 
 ### Local copy
 
-The Kimi Code and zCode plugin loaders use a local package directory. The
-optional shortcuts also need a local copy. Clone this repository and enter it:
+The Kimi Code and zCode plugin loaders use a local package directory. Clone this
+repository and enter it:
 
 ```bash
 git clone https://github.com/rocky2431/ultra-goal-skill.git
 cd ultra-goal-skill
 ```
 
-### Optional shortcuts
+### Native plugin entries
 
-To add a shorter entry for the main Skill, run the line for your host from the
-cloned repository's root:
+| Host | Main Skill entry |
+|---|---|
+| Claude Code | `/ultra-goal:ultragoal` |
+| Codex | `$ultragoal` |
+| Kimi Code | `/skill:ultragoal` |
+| zCode | Select `ultragoal` in its Skill picker |
 
-```bash
-python3 scripts/install_shortcuts.py --host claude
-python3 scripts/install_shortcuts.py --host codex
-```
-
-Use `--host kimi` or `--host zcode` for those hosts. Reload Skills or start a new
-session after installation.
-
-| Host | Short entry | Full entry |
-|---|---|---|
-| Claude Code | `/UG` | `/ultragoal` |
-| Codex | `$ug` | `$ultragoal` |
-| Kimi Code | `/skill:ug` | `/skill:ultragoal` |
-| zCode | Select `ug` in its Skill picker | Select `ultragoal` in its Skill picker |
-
-The shortcuts read the Skill from this clone, so keep the directory in place.
-They do not install hooks; install the plugin separately if you need its hook
-and review support. For another source location, removal or a custom Kimi data
-directory, see [shortcut maintenance](docs/usage.md#shortcut-maintenance).
-zCode shortcut discovery still needs testing in the installed build.
+`ultra-goal` remains the plugin package ID. Claude writes plugin entries as
+`<plugin>:<skill>`, which is why its command contains both names. UltraGoal does
+not install separate user commands or forwarding Skills.
 
 Kimi Code user installs honor `KIMI_CODE_HOME` (default `~/.kimi-code`),
 including the `skills` subdirectory. The legacy Python CLI directory `~/.kimi`
@@ -105,7 +90,7 @@ is not migrated or deleted. See [Kimi Skill discovery](https://www.kimi.com/code
 ## Your first goal
 
 Open your coding agent in the project you want it to work on. Ask it to use
-UltraGoal, either in plain language or through an installed shortcut:
+UltraGoal, either in plain language or through the main Skill entry:
 
 > Use UltraGoal to turn this into an executable goal: make the CSV export usable
 > by our operations team. Investigate what already exists, ask me only the
@@ -201,11 +186,11 @@ for unattended work.
 
 - [Usage guide](docs/usage.md): task delegation, feedback, hooks, verification,
   recovery and troubleshooting. [简体中文](docs/usage.zh-CN.md).
-- [Goal contract](plugins/ultra-goal/skills/ultra-goal/references/goal-contract.md):
+- [Goal contract](plugins/ultra-goal/skills/ultragoal/references/goal-contract.md):
   fields, acceptance coverage and review receipts.
-- [Skill instructions](plugins/ultra-goal/skills/ultra-goal/SKILL.md): the procedure
+- [Skill instructions](plugins/ultra-goal/skills/ultragoal/SKILL.md): the procedure
   loaded by the agent.
-- [Research basis](plugins/ultra-goal/skills/ultra-goal/references/research-basis.md):
+- [Research basis](plugins/ultra-goal/skills/ultragoal/references/research-basis.md):
   prior work and the design choices it informed.
 
 ## Development

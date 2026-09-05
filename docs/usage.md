@@ -19,8 +19,6 @@ The examples use a goal named `export-ready`.
 - [Troubleshooting](#troubleshooting)
 - [Knowledge and Skill maintenance](#knowledge-and-skill-maintenance)
 - [Validation and limits](#validation-and-limits)
-- [Skill-only installation](#skill-only-installation)
-- [Shortcut maintenance](#shortcut-maintenance)
 
 ## From a request to an agreed goal
 
@@ -63,7 +61,7 @@ The critique and the quality of the interview are currently **model-followed
 instructions**. Structural validation cannot establish that they happened or
 that the criteria fully express the owner's intent.
 
-See the [canonical goal contract](../plugins/ultra-goal/skills/ultra-goal/references/goal-contract.md).
+See the [canonical goal contract](../plugins/ultra-goal/skills/ultragoal/references/goal-contract.md).
 
 ## Autonomy during execution
 
@@ -103,7 +101,7 @@ If a dependency is necessary, installation needs authority for that effect.
 
 First `agent-delegate` calls supply `--caller <actual-registered-caller>`; nested
 calls preserve the inherited identity and chain. The
-[delegation template](../plugins/ultra-goal/skills/ultra-goal/assets/delegation-package.md)
+[delegation template](../plugins/ultra-goal/skills/ultragoal/assets/delegation-package.md)
 shows a concrete example. A same-product worker can be a separate session. Choose
 a supported execution path if the bridge cannot create it; do not rename identities
 to evade a rejection. Fork metadata and role command names are host-specific.
@@ -219,7 +217,7 @@ inputs**, not the whole workspace. Preserve other material raw evidence explicit
 Git preserves committed revisions only; tracking a file does not authorize a
 commit or publication.
 
-See [document maintenance](../plugins/ultra-goal/skills/ultra-goal/references/document-system.md).
+See [document maintenance](../plugins/ultra-goal/skills/ultragoal/references/document-system.md).
 
 ## Arming and native continuation
 
@@ -243,7 +241,7 @@ those facts and discarding the previous pending claim.
 For manual operation, replace the example paths, slug and identity below:
 
 ```bash
-ULTRAGOAL_SCRIPTS="/path/to/ultra-goal-skill/plugins/ultra-goal/skills/ultra-goal/scripts"
+ULTRAGOAL_SCRIPTS="/path/to/ultra-goal-skill/plugins/ultra-goal/skills/ultragoal/scripts"
 ULTRAGOAL_PROJECT="/path/to/business-project"
 ULTRAGOAL_SLUG="export-ready"
 ULTRAGOAL_SESSION="actual-native-session-id"
@@ -290,7 +288,7 @@ Blocking output follows the host contract: Claude/Codex/zCode use the top-level
 An allowing Stop carries no added model context. Use ordinary tool output to make
 a verdict visible before delivery; future recovery injection is best effort.
 
-See [host hooks and lifecycle limits](../plugins/ultra-goal/skills/ultra-goal/references/host-hooks.md).
+See [host hooks and lifecycle limits](../plugins/ultra-goal/skills/ultragoal/references/host-hooks.md).
 
 ## Completion verification
 
@@ -470,12 +468,12 @@ compare against a baseline on relevant and held-out work, then retain or roll ba
 the candidate. Preserve failed experiments. There is no permanent maintainer agent
 or automatic rule promotion.
 
-The [research basis](../plugins/ultra-goal/skills/ultra-goal/references/research-basis.md)
+The [research basis](../plugins/ultra-goal/skills/ultragoal/references/research-basis.md)
 links prior work from OpenAI, Anthropic, Google and others. WikiSkill informs the
 separation of experience, knowledge and executable skills; SKILL.state informs
 immutable specification versus mutable state. Their measured results and runtime
 properties do not transfer automatically to this Skill. See the
-[maintenance procedure](../plugins/ultra-goal/skills/ultra-goal/references/evolution-and-scope.md).
+[maintenance procedure](../plugins/ultra-goal/skills/ultragoal/references/evolution-and-scope.md).
 
 ## Validation and limits
 
@@ -502,54 +500,3 @@ across all four hosts, Windows native lifecycle, all cancellation/recovery
 combinations and a statistical reliability above 95% remain unestablished. Eval
 scenario definitions are not completed model trials. See
 [remaining validation scope](../docs/wip/outstanding.md).
-
-## Skill-only installation
-
-The copy installer requires Python 3.11 or later because it imports
-`datetime.UTC`. The core goal scripts require Python 3.10 or later.
-
-For hosts without the native package path, the repository also has a managed
-copy installer:
-
-```bash
-git clone https://github.com/rocky2431/ultra-goal-skill.git
-cd ultra-goal-skill
-python3 scripts/install_user.py install --hosts claude
-python3 scripts/install_user.py doctor --json
-```
-
-Available copy targets are `hermes`, `claude`, `codex`, `kimi`, `zcode` and
-`opencode`. The installer backs up managed changes and refuses to overwrite an
-unmanaged Skill. `uninstall --hosts <host>` removes its managed installation.
-
-This route copies the main Skill and configures **only Claude's Stop,
-SessionStart and PreCompact hooks**. It does not install the complete native
-command/role package or the other hosts' hook profiles. Its doctor checks its own
-files and registrations, not unattended behavior.
-
-## Shortcut maintenance
-
-The [shortcut installer](../scripts/install_shortcuts.py) creates small user
-commands or Skills that read the original UltraGoal `SKILL.md`. They share its
-interview, authority and completion rules. The plugin package ID is `ultra-goal`;
-its run commands and goal files keep their existing names.
-
-The installer prints each shortcut path, accepts an existing identical file and
-refuses to replace a conflicting one. Delete the printed files to remove the
-shortcuts. To change their source, remove them and run the installer again with
-`--skill /path/to/ultra-goal/SKILL.md`. Keep the source copy at that path.
-
-Kimi shortcuts are written to `~/.kimi-code/skills`. With a custom
-`KIMI_CODE_HOME`, place the generated Skill folders under that root's `skills/`.
-
-Command spelling comes from the host:
-[Claude plugin commands use a namespace](https://code.claude.com/docs/en/plugins),
-[Codex uses `$skill`](https://learn.chatgpt.com/docs/build-skills), and
-[Kimi uses `/skill:name`](https://moonshotai.github.io/kimi-code/en/customization/skills.html).
-Claude's bare `/UG` is a standalone shortcut, separate from the plugin command.
-zCode shortcut discovery still needs testing in the installed build.
-
-The Claude Code and Codex plugin installation examples were checked against
-local CLI help on 2026-09-05. That check establishes syntax, not successful
-installation or hook execution. Verify discovery and hook behavior in the host
-version you use.

@@ -17,8 +17,6 @@
 - [故障排查](#故障排查)
 - [知识与 Skill 维护](#知识与-skill-维护)
 - [验证方式与能力边界](#验证方式与能力边界)
-- [单独安装 Skill](#单独安装-skill)
-- [快捷入口维护](#快捷入口维护)
 
 ## 从一句要求到确认目标
 
@@ -46,7 +44,7 @@ Agent 先检查仓库、可用工具和项目指令，只把无法从这些资�
 
 规格质询及面谈质量目前主要靠**模型遵守指令**。结构校验不能证明质询确实发生，也不能证明验收标准完整表达了用户意图。
 
-详见[统一目标契约](../plugins/ultra-goal/skills/ultra-goal/references/goal-contract.md)。
+详见[统一目标契约](../plugins/ultra-goal/skills/ultragoal/references/goal-contract.md)。
 
 ## 执行期间的自主权
 
@@ -68,7 +66,7 @@ Loop 由主模型根据观测选择下一步。可选 `.workflow.js` 和 `.deleg
 
 桥接工具是可选依赖。原生子 Agent 不需要安装 `agent-delegation`；工作者收到完整任务交接后，也不必安装 UltraGoal。发现 Skill、找到可调用的命令、实际目标可用，是三件不同的事。只有 Skill 缺失而桥接可用时，按其现有说明调用即可；复制 Skill 文件夹不能补齐运行依赖。确实需要安装依赖时，要有覆盖安装行为的授权。
 
-首次调用 `agent-delegate` 时，传入 `--caller <实际已注册的调用者>`；嵌套调用保留收到的身份和调用链。[委派模板](../plugins/ultra-goal/skills/ultra-goal/assets/delegation-package.md)提供了完整示例。同一家产品的工作者也可能是独立会话；桥接不支持时应选择其他可用路径，不能改名绕过拒绝。Fork 元数据和角色命令名称都取决于宿主。
+首次调用 `agent-delegate` 时，传入 `--caller <实际已注册的调用者>`；嵌套调用保留收到的身份和调用链。[委派模板](../plugins/ultra-goal/skills/ultragoal/assets/delegation-package.md)提供了完整示例。同一家产品的工作者也可能是独立会话；桥接不支持时应选择其他可用路径，不能改名绕过拒绝。Fork 元数据和角色命令名称都取决于宿主。
 
 在无人值守运行前，确认必需的独立验证者实际可用，并明确从哪里读取结果。缺少可选工具不妨碍普通工作；缺少必需的独立验证不能用生成者自审代替。
 
@@ -149,7 +147,7 @@ Loop 由主模型根据观测选择下一步。可选 `.workflow.js` 和 `.deleg
 
 事件记录保留有界观测、摘要和输出片段，不自动保存全部 stdout 或所有对话。必需评审归档保存**声明的输入**，不自动保存整个工作区。其他重要原始证据要明确留存。Git 只保留已提交的版本；跟踪文件不等于授权提交或发布。
 
-详见[文件维护规则](../plugins/ultra-goal/skills/ultra-goal/references/document-system.md)。
+详见[文件维护规则](../plugins/ultra-goal/skills/ultragoal/references/document-system.md)。
 
 ## 绑定目标与原生续跑
 
@@ -167,7 +165,7 @@ session actual-native-session-id
 手动操作时，替换下面的示例路径、目标名和身份：
 
 ```bash
-ULTRAGOAL_SCRIPTS="/path/to/ultra-goal-skill/plugins/ultra-goal/skills/ultra-goal/scripts"
+ULTRAGOAL_SCRIPTS="/path/to/ultra-goal-skill/plugins/ultra-goal/skills/ultragoal/scripts"
 ULTRAGOAL_PROJECT="/path/to/business-project"
 ULTRAGOAL_SLUG="export-ready"
 ULTRAGOAL_SESSION="actual-native-session-id"
@@ -199,7 +197,7 @@ python3 "$ULTRAGOAL_SCRIPTS/goal_run.py" arm "$ULTRAGOAL_SLUG" \
 
 拦截输出遵循宿主契约：Claude/Codex/zCode 使用顶层 `decision: block` 和 `reason`；Kimi 使用嵌套的 `hookSpecificOutput.permissionDecision: deny` 与 `permissionDecisionReason`。放行 Stop 不附加模型上下文。交付前应通过普通工具输出取得判定，之后的恢复注入只能尽力而为。
 
-详见[Hook 与生命周期限制](../plugins/ultra-goal/skills/ultra-goal/references/host-hooks.md)。
+详见[Hook 与生命周期限制](../plugins/ultra-goal/skills/ultragoal/references/host-hooks.md)。
 
 ## 最终完成验收
 
@@ -316,7 +314,7 @@ python3 "$ULTRAGOAL_SCRIPTS/goal_run.py" diff "$ULTRAGOAL_SLUG" --root "$ULTRAGO
 
 获授权的维护采用轻量循环：留存失败，形成条件性知识，提出最小指令或代码修改，在相关与未参与制订规则的案例上和基线比较，再保留或回滚候选修改。失败实验也保留。这里没有常驻维护 Agent 或自动规则晋升。
 
-[研究依据](../plugins/ultra-goal/skills/ultra-goal/references/research-basis.md)链接 OpenAI、Anthropic、Google 等前人工作。WikiSkill 启发经验、知识和可执行 Skill 的分离；SKILL.state 启发不可变规格与可变状态的分离。论文的实测结果和 Runtime 性质不会自动转移到本 Skill。具体见[维护流程](../plugins/ultra-goal/skills/ultra-goal/references/evolution-and-scope.md)。
+[研究依据](../plugins/ultra-goal/skills/ultragoal/references/research-basis.md)链接 OpenAI、Anthropic、Google 等前人工作。WikiSkill 启发经验、知识和可执行 Skill 的分离；SKILL.state 启发不可变规格与可变状态的分离。论文的实测结果和 Runtime 性质不会自动转移到本 Skill。具体见[维护流程](../plugins/ultra-goal/skills/ultragoal/references/evolution-and-scope.md)。
 
 ## 验证方式与能力边界
 
@@ -331,32 +329,3 @@ python3 -m unittest discover -s tests -v
 面谈充分性、规格质询、路由、等待工作者、状态维护和调用完成协议，仍由模型负责。脚本机械化检查明确事实，不能验证每句自然语言、鉴权共享文件身份或证明原始目标永远正确。
 
 产品和宿主探针的结果只覆盖实际测试过的场景。四家完整无人值守收口、Windows 原生生命周期、所有取消与恢复组合，以及超过 95% 的统计可靠性，仍未建立。Eval 场景定义不等于已经完成模型试验。详见[剩余验证范围](../docs/wip/outstanding.md)。
-
-## 单独安装 Skill
-
-复制安装器使用 `datetime.UTC`，需要 Python 3.11 或更新版本。核心目标脚本需要 Python 3.10 或更新版本。
-
-没有原生插件安装路径时，仓库还提供受管理的复制安装器：
-
-```bash
-git clone https://github.com/rocky2431/ultra-goal-skill.git
-cd ultra-goal-skill
-python3 scripts/install_user.py install --hosts claude
-python3 scripts/install_user.py doctor --json
-```
-
-可选复制目标为 `hermes`、`claude`、`codex`、`kimi`、`zcode`、`opencode`。安装器保留变更备份，并拒绝覆盖不属于它管理的同名 Skill。`uninstall --hosts <host>` 删除其管理的安装。
-
-这条路径复制主 Skill，**只配置 Claude 的 Stop、SessionStart 和 PreCompact Hook**。它不安装完整的原生命令及角色包，也不配置其他宿主的 Hook。这里的 doctor 检查自身文件与注册，不能证明无人值守运行。
-
-## 快捷入口维护
-
-[快捷入口安装器](../scripts/install_shortcuts.py)生成用户命令或 Skill 文件，让它们读取原来的 UltraGoal `SKILL.md`。面谈、授权和完成判定使用同一份指令。插件包标识是 `ultra-goal`，启动命令和目标文件沿用各自的名称。
-
-安装器会打印每个文件的路径，允许重复安装内容相同的入口，拒绝覆盖冲突文件。删除这些文件即可移除快捷入口。更换来源时，先删除，再用 `--skill /path/to/ultra-goal/SKILL.md` 重新安装，并将源文件保留在该位置。
-
-Kimi 默认写入 `~/.kimi-code/skills`。使用自定义 `KIMI_CODE_HOME` 时，将生成的 Skill 文件夹放入该根目录的 `skills/`。
-
-入口写法由宿主决定：[Claude 插件命令带命名空间](https://code.claude.com/docs/en/plugins)，[Codex 使用 `$skill`](https://learn.chatgpt.com/docs/build-skills)，[Kimi 使用 `/skill:name`](https://moonshotai.github.io/kimi-code/en/customization/skills.html)。Claude 的裸 `/UG` 由独立快捷文件提供。zCode 的实际发现情况仍需在安装版本中测试。
-
-Claude Code 和 Codex 的插件安装示例已于 2026-09-05 对照本机 CLI 帮助核对。这个检查确认命令形式；安装、组件发现及 Hook 执行仍需在所用版本中验证。

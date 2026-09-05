@@ -12,7 +12,7 @@ import unittest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_ROOT = REPO_ROOT / "plugins" / "ultra-goal"
-SKILL_ROOT = PLUGIN_ROOT / "skills" / "ultra-goal"
+SKILL_ROOT = PLUGIN_ROOT / "skills" / "ultragoal"
 
 sys.path.insert(0, str(SKILL_ROOT / "scripts"))
 import validate_artifact as va  # noqa: E402
@@ -44,7 +44,7 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual(plugin["name"], entry["name"])
         self.assertEqual("./skills/", plugin["skills"])
         self.assertEqual("./plugins/ultra-goal", entry["source"]["path"])
-        self.assertIn("name: ultra-goal", skill_text())
+        self.assertIn("name: ultragoal", skill_text())
         self.assertEqual(["Skills"], plugin["interface"]["capabilities"])
         self.assertLessEqual(len(plugin["interface"]["defaultPrompt"]), 128)
 
@@ -61,10 +61,10 @@ class IdentityTests(unittest.TestCase):
         self.assertIn(
             f'metadata:\n  author: rocky2431\n  version: "{version}"', skill_text()
         )
-        self.assertIn(
-            f'VERSION = "{version}"',
-            (REPO_ROOT / "scripts" / "install_user.py").read_text(encoding="utf-8"),
-        )
+
+    def test_distribution_is_plugin_only(self) -> None:
+        for relative in ("scripts/install_user.py", "scripts/install_shortcuts.py"):
+            self.assertFalse((REPO_ROOT / relative).exists(), relative)
 
 
 class SkillContractTests(unittest.TestCase):
@@ -88,7 +88,7 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("not a design note", text)
         # The three shapes, named as they now are: a goal package is started by
         # this plugin's own command rather than pasted into a host's goal mode.
-        for shape in ("goal package to start with /ultra-goal", "workflow script",
+        for shape in ("goal package to start through the plugin", "workflow script",
                       "cross-vendor delegation triad"):
             self.assertIn(shape, text)
         # The artifact shapes are portable; the primitives that start them are not.
@@ -1032,10 +1032,6 @@ class HostManifestTests(unittest.TestCase):
                 for key in keys:
                     node = node[key]
                 self.assertEqual(version, node)
-        installer = (REPO_ROOT / "scripts" / "install_user.py").read_text(
-            encoding="utf-8"
-        )
-        self.assertIn(f'VERSION = "{version}"', installer)
 
     def test_zcode_and_kimi_declare_skills_in_their_own_shapes(self) -> None:
         """A string for zCode, an array for Kimi. Measured, not guessed."""
@@ -1254,7 +1250,7 @@ class PerHostHookRegistrationTests(unittest.TestCase):
         """Kimi's SessionStart output is fire-and-forget, so the documented
         injection alternative is UserPromptSubmit. No other host needs it:
         theirs inject from SessionStart."""
-        script = PLUGIN_ROOT / "skills" / "ultra-goal" / "scripts" / "goal_prompt_submit.py"
+        script = PLUGIN_ROOT / "skills" / "ultragoal" / "scripts" / "goal_prompt_submit.py"
         self.assertTrue(script.is_file())
         for relative in ("hooks/hooks.json", "hooks/claude.json", "hooks/codex.json"):
             text = (PLUGIN_ROOT / relative).read_text(encoding="utf-8")
@@ -1622,8 +1618,8 @@ class ApertureTests(unittest.TestCase):
     The three roles are internal to the graph: a user invoking `/critic` by hand
     gets a fork with no frozen diff to audit. The reference documents
     `user-invocable: false` for exactly this - "background knowledge users
-    shouldn't invoke directly". Plugin roles are namespaced; bare names require
-    standalone user or project entries, such as the optional main-skill shortcut.
+    shouldn't invoke directly". Plugin roles and the owner-facing skill use the
+    host's native plugin namespace.
     """
 
     INTERNAL_ROLES = ("review", "critic", "design-critic")
@@ -1641,7 +1637,7 @@ class ApertureTests(unittest.TestCase):
         self.assertNotIn("user-invocable:", skill_text())
 
     def test_no_two_components_claim_one_command_name(self) -> None:
-        """A command file and a skill wanting `/ultra-goal:ultra-goal` means one
+        """A command file and a skill wanting `/ultra-goal:ultragoal` means one
         of them silently shadows the other, and which one is not ours to decide.
         """
         claimed: dict[str, str] = {}
@@ -1662,7 +1658,7 @@ class ApertureTests(unittest.TestCase):
             claimed[command.stem] = f"commands/{command.name}"
 
     def test_the_arming_command_is_brand_prefixed(self) -> None:
-        """Keep the existing run entry distinct from standalone owner shortcuts."""
+        """Keep the run entry distinct from the owner-facing skill."""
         commands = sorted(p.stem for p in (PLUGIN_ROOT / "commands").glob("*.md"))
         self.assertEqual(["goal-run"], commands)
 
@@ -1859,7 +1855,7 @@ class AuditFixTests(unittest.TestCase):
         the rule, so `git add -A` committed the reviewer's intermediates."""
         command = (PLUGIN_ROOT / "commands" / "goal-run.md").read_text(encoding="utf-8")
         self.assertIn("`.goals/.gitignore`", command)
-        fence_src = (PLUGIN_ROOT / "skills" / "ultra-goal" / "scripts" /
+        fence_src = (PLUGIN_ROOT / "skills" / "ultragoal" / "scripts" /
                      "goal_run.py").read_text(encoding="utf-8")
         self.assertIn(
             'IGNORE_ENTRIES = (".work/", "active", "*.candidate", "*.verification.lock")', fence_src,
@@ -1877,7 +1873,7 @@ class AuditFixTests(unittest.TestCase):
         cannot move the range to HEAD and shrink a whole change into an
         empty diff."""
         command = (PLUGIN_ROOT / "commands" / "goal-run.md").read_text(encoding="utf-8")
-        fence_src = (PLUGIN_ROOT / "skills" / "ultra-goal" / "scripts" /
+        fence_src = (PLUGIN_ROOT / "skills" / "ultragoal" / "scripts" /
                      "goal_run.py").read_text(encoding="utf-8")
         self.assertIn("rev-parse", fence_src)
         # Write-once moved into the fence: re-running arming on an active run
@@ -2081,7 +2077,7 @@ class ArmingRangeContractTests(unittest.TestCase):
             from test_goal_contract import spec_text
             (cwd / ".goals" / "demo.goal.md").write_text(spec_text(), "utf-8")
             (cwd / ".goals" / "demo.decisions.md").write_text("# Decisions\n", "utf-8")
-            root = cwd / "pluginroot" / "skills" / "ultra-goal" / "scripts"
+            root = cwd / "pluginroot" / "skills" / "ultragoal" / "scripts"
             self.stage_fence(root)
             fence = next(
                 f for f in self.fences(expanded) if 'arm "demo"' in f
@@ -2149,7 +2145,7 @@ class ArmingRangeContractTests(unittest.TestCase):
             (goals / "demo.decisions.md").write_text("# Decisions\n", "utf-8")
             scripts = (
                 cwd / "home" / ".kimi-code" / "plugins" / "managed" / "ultra-goal"
-                / "skills" / "ultra-goal" / "scripts"
+                / "skills" / "ultragoal" / "scripts"
             )
             self.stage_fence(scripts)
             # A validator that fails hard decides arming: its SystemExit is
@@ -2198,7 +2194,7 @@ class ArmingRangeContractTests(unittest.TestCase):
             from test_goal_contract import spec_text
             (cwd / ".goals" / "demo.goal.md").write_text(spec_text(), "utf-8")
             (cwd / ".goals" / "demo.decisions.md").write_text("# Decisions\n", "utf-8")
-            root = cwd / "pluginroot" / "skills" / "ultra-goal" / "scripts"
+            root = cwd / "pluginroot" / "skills" / "ultragoal" / "scripts"
             self.stage_fence(root)
             env = self.sandbox_env(cwd, PLUGIN_ROOT=str(cwd / "pluginroot"))
             arming = self.arming_fence()

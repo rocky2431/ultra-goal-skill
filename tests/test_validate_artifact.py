@@ -13,7 +13,7 @@ VALIDATOR = (
     / "plugins"
     / "ultra-goal"
     / "skills"
-    / "ultra-goal"
+    / "ultragoal"
     / "scripts"
     / "validate_artifact.py"
 )

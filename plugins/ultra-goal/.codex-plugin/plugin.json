@@ -1,6 +1,6 @@
 {
   "name": "ultra-goal",
-  "version": "2.15.4",
+  "version": "2.15.5",
   "description": "Interview the owner into a grounded goal, then emit the runnable prompt or script that pursues it until an anchor says it is met.",
   "author": {
     "name": "rocky2431",
@@ -17,7 +17,7 @@
     "capabilities": [
       "Skills"
     ],
-    "defaultPrompt": "Use $ultra-goal to turn an objective into a goal with an anchor, a boundary, and an owner-defined stop condition."
+    "defaultPrompt": "Use $ultragoal to turn an objective into a goal with an anchor, a boundary, and an owner-defined stop condition."
   },
   "commands": [
     "./commands/goal-run.md"

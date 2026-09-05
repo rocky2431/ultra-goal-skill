@@ -103,7 +103,7 @@ root=pathlib.Path(__file__).parent
 raw=sys.stdin.read(); event=json.loads(raw)
 if event.get('session_id'):
     (root/'native-session.json').write_text(json.dumps({'session_id':event['session_id']}))
-args=[sys.executable, str(root/'ultra-plugin/skills/ultra-goal/scripts'/sys.argv[1])]
+args=[sys.executable, str(root/'ultra-plugin/skills/ultragoal/scripts'/sys.argv[1])]
 if event.get('hook_event_name')=='Stop': args += ['--host','claude']
 result=subprocess.run(args,input=raw,text=True,capture_output=True)
 with (root/'hook-observations.jsonl').open('a') as f:
@@ -169,7 +169,7 @@ def semantic_review(root, slug):
     host tool restriction isolates reviewer writes; the shared filesystem remains
     owner controlled, so this is not a tamper-proof identity service.
     """
-    sys.path.insert(0, str(root / "ultra-plugin/skills/ultra-goal/scripts"))
+    sys.path.insert(0, str(root / "ultra-plugin/skills/ultragoal/scripts"))
     from goal_contract import input_digest, snapshot, verification
     spec = (root / ".goals" / f"{slug}.goal.md").read_text()
     contract = verification(spec)
@@ -315,7 +315,7 @@ You are talking to a scripted evaluation owner, not the real user. Ask material 
 No external services, sending messages, package installation, git commits, login, or configuration changes. Inputs are read-only. You may execute acceptance/check.py, a complete independent owner-authored acceptance check, but must not read its contents or edit it. This execute-only rule is an evaluation isolation convention, not an OS permission boundary. It checks business outputs against the owner's requirements, not your implementation, and names missing files/fields when relevant. You may compute its SHA-256 for evaluator pinning. Write durable business deliverables under reports/. Do not read unrelated directories.
 """
         if mode == "ultra":
-            context += "Use the Ultra Goal skill by reading ultra-plugin/skills/ultra-goal/SKILL.md and its referenced local resources. Conduct the actual goal interview, author the runnable goal contract after owner confirmation, validate and arm it using ultra-plugin/skills/ultra-goal/scripts/goal_run.py with the native session ID in native-session.json, and execute it. Follow ultra-plugin/commands/goal-run.md. The plugin is already supplied locally and its hooks are configured for this invocation; do not install it.\n"
+            context += "Use the UltraGoal skill by reading ultra-plugin/skills/ultragoal/SKILL.md and its referenced local resources. Conduct the actual goal interview, author the runnable goal contract after owner confirmation, validate and arm it using ultra-plugin/skills/ultragoal/scripts/goal_run.py with the native session ID in native-session.json, and execute it. Follow ultra-plugin/commands/goal-run.md. The plugin is already supplied locally and its hooks are configured for this invocation; do not install it.\n"
         if closure:
             context += "This is the predeclared closure trial. The owner will provide the full business rules only after your interview returns. The external acceptance fixture supplies python3 acceptance/review.py <slug>: it calls a real separate tool-free reviewer over original facts and delivered outputs and writes the review receipt. Do not read or modify anything under acceptance/, write review receipts yourself, or start external model CLIs yourself. Native host subagents remain available within this invocation's shared budget. The fixture permits at most two review attempts within the declared budget. Its write isolation uses the host's disabled tools, while the shared filesystem is not tamper-proof. After owner confirmation and delivery, call goal_run.py verify with the bound native session; only its actual successful observation supports your final completion statement. Reconcile the native goal state with that observation before ending.\n"
         prompt = ("/goal " if mode == "native" else "") + context + "\nOwner's initial request: " + TASKS[task]["request"]

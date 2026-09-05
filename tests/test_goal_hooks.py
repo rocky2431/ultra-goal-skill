@@ -19,7 +19,7 @@ SCRIPTS = (
     / "plugins"
     / "ultra-goal"
     / "skills"
-    / "ultra-goal"
+    / "ultragoal"
     / "scripts"
 )
 sys.path.insert(0, str(SCRIPTS))
@@ -509,7 +509,7 @@ class LauncherContractTests(Harness):
 
     def stub_root(self) -> Path:
         root = self.cwd / "plugin"
-        script = root / "skills" / "ultra-goal" / "scripts" / "goal_stop.py"
+        script = root / "skills" / "ultragoal" / "scripts" / "goal_stop.py"
         script.parent.mkdir(parents=True, exist_ok=True)
         script.write_text(self.STUB, encoding="utf-8")
         return root
@@ -526,7 +526,7 @@ class LauncherContractTests(Harness):
         )
 
     def runs(self, root: Path) -> int:
-        log = root / "skills" / "ultra-goal" / "scripts" / "runs.txt"
+        log = root / "skills" / "ultragoal" / "scripts" / "runs.txt"
         return len(log.read_text().splitlines()) if log.is_file() else 0
 
     @unittest.skipUnless(os.name == "posix", "Exercises the POSIX command field; Windows uses commandWindows")
@@ -556,7 +556,7 @@ class LauncherContractTests(Harness):
     @unittest.skipUnless(os.name == "posix", "Exercises the POSIX command field; Windows uses commandWindows")
     def test_a_missing_script_fails_open_not_block(self) -> None:
         root = self.cwd / "plugin"
-        (root / "skills" / "ultra-goal" / "scripts").mkdir(parents=True)
+        (root / "skills" / "ultragoal" / "scripts").mkdir(parents=True)
         for relative, event in (
             ("plugins/ultra-goal/hooks/hooks.json", "Stop"),
             ("plugins/ultra-goal/hooks/hooks.json", "SessionStart"),
@@ -590,7 +590,7 @@ class LauncherContractTests(Harness):
                     for hook in group["hooks"]:
                         command = hook["commandWindows"]
                         script_name = re.search(r"goal_\w+\.py", command).group()
-                        script = root / "skills/ultra-goal/scripts" / script_name
+                        script = root / "skills/ultragoal/scripts" / script_name
                         with self.subTest(manifest=filename, event=event):
                             script.write_text(self.STUB, encoding="utf-8")
                             before = self.runs(root)

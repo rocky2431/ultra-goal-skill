@@ -9,7 +9,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SKILL = ROOT / "plugins/ultra-goal/skills/ultra-goal"
+SKILL = ROOT / "plugins/ultra-goal/skills/ultragoal"
 SCRIPTS = SKILL / "scripts"
 SESSION_KEYS = ("CODEX_SESSION_ID", "CLAUDE_SESSION_ID", "KIMI_SESSION_ID", "ZCODE_SESSION_ID")
 

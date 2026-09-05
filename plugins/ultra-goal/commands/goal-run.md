@@ -60,9 +60,9 @@ armed, and records the run's authorized baselines before the marker exists.
 root="${CLAUDE_PLUGIN_ROOT}"
 [ -n "$root" ] || root="${ZCODE_PLUGIN_ROOT:-${KIMI_PLUGIN_ROOT:-${PLUGIN_ROOT}}}"
 [ -n "$root" ] || root="${KIMI_CODE_HOME:-$HOME/.kimi-code}/plugins/managed/ultra-goal"
-runner="$root/skills/ultra-goal/scripts/goal_run.py"
+runner="$root/skills/ultragoal/scripts/goal_run.py"
 if [ ! -f "$runner" ]; then
-  printf '%s\n' "ultra-goal: arming refused - no documented plugin root reaches this command, so the artifact cannot be machine-validated, and an unvalidated artifact is one the gate cannot honestly enforce. This is a refusal, not a downgrade. Validate it by hand from the plugin's install root (Kimi manages installs at ${KIMI_CODE_HOME:-$HOME/.kimi-code}/plugins/managed/ultra-goal; Codex at ~/.codex/plugins/cache/<marketplace>/ultra-goal/<version>): python3 <plugin-root>/skills/ultra-goal/scripts/validate_artifact.py .goals/$ARGUMENTS.goal.md. Fix what it reports, then either export PLUGIN_ROOT=<plugin-root> for this session's shell and run this command again, or - once it is clean - arm from the install root: cd here and run python3 <plugin-root>/skills/ultra-goal/scripts/goal_run.py arm $ARGUMENTS --session-id <current-native-session-id>"
+  printf '%s\n' "ultra-goal: arming refused - no documented plugin root reaches this command, so the artifact cannot be machine-validated, and an unvalidated artifact is one the gate cannot honestly enforce. This is a refusal, not a downgrade. Validate it by hand from the plugin's install root (Kimi manages installs at ${KIMI_CODE_HOME:-$HOME/.kimi-code}/plugins/managed/ultra-goal; Codex at ~/.codex/plugins/cache/<marketplace>/ultra-goal/<version>): python3 <plugin-root>/skills/ultragoal/scripts/validate_artifact.py .goals/$ARGUMENTS.goal.md. Fix what it reports, then either export PLUGIN_ROOT=<plugin-root> for this session's shell and run this command again, or - once it is clean - arm from the install root: cd here and run python3 <plugin-root>/skills/ultragoal/scripts/goal_run.py arm $ARGUMENTS --session-id <current-native-session-id>"
   exit 1
 fi
 session_id='<resolved-native-session-id>'
@@ -139,7 +139,7 @@ Then follow `## Roles` for who does what this turn, `## Acceptance` for what is 
 true, and `### Next` for the one objective this round is aimed at.
 
 When choosing a worker, fallback or feedback channel, read
-[agent-modes.md](../skills/ultra-goal/references/agent-modes.md). Another installed Skill
+[agent-modes.md](../skills/ultragoal/references/agent-modes.md). Another installed Skill
 is not required; choose a callable path that preserves the accepted verification terms.
 
 **The evaluator is pinned.** Arming recorded the files `## Verification` names under
@@ -256,7 +256,7 @@ different axis: green, red and unknown are what one command did, not what the ru
 root="${CLAUDE_PLUGIN_ROOT}"
 [ -n "$root" ] || root="${ZCODE_PLUGIN_ROOT:-${KIMI_PLUGIN_ROOT:-${PLUGIN_ROOT}}}"
 [ -n "$root" ] || root="${KIMI_CODE_HOME:-$HOME/.kimi-code}/plugins/managed/ultra-goal"
-python3 "$root/skills/ultra-goal/scripts/goal_run.py" disarm $ARGUMENTS
+python3 "$root/skills/ultragoal/scripts/goal_run.py" disarm $ARGUMENTS
 ```
 
 That disarms the gate without needing the agent's cooperation: the checked

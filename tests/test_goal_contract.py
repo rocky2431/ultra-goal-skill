@@ -11,7 +11,7 @@ from unittest.mock import patch
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS = ROOT / "plugins/ultra-goal/skills/ultra-goal/scripts"
+SCRIPTS = ROOT / "plugins/ultra-goal/skills/ultragoal/scripts"
 sys.path.insert(0, str(SCRIPTS))
 import goal_contract as contract
 import goal_hooks as hooks

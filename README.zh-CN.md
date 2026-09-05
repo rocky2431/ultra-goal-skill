@@ -8,7 +8,7 @@ UltraGoal 帮助编码 Agent 把一句开放式要求整理成有验收标准、
 
 适合需要多轮调查、实施和评审的任务。小型的一次性工作可以直接交给 Agent 处理。
 
-版本：2.15.4。核心脚本需要 Python 3.10 或更新版本。
+版本：2.15.5。核心脚本需要 Python 3.10 或更新版本。
 
 - [安装与开始使用](#安装与开始使用)
 - [第一个目标](#第一个目标)
@@ -42,40 +42,31 @@ codex plugin add ultra-goal@rocky-ultra-goal
 
 适配配置位于 `plugins/ultra-goal`：Kimi Code 使用 `kimi.plugin.json`，zCode 使用 `.zcode-plugin/plugin.json`。通过所用版本的原生插件功能加载这个目录。安装界面随版本变化，部分 Kimi 发行版本没有 `kimi plugin` 命令。
 
-宿主需要同时加载清单和 Hook，验收 Hook 才能运行。各适配器注册的事件见 [Hook 覆盖表](docs/usage.zh-CN.md#hook-与宿主覆盖)。如果宿主只能加载 Skill，可以使用功能较少的[单独安装方式](docs/usage.zh-CN.md#单独安装-skill)。
+宿主需要同时加载清单和 Hook，验收 Hook 才能运行。各适配器注册的事件见 [Hook 覆盖表](docs/usage.zh-CN.md#hook-与宿主覆盖)。
 
 ### 本地副本
 
-Kimi Code、zCode 的插件加载器和可选快捷入口需要一份本地副本。克隆仓库并进入目录：
+Kimi Code、zCode 的插件加载器需要一份本地副本。克隆仓库并进入目录：
 
 ```bash
 git clone https://github.com/rocky2431/ultra-goal-skill.git
 cd ultra-goal-skill
 ```
 
-### 可选快捷入口
+### 插件原生入口
 
-要为主 Skill 添加较短的调用名称，请在克隆的仓库根目录中，只运行与你使用的宿主对应的一行：
+| 宿主 | 主 Skill 入口 |
+|---|---|
+| Claude Code | `/ultra-goal:ultragoal` |
+| Codex | `$ultragoal` |
+| Kimi Code | `/skill:ultragoal` |
+| zCode | 在 Skill 选择器中选择 `ultragoal` |
 
-```bash
-python3 scripts/install_shortcuts.py --host claude
-python3 scripts/install_shortcuts.py --host codex
-```
-
-Kimi 和 zCode 分别使用 `--host kimi`、`--host zcode`。安装后重新加载 Skill 或开启新会话。
-
-| 宿主 | 短入口 | 长入口 |
-|---|---|---|
-| Claude Code | `/UG` | `/ultragoal` |
-| Codex | `$ug` | `$ultragoal` |
-| Kimi Code | `/skill:ug` | `/skill:ultragoal` |
-| zCode | 在 Skill 选择器中选 `ug` | 在 Skill 选择器中选 `ultragoal` |
-
-快捷入口会读取这个克隆目录中的 Skill，因此需要保留该目录。它不安装 Hook；需要 Hook 和评审角色时，请另外安装插件。更换源文件位置、删除入口或使用自定义 Kimi 数据目录的方法见[快捷入口维护](docs/usage.zh-CN.md#快捷入口维护)。zCode 的实际发现情况仍需在安装版本中测试。
+`ultra-goal` 继续作为插件包 ID。Claude 使用 `<插件>:<Skill>` 命名插件入口，所以命令中会同时出现这两个名称。UltraGoal 不再安装单独的用户命令或转发 Skill。
 
 ## 第一个目标
 
-在你要开展工作的项目目录中打开编码 Agent，用自然语言或已安装的快捷入口调用 UltraGoal：
+在你要开展工作的项目目录中打开编码 Agent，用自然语言或主 Skill 入口调用 UltraGoal：
 
 > 使用 UltraGoal，把“让运营团队能够使用 CSV 导出功能”整理成可执行目标。先检查现有实现，只问我必须决定的问题，最后向我展示完整的验收与授权契约。
 
@@ -133,9 +124,9 @@ Agent 维护目标文件中的进度部分：`State` 记录当前事实，`Lesso
 ## 文档
 
 - [使用指南](docs/usage.zh-CN.md)：任务分配、反馈、Hook、验收、恢复和故障排查。[English](docs/usage.md)。
-- [目标契约](plugins/ultra-goal/skills/ultra-goal/references/goal-contract.md)：字段、验收覆盖关系和评审凭据。
-- [Skill 指令](plugins/ultra-goal/skills/ultra-goal/SKILL.md)：Agent 实际加载的流程。
-- [研究依据](plugins/ultra-goal/skills/ultra-goal/references/research-basis.md)：参考工作及其对设计的影响。
+- [目标契约](plugins/ultra-goal/skills/ultragoal/references/goal-contract.md)：字段、验收覆盖关系和评审凭据。
+- [Skill 指令](plugins/ultra-goal/skills/ultragoal/SKILL.md)：Agent 实际加载的流程。
+- [研究依据](plugins/ultra-goal/skills/ultragoal/references/research-basis.md)：参考工作及其对设计的影响。
 
 ## 开发
 
@@ -151,4 +142,4 @@ python3 -m unittest discover -s tests -v
 
 [MIT](LICENSE)。
 
-Kimi Code 的用户安装目录遵循 `KIMI_CODE_HOME`，默认是 `~/.kimi-code`；Skill 和 `/ug` 快捷入口都写入该目录下的 `skills`。安装器不会迁移或删除旧 Python CLI 的 `~/.kimi` 目录。参见 [Kimi Skill 目录](https://www.kimi.com/code/docs/kimi-code-cli/customization/skills.html)。
+Kimi Code 的插件目录遵循 `KIMI_CODE_HOME`，默认是 `~/.kimi-code`。参见 [Kimi Skill 目录](https://www.kimi.com/code/docs/kimi-code-cli/customization/skills.html)。

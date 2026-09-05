@@ -22,7 +22,7 @@ import threading
 
 REPO = Path(__file__).resolve().parents[1]
 PLUGIN = REPO / "plugins/ultra-goal"
-SCRIPTS = PLUGIN / "skills/ultra-goal/scripts"
+SCRIPTS = PLUGIN / "skills/ultragoal/scripts"
 OWNER_HOME = Path.home()
 SESSION_ENV = {"CODEX_SESSION_ID", "CLAUDE_SESSION_ID", "KIMI_SESSION_ID", "ZCODE_SESSION_ID"}
 HANDLERS = {"Stop": "goal_stop.py", "SessionStart": "goal_session_start.py",
@@ -41,7 +41,7 @@ if name=='Stop':
 if session:
     (root/('session-'+os.environ.get('UG_PROBE_LABEL','A')+'.json')).write_text(json.dumps({'session_id':session}))
 script=sys.argv[1]; host=sys.argv[2]
-args=[sys.executable,str(root/'pluginroot/skills/ultra-goal/scripts'/script)]
+args=[sys.executable,str(root/'pluginroot/skills/ultragoal/scripts'/script)]
 if name=='Stop': args += ['--host',host]
 result=subprocess.run(args,input=raw,text=True,capture_output=True)
 try: payload=json.loads(result.stdout) if result.stdout.strip() else {}
@@ -73,14 +73,14 @@ class Probe:
         self.host, self.root = host, root
         self.env = {k: v for k, v in os.environ.items() if k not in SESSION_ENV}
         self.env.pop("CLAUDECODE", None)
-        self.scripts = root / "pluginroot/skills/ultra-goal/scripts"
+        self.scripts = root / "pluginroot/skills/ultragoal/scripts"
         shutil.copytree(SCRIPTS, self.scripts)
         (root / "wrapper.py").write_text(WRAPPER)
         (root / "anchor.py").write_text(ANCHOR)
         (root / "mode").write_text("red")
         goals = root / ".goals"
         goals.mkdir()
-        template = (PLUGIN / "skills/ultra-goal/assets/goal-package.md").read_text()
+        template = (PLUGIN / "skills/ultragoal/assets/goal-package.md").read_text()
         start, end = template.index("## Anchor"), template.index("## Means")
         template = template[:start] + f'## Anchor\n\n```\n{shlex.quote(sys.executable)} anchor.py\n```\n\nbudget: 1 second\n\n' + template[end:]
         template = template.replace("ceiling: 6", "ceiling: 12")
@@ -91,7 +91,7 @@ class Probe:
                       "protected": ["anchor.py"], "covers": {"protocol": "anchor"}, "review": None}
         template = template[:start] + "## Verification\n\n```json\n" + json.dumps(definition) + "\n```\n\n## Acceptance\n\n- [ ] protocol: The fixture's worker result and current mode satisfy its check.\n\n" + template[end:]
         (goals / "demo.goal.md").write_text(template)
-        (goals / "demo.decisions.md").write_text((PLUGIN / "skills/ultra-goal/assets/decisions-record.md").read_text())
+        (goals / "demo.decisions.md").write_text((PLUGIN / "skills/ultragoal/assets/decisions-record.md").read_text())
         self.args = self.configure()
 
     def hook(self, event):

@@ -14,7 +14,7 @@
 
 ## 证据与后续工作
 
-公开运行说明见 [English README](../../README.md) 和 [中文 README](../../README.zh-CN.md)；当前执行规范见 [统一目标契约](../../plugins/ultra-goal/skills/ultra-goal/references/goal-contract.md) 与 [Hook 边界](../../plugins/ultra-goal/skills/ultra-goal/references/host-hooks.md)。回归可通过 `python3 -m unittest discover -s tests -v` 重现。
+公开运行说明见 [English README](../../README.md) 和 [中文 README](../../README.zh-CN.md)；当前执行规范见 [统一目标契约](../../plugins/ultra-goal/skills/ultragoal/references/goal-contract.md) 与 [Hook 边界](../../plugins/ultra-goal/skills/ultragoal/references/host-hooks.md)。回归可通过 `python3 -m unittest discover -s tests -v` 重现。
 
 原始试验 trace、会话材料、业务现场和历史产品快照保留在本地研究目录，不随本次源码提交发布。维护者本地定位为 `docs/research/2026-09-05-goal-engineering/closure-evaluation/` 和 `docs/research/2026-09-05-prior-art/implementation/`；这些路径不是远程读者可访问的证据链接。原始失败与前向对照未被覆盖或删除。
 

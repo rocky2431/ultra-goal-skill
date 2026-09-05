@@ -221,7 +221,7 @@ boundary and the report says it is awaiting a prompt rather than running unatten
 Where the plugin is absent, paste the text below as a plain prompt. Without the plugin
 there is no gate to satisfy: run the anchor yourself, show its real output, and report
 against it honestly. If the plugin's install root is reachable, arm from it - `python3
-<plugin-root>/skills/ultra-goal/scripts/goal_run.py arm weekly-dep-upgrade --session-id
+<plugin-root>/skills/ultragoal/scripts/goal_run.py arm weekly-dep-upgrade --session-id
 <this session's native id>` - and the gate goes live. The session id is required: arming
 refuses without one rather than leaving the run unowned for whichever session stops first.
 
@@ -276,7 +276,7 @@ an exit code rather than a summary, no conclusion from documents alone, **the ru
 run and not the designer**, droppable means droppable with a wrong term challenged rather
 than edited, state the turn out loud, rewrite carry-over including Next, and completion
 checked through the shared gate before final delivery. Host: Claude Code (recorded in
-the decisions record) - the objective is portable, and `/ultra-goal` starts it wherever the plugin is installed.
+the decisions record) - the objective is portable, and the plugin starts it wherever it is installed.
 
 First iteration should produce: the audit output, the version bumps it implies, the anchor
 command's real output, and a rewritten Carry-over section.

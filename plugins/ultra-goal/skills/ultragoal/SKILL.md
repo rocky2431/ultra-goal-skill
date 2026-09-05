@@ -1,11 +1,11 @@
 ---
-name: ultra-goal
-description: "Turn \"make an agent keep doing this\" into a goal a host will hold to: interview for intent, anchor, stop condition, boundary, droppable means, roles and an adversarial verifier, refuse the shapes that fail, then emit the artifact - a goal package to start with /ultra-goal, a workflow script, or a cross-vendor delegation triad. Runnable, not a design note."
+name: ultragoal
+description: "Turn \"make an agent keep doing this\" into a goal a host will hold to: interview for intent, anchor, stop condition, boundary, droppable means, roles and an adversarial verifier, refuse the shapes that fail, then emit the artifact - a goal package to start through the plugin, a workflow script, or a cross-vendor delegation triad. Runnable, not a design note."
 when_to_use: "When the owner wants work to keep running without them - \"make an agent keep doing this\", \"turn this into something that runs itself\", \"set up a loop for\", \"have it keep going until\" - or wants to inspect or change a goal already in .goals/. Not when a goal is already running and the request is a step of that work: that is the run doing its job."
 license: MIT
 metadata:
   author: rocky2431
-  version: "2.15.4"
+  version: "2.15.5"
 ---
 
 # UltraGoal

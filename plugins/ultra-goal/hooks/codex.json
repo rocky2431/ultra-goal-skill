@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "P=\"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/skills/ultra-goal/scripts/goal_stop.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\" --host codex; else exec python \"$P\" --host codex; fi",
+            "command": "P=\"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/skills/ultragoal/scripts/goal_stop.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\" --host codex; else exec python \"$P\" --host codex; fi",
             "commandWindows": "(if not exist \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_stop.py\" exit 0) & where py >nul 2>nul || exit 0 & py -3 \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_stop.py\" --host codex",
             "timeout": 600,
             "statusMessage": "Checking the loop's anchor"
@@ -21,7 +21,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "P=\"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/skills/ultra-goal/scripts/goal_session_start.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\"; else exec python \"$P\"; fi",
+            "command": "P=\"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/skills/ultragoal/scripts/goal_session_start.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\"; else exec python \"$P\"; fi",
             "commandWindows": "(if not exist \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_session_start.py\" exit 0) & where py >nul 2>nul || exit 0 & py -3 \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_session_start.py\"",
             "timeout": 10,
             "statusMessage": "Restoring the active loop"
@@ -35,7 +35,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "P=\"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/skills/ultra-goal/scripts/goal_pre_compact.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\"; else exec python \"$P\"; fi",
+            "command": "P=\"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/skills/ultragoal/scripts/goal_pre_compact.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\"; else exec python \"$P\"; fi",
             "commandWindows": "(if not exist \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_pre_compact.py\" exit 0) & where py >nul 2>nul || exit 0 & py -3 \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_pre_compact.py\"",
             "timeout": 10,
             "statusMessage": "Recording the loop's carried state"

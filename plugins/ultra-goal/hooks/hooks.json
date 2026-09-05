@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "R=\"${CLAUDE_PLUGIN_ROOT}\"; H=\"\"; [ -n \"$R\" ] || { R=\"${ZCODE_PLUGIN_ROOT}\"; H=\"--host zcode\"; }; [ -n \"$R\" ] || R=\"${PLUGIN_ROOT}\"; P=\"$R/skills/ultra-goal/scripts/goal_stop.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\" $H; else exec python \"$P\" $H; fi",
+            "command": "R=\"${CLAUDE_PLUGIN_ROOT}\"; H=\"\"; [ -n \"$R\" ] || { R=\"${ZCODE_PLUGIN_ROOT}\"; H=\"--host zcode\"; }; [ -n \"$R\" ] || R=\"${PLUGIN_ROOT}\"; P=\"$R/skills/ultragoal/scripts/goal_stop.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\" $H; else exec python \"$P\" $H; fi",
             "commandWindows": "(if not exist \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_stop.py\" exit 0) & where py >nul 2>nul || exit 0 & py -3 \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_stop.py\"",
             "timeout": 600,
             "statusMessage": "Checking the loop's anchor"
@@ -21,7 +21,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "R=\"${CLAUDE_PLUGIN_ROOT}\"; [ -n \"$R\" ] || R=\"${ZCODE_PLUGIN_ROOT}\"; [ -n \"$R\" ] || R=\"${PLUGIN_ROOT}\"; P=\"$R/skills/ultra-goal/scripts/goal_session_start.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\"; else exec python \"$P\"; fi",
+            "command": "R=\"${CLAUDE_PLUGIN_ROOT}\"; [ -n \"$R\" ] || R=\"${ZCODE_PLUGIN_ROOT}\"; [ -n \"$R\" ] || R=\"${PLUGIN_ROOT}\"; P=\"$R/skills/ultragoal/scripts/goal_session_start.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\"; else exec python \"$P\"; fi",
             "commandWindows": "(if not exist \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_session_start.py\" exit 0) & where py >nul 2>nul || exit 0 & py -3 \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_session_start.py\"",
             "timeout": 10,
             "statusMessage": "Restoring the active loop"
@@ -35,7 +35,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "R=\"${CLAUDE_PLUGIN_ROOT}\"; [ -n \"$R\" ] || R=\"${ZCODE_PLUGIN_ROOT}\"; [ -n \"$R\" ] || R=\"${PLUGIN_ROOT}\"; P=\"$R/skills/ultra-goal/scripts/goal_tool_failure.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\"; else exec python \"$P\"; fi",
+            "command": "R=\"${CLAUDE_PLUGIN_ROOT}\"; [ -n \"$R\" ] || R=\"${ZCODE_PLUGIN_ROOT}\"; [ -n \"$R\" ] || R=\"${PLUGIN_ROOT}\"; P=\"$R/skills/ultragoal/scripts/goal_tool_failure.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\"; else exec python \"$P\"; fi",
             "commandWindows": "(if not exist \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_tool_failure.py\" exit 0) & where py >nul 2>nul || exit 0 & py -3 \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_tool_failure.py\"",
             "timeout": 10
           }
@@ -48,7 +48,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "R=\"${CLAUDE_PLUGIN_ROOT}\"; [ -n \"$R\" ] || R=\"${ZCODE_PLUGIN_ROOT}\"; [ -n \"$R\" ] || R=\"${PLUGIN_ROOT}\"; P=\"$R/skills/ultra-goal/scripts/goal_tool_success.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\"; else exec python \"$P\"; fi",
+            "command": "R=\"${CLAUDE_PLUGIN_ROOT}\"; [ -n \"$R\" ] || R=\"${ZCODE_PLUGIN_ROOT}\"; [ -n \"$R\" ] || R=\"${PLUGIN_ROOT}\"; P=\"$R/skills/ultragoal/scripts/goal_tool_success.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\"; else exec python \"$P\"; fi",
             "commandWindows": "(if not exist \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_tool_success.py\" exit 0) & where py >nul 2>nul || exit 0 & py -3 \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultra-goal\\scripts\\goal_tool_success.py\"",
             "timeout": 10
           }
