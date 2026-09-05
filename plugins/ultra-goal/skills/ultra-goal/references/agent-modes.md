@@ -21,6 +21,41 @@ A plan file or task list is allowed. Keep mutable execution planning separate fr
 intent and acceptance. Use an existing graph runtime only when one is actually available
 and the task calls for it; this skill does not introduce one.
 
+## Choose an available delegation path
+
+Inspect the current host's worker tools and any installed bridge. Use the capability
+that fits the assignment; there is no mandatory vendor or transport order.
+
+- Suitable native workers do not require `agent-delegation` or `agent-delegate`.
+- If a bridge command and the needed target work but its Skill is not discovered,
+  follow the bridge's available usage instructions. Do not reinstall its runtime merely
+  to make a Skill appear in a menu.
+- A Skill file alone does not establish that its command, target or authentication works.
+  If the chosen bridge is absent, choose another available path that meets the same terms.
+  Install a dependency only when it is needed and existing owner authority covers installation.
+- If a required independent verifier has no usable path, resolve that requirement before
+  unattended execution. During a run, continue independent authorized work, but retain the
+  missing verification condition; the generator cannot replace that verifier.
+
+For `agent-delegate`, inspect `agent-delegate list --json` only when the command is
+available. First calls need `--caller <actual-registered-caller>`; nested calls preserve
+the received caller and chain. Never substitute `human` or a renamed target to bypass
+a rejection. A same-product worker can be a separate session; if the chosen bridge
+cannot create it, use another supported path rather than claiming a circular delegation.
+
+Give the worker a self-contained mission: accepted terms, existing authority, relevant
+source evidence and failed attempts, actual read/write scope, result location and checks.
+Include any required review receipt fields and the resolved checker path it needs.
+The worker need not install this Skill to perform that mission. Its own further delegation
+depends on capabilities available to it, not on whether it received the same Skill package.
+
+Choose a path with observable progress or an input channel when the task needs one.
+Use native task handles, actual logs and agreed artifact locations. A synchronous bridge
+may return only at exit; do not promise live feedback or resume support it does not expose.
+If the worker needs input, answer from existing terms or ask the owner for the unresolved
+material decision, then use a supported reply/resume path. Inspect unfinished effects
+before retrying. Stop hooks do not relay questions or keep a worker alive.
+
 ## Verification and review
 
 Run the accepted anchor and inspect what it covers. Choose test order for the change:
@@ -50,31 +85,28 @@ is not proof that the verdict is correct. Reconcile disagreements against eviden
 
 ## How to actually run a fresh-context role
 
-Not an ad-hoc subagent call. The skills reference documents a frontmatter field for exactly
-this:
+Use the current host's supported mechanism to supply the intended reviewer inputs and
+obtain its own session identity. Claude Code supports forked Skill execution through
+frontmatter such as:
 
 ```yaml
 context: fork          # run in a forked subagent context
-agent: Explore         # and which agent type executes it
+agent: general-purpose # the packaged review roles also need to write their reports
 ```
 
-With `context: fork` the task is written in the skill and an agent type executes it, and the
-built-in `Explore` and `Plan` agents skip CLAUDE.md and git status, so **a forked skill sees
-only its own SKILL.md content and the agent's system prompt**. That is context isolation as
-a declared property of the file rather than something the caller has to remember to arrange -
-which matters, because the caller here is the author whose argument must not reach the
-reviewer.
+This declares the execution request for a host that supports those fields. It does not
+prove what every host injects into the worker, or that the worker can expose a distinct
+native session ID. Check the actual session and accepted input isolation. Do not infer
+that the worker sees only its Skill file and system prompt from these fields alone.
 
-The three role skills also carry `user-invocable: false`, which the skills reference
-defines as "Claude Code hides it from the `/` menu and doesn't run it when you type
-`/name`". That is not tidiness. A role invoked by hand forks with no frozen diff to audit
-and no round to attach its file to, so the one aperture a user should see is the goal
-skill itself - everything else is the graph calling its own nodes. Plugin skills are
-namespaced (`/ultra-goal:review`, `/ultra-goal:critic`); bare names require standalone
-user or project entries. The optional `UG` shortcut points only to the main skill.
+Where the packaged role call is supported, use it with the goal slug and required inputs.
+Otherwise pass the relevant role instructions and actual artifact paths through a native
+worker or an available bridge. Reviewers must have the capabilities their accepted checks
+need; do not translate read-only review into an unrelated Shell or network ban.
 
-Read the reference before choosing a mechanism. This one was reconstructed from installed
-plugins for several versions while the field that does the job was documented all along.
+The role skills carry `user-invocable: false`; menu visibility and invocation behavior are
+host-specific. Plugin role names such as `/ultra-goal:review` and `/ultra-goal:critic`
+are not portable tool APIs. The optional `UG` shortcut points only to the main skill.
 
 ## Review choices
 
@@ -102,14 +134,18 @@ it in a list of role options was the clearest symptom of the original mistake.
 ## Declared degradation
 
 An agent can become unavailable mid-run: a quota runs out, a target does not answer, a
-process dies. The run should degrade, not break.
+process dies. Preserve the required outcome while choosing another workable method.
 
-So every role in `## Roles` names a `fallback:`, and the rule is one line: **try the role,
-then its fallback, then continue as the main session alone** - and record which happened.
+Each declared role names a `fallback:`; `none` is a valid answer. For ordinary work or
+advisory review, choose a suitable worker or continue in the main session within authority.
+For required review, use only a verifier or fallback accepted by `## Verification`, in
+a distinct session with the required inputs and evidence. If none is available, keep
+that requirement unmet. Continuing other work does not permit a completion claim.
 
 | What | Who decides | Where it lives |
 |---|---|---|
-| who to fall back to | the **owner**, at design time | `## Roles` |
+| ordinary worker or advisory-review fallback | the **main agent**, within existing authority and owner-assigned roles | `## Roles` and material decisions |
+| required verifier or its fallback | the **accepted verification contract** | `## Verification` |
 | whether a target answered | **observed at call time** | — |
 | that a fallback was used | the run, in its report and in `### Lessons` | a **claim**, not evidence |
 
@@ -163,7 +199,7 @@ declared reviewer with no review file as `REVIEW_UNEVIDENCED`. For rounds delega
 even that cannot see the artifact; the report is the only record there, which is exactly the
 Codex row above.
 
-Degrading to the main session alone is **always** the last resort and always allowed. A run
-that stops because a reviewer was out of quota has turned an optional check into a single
-point of failure - and a review that cannot happen is a missing review, not a red anchor.
-Say so in the report; do not let it read as a pass.
+An unavailable advisory reviewer need not stop the work. An unavailable required reviewer
+leaves verification incomplete unless an accepted independent fallback supplies it.
+A review that cannot happen is a missing review, not a red anchor. Say so in the report;
+do not let it read as a pass or ask the owner to solve ordinary routing choices.

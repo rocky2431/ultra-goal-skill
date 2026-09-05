@@ -1,8 +1,9 @@
 <!--
 Example of one optional adversarial-review triad. Save as `<slug>.delegation.md` next to
 `<slug>.decisions.md`. Here a main agent edits, a reviewer reviews the artifact and a
-critic reviews the review. Adapt the roles to the accepted goal. Confirm targets with
-`agent-delegate list --json` before naming them.
+critic reviews the review. Adapt the roles and use the current host's available tools.
+If choosing an installed agent-delegate bridge, confirm its registered targets with
+`agent-delegate list --json` before naming them. The bridge is optional.
 See references/adversarial-review.md for why the third role is the one that matters.
 -->
 
@@ -61,10 +62,21 @@ edit, and then a new outer round begins.
 
 ## Handoff
 
+Use the host's supported worker tools or an installed bridge. Give each worker the
+accepted goal and a self-contained mission; it does not need this Skill installed.
+The commands below illustrate a registered Claude caller with Codex and Kimi targets.
+Replace caller, targets and paths with the actual available identities and resources.
+First bridge calls must supply `--caller`; nested calls preserve the received chain.
+
 ```bash
-agent-delegate run --to codex --cwd /absolute/repo --task-file /absolute/reviewer-mission.md
-agent-delegate run --to kimi  --cwd /absolute/repo --task-file /absolute/critic-mission.md
+agent-delegate run --to codex --caller claude --cwd /absolute/repo --task-file /absolute/reviewer-mission.md
+agent-delegate run --to kimi  --caller claude --cwd /absolute/repo --task-file /absolute/critic-mission.md
 ```
+
+When the bridge is missing, use another available path that meets the same contract;
+do not copy or install a runtime merely to execute this example. Ordinary work can
+return to the main session. A required independent review still needs an accepted
+independent verifier and its receipt; an unavailable verifier cannot become self-review.
 
 The critic's mission file carries the reviewer's review as its input. Neither report is
 accepted without its anchor command's real output: a role's claim of success is a claim, and

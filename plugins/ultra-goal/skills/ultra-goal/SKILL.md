@@ -154,9 +154,15 @@ are normal. A plan or task list does not require a graph runtime or replace the 
 Reconsider the initial shape after the decisions are clear.
 
 For delegation, discover actual available targets rather than asking the owner to
-inventory them. If using the installed delegation bridge, `agent-delegate list --json`
-provides that inventory; do not assume the bridge is installed. Pass current decisions, failures and evidence, writable scope and
-expected results. Read the role reference before choosing the mechanism or fallback.
+inventory them. Use suitable native worker tools or an available bridge; another
+Skill is not required. If using the installed delegation bridge, `agent-delegate list --json`
+provides that inventory; do not assume the bridge is installed. A discovered Skill,
+a callable bridge and a usable target are separate facts. Missing optional tooling
+does not block ordinary authorized work. Pass current decisions, failures and evidence,
+writable scope and expected results so a worker can act without this Skill installed.
+Read the role reference before choosing the mechanism or fallback. Before unattended
+execution, establish a usable path for every required verifier and for reading results;
+resolve a missing required capability without silently changing the accepted contract.
 Call success is not a join: inspect the expected artifact. Transport failures such
 as `role_unavailable` are observations, not acceptance conditions. A required review
 cannot fall back to generator self-review even when a vendor is unavailable.

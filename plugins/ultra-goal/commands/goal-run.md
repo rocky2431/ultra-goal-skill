@@ -138,6 +138,10 @@ retires an acceptance requirement or makes a required review optional.
 Then follow `## Roles` for who does what this turn, `## Acceptance` for what is still not
 true, and `### Next` for the one objective this round is aimed at.
 
+When choosing a worker, fallback or feedback channel, read
+[agent-modes.md](../skills/ultra-goal/references/agent-modes.md). Another installed Skill
+is not required; choose a callable path that preserves the accepted verification terms.
+
 **The evaluator is pinned.** Arming recorded the files `## Verification` names under
 `protected` into `.goals/$ARGUMENTS.verification.baseline`. Do not edit them: the gate
 compares before and after the anchor runs, and a changed checker refuses the claim instead

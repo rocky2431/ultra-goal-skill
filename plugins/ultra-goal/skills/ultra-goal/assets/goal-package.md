@@ -86,8 +86,8 @@ example does not require a critic, a design review or a fixed coder for every ru
 - **research**: fanned-out subagents, fresh context each, one per independent question.
   fallback: this session inline, narrower.
 - **design critic**: `/ultra-goal:design-critic weekly-dep-upgrade`, run once at the end of
-  the interview before any work starts. Forked, so it never saw the interview that produced
-  the spec; provide the original owner request and clarifications alongside the draft.
+  the interview before any work starts. Use a host-supported fresh context and check input
+  isolation; provide the original owner request and clarifications alongside the draft.
   fallback: an available independent context. If unavailable, disclose the limit before
   unattended execution; do not treat start authorization as a waiver or record a pass.
 - **carry out**: this session. Writes the code and relevant checks; choose testing order for the change.

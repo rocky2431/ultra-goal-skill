@@ -94,6 +94,24 @@ Use the host's actual delegation tools or an installed bridge. When the
 `agent-delegate` bridge is available, `agent-delegate list --json` discovers its
 registered targets. The Skill does not install or emulate that bridge.
 
+The bridge is optional. Native workers do not require the `agent-delegation` Skill,
+and a worker can carry out a self-contained mission without UltraGoal installed.
+Discovering a Skill, finding a callable command and reaching a usable target are
+separate checks. If only the Skill is absent but the bridge works, use its available
+instructions; copying a Skill folder does not install missing runtime dependencies.
+If a dependency is necessary, installation needs authority for that effect.
+
+First `agent-delegate` calls supply `--caller <actual-registered-caller>`; nested
+calls preserve the inherited identity and chain. The
+[delegation template](../plugins/ultra-goal/skills/ultra-goal/assets/delegation-package.md)
+shows a concrete example. A same-product worker can be a separate session. Choose
+a supported execution path if the bridge cannot create it; do not rename identities
+to evade a rejection. Fork metadata and role command names are host-specific.
+
+Before unattended execution, establish a usable path for required independent
+verification and for reading results. Missing optional tooling does not block
+ordinary work. Missing required verification cannot be replaced with self-review.
+
 Each mission supplies:
 
 1. The accepted terms and the bounded objective of this assignment.
@@ -142,6 +160,12 @@ executes the tool calls, while the main agent chooses how to proceed.
 
 Questions come through the main agent's normal conversation or native input UI.
 Hooks do not conduct the interview or forward every worker question verbatim.
+
+Use the selected tool's actual progress and reply channels. A synchronous bridge
+may return only after the worker exits; it does not thereby provide live progress
+or session resume. If a worker needs an answer, resolve it from existing terms or
+ask the owner, then use a supported reply/resume path. Before retrying, inspect any
+unfinished effects. Stop hooks do not provide this communication channel.
 
 | Situation | Action |
 |---|---|

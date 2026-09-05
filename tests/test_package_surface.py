@@ -1404,7 +1404,10 @@ class RolesByStageTests(unittest.TestCase):
         adequacy always a claim."""
         doc = self.reference()
         self.assertIn("## Declared degradation", doc)
-        self.assertIn("| who to fall back to | the **owner**, at design time", doc)
+        self.assertIn("| ordinary worker or advisory-review fallback | the **main agent**", doc)
+        self.assertIn("| required verifier or its fallback | the **accepted verification contract**", doc)
+        self.assertIn("Continuing other work does not permit a completion claim", doc)
+        self.assertNotIn("always allowed", doc)
         self.assertIn("a **claim**, not evidence", doc)
         # The one contract, both halves, in this document.
         self.assertIn("declared; the failure is measured", doc)
@@ -1416,7 +1419,7 @@ class RolesByStageTests(unittest.TestCase):
         # The reason a fake check is worse than no check, stated.
         self.assertIn("because it reads as coverage", doc)
         self.assertIn(
-            "a review that cannot happen is a missing review, not a red anchor", doc
+            "a review that cannot happen is a missing review, not a red anchor", doc.lower()
         )
 
     def test_the_degradation_contract_is_the_same_everywhere(self) -> None:
@@ -1486,7 +1489,7 @@ class RolesByStageTests(unittest.TestCase):
         self.assertIn("host-observed evidence rather than the", audit)
 
     def test_the_three_roles_ship_as_forked_skills(self) -> None:
-        """Isolation as a property of the file, not of the call site."""
+        """Packaged fork metadata does not prove the executing host's isolation."""
         for name, writes in (("design-critic", False), ("review", True),
                              ("critic", True)):
             with self.subTest(skill=name):
@@ -1503,8 +1506,9 @@ class RolesByStageTests(unittest.TestCase):
                         "/ultra-goal:critic <slug>"):
             self.assertIn(command, skill)
         doc = self.reference()
-        self.assertIn("forked skill sees", doc)
-        self.assertIn("only its own SKILL.md content", doc)
+        self.assertIn("Check the actual session and accepted input isolation", doc)
+        self.assertIn("does not prove what every host injects", " ".join(doc.split()))
+        self.assertNotIn("**a forked skill sees", doc)
 
     def test_the_run_is_asked_to_say_it_out_loud(self) -> None:
         goal = (SKILL_ROOT / "assets" / "goal-package.md").read_text(encoding="utf-8")
@@ -1581,9 +1585,9 @@ class ReferenceFirstTests(unittest.TestCase):
         doc = (SKILL_ROOT / "references" / "agent-modes.md").read_text(encoding="utf-8")
         self.assertIn("## How to actually run a fresh-context role", doc)
         self.assertIn("context: fork", doc)
-        self.assertIn("agent: Explore", doc)
-        # And why it is better than arranging isolation at the call site.
-        self.assertIn("declared property of the file", doc)
+        self.assertIn("agent: general-purpose", doc)
+        self.assertIn("Claude Code supports forked Skill execution", doc)
+        self.assertIn("are not portable tool APIs", " ".join(doc.split()))
 
     def test_the_gate_records_which_sources_disagreed(self) -> None:
         """A conflict between two authoritative sources is worth keeping -
