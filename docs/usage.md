@@ -31,6 +31,15 @@ instructions. It asks you about decisions it cannot resolve from those sources,
 one question at a time, with a recommendation and the facts that would change it.
 The interview has no fixed number of questions.
 
+After intent and basic boundaries are understood, the agent discovers collaboration
+paths read-only, then asks whether the goal may use only current-host workers or
+also named external agents. An explicit, applicable prior answer is reused. This
+decision precedes the first dispatch, including research and specification critique.
+The answer goes in the decisions record, allowed targets in `Boundary`, and the
+independent verifier and accepted fallbacks in `Verification`. Both choices retain
+independent final review. Within that scope, routine worker choices need no new
+question; expanding it requires your decision. See the [collaboration-scope protocol](../plugins/ultra-goal/skills/ultragoal/references/agent-modes.md#confirm-collaboration-scope).
+
 The resulting contract contains:
 
 | Field | What it establishes |
@@ -40,7 +49,7 @@ The resulting contract contains:
 | `Anchor` | An observational command that checks the agreed result, with an explicit time budget |
 | `Stop condition` | `success: verified` and `ceiling: N` or `ceiling: none`; the ceiling counts completion attempts |
 | `Means` | Complete declarations labelled `[load-bearing]` or `[droppable]` |
-| `Boundary` | Scope/effects and approval limits; confidence claims needing measurement; inference limits |
+| `Boundary` | Scope/effects, allowed agent targets and approval limits; confidence claims needing measurement; inference limits |
 | `Verification` | Evaluator provenance, protected evaluator inputs, coverage for every acceptance ID and any required review |
 | Roles and surfaces | Worker responsibilities, approved fallbacks, readable/writable resources and integration ownership |
 | `Carry-over` and `Handoff` | Current state, lessons, next action and the actual start/recovery procedure |
@@ -57,8 +66,8 @@ contract. Existing explicit confirmation counts; silence does not. "Start now"
 is not a review waiver. A clean critique of already approved terms does not
 require another confirmation.
 
-The critique and the quality of the interview are currently **model-followed
-instructions**. Structural validation cannot establish that they happened or
+Collaboration confirmation, critique and the quality of the interview are currently
+**model-followed instructions**. Structural validation cannot establish that they happened or
 that the criteria fully express the owner's intent.
 
 See the [canonical goal contract](../plugins/ultra-goal/skills/ultragoal/references/goal-contract.md).
@@ -85,8 +94,9 @@ not prove that `agent()` or `pipeline()` can run.
 
 The main agent assigns work through the host's delegation tools. It follows
 roles you have specified and otherwise decides whether a separate worker would
-help. Small tasks can stay in the main session. The Skill does not prescribe a
-vendor order or require three-model reviews for every task.
+help within your confirmed collaboration scope. Small tasks can stay in the main
+session. The Skill does not prescribe a vendor order or require three-model reviews
+for every task.
 
 Use the host's actual delegation tools or an installed bridge. When the
 `agent-delegate` bridge is available, `agent-delegate list --json` discovers its
@@ -121,6 +131,12 @@ Each mission supplies:
 Workers can use `.goals/.work/` for mission/result files. Separate task files do
 not isolate writes to a shared file, database or service. Parallelize genuinely
 independent work and join all relevant writers before integrated review.
+
+For long-running coding work, retain the mission's failure cases and planned checks
+before dispatch. Check path/tool access, integrated prerequisites, ignored resources
+in the actual worktree and overlap with other writers. Use a native task handle for
+work that must survive the observer. The [role protocol](../plugins/ultra-goal/skills/ultragoal/references/agent-modes.md#before-dispatching-long-running-work)
+defines these checks and the order for preregistration, initial review and reconciliation.
 
 Feedback has different meanings:
 
@@ -216,6 +232,15 @@ full stdout or all conversations. Required review archives contain **declared
 inputs**, not the whole workspace. Preserve other material raw evidence explicitly.
 Git preserves committed revisions only; tracking a file does not authorize a
 commit or publication.
+
+For a long coding goal with commit authority, commit each checkable work unit as
+`goal(<slug>) step: <summary>`. Record `Reason`, `Check`, `Evidence`, `Remaining`,
+and the actual `Writer-Session` identities for product changes. `Evidence` names a
+regular file retained in that commit, relative to the Git root. The existing
+`--audit` reports missing step fields and evidence at the original revision;
+later files cannot repair an earlier missing source. See the [work-record format](../plugins/ultra-goal/skills/ultragoal/references/document-system.md#work-step-records).
+This audits declared steps, not every action or uncommitted change. Legacy work
+titles and goals without a Git baseline do not provide this step-history coverage.
 
 See [document maintenance](../plugins/ultra-goal/skills/ultragoal/references/document-system.md).
 
@@ -366,6 +391,14 @@ previous executing sessions, a digest binding the contract and declared inputs,
 required IDs, passing verdict and per-ID `checks` with actual path/quote evidence.
 Changed inputs require a new review. Native forks that share the execution
 session's identity cannot satisfy that distinct-session requirement.
+
+In the long-running coding protocol, the main agent can implement and delegate,
+but final review belongs to a role that did not implement the product. The gate
+also excludes product writers declared in this goal's `Writer-Session` commit
+fields. Omitted identities and unjoined branches remain outside that check; inspect
+the actual contributors. Retain the reviewer's initial verdict before sharing the
+execution report, then preserve differences and corrections alongside it. Git
+ancestry can check recorded order, not prove context isolation or authenticate a writer.
 
 At the post-Anchor boundary, the gate retains a content-addressed ZIP with the
 receipt, goal, manifest and declared input bytes. Historical audit validates that

@@ -1331,14 +1331,16 @@ class RolesByStageTests(unittest.TestCase):
         self.assertIn("no mandatory test-first rule", doc)
         self.assertNotIn("Test-first is a **Constraint**", skill)
 
-    def test_the_judge_is_recommended_to_judge_blind(self) -> None:
+    def test_long_running_review_is_blind_and_separate_from_integration(self) -> None:
         self.assertIn("references/agent-modes.md", skill_text())
         doc = self.reference()
         self.assertIn("## Judging blind", doc)
-        self.assertIn("before reading the worker's explanation", doc)
-        self.assertIn("not proof that the verdict is correct", doc)
+        self.assertIn("before reading the worker's explanation", " ".join(doc.split()))
+        self.assertIn("not proof that the verdict is correct", " ".join(doc.split()))
         goal = (SKILL_ROOT / "assets" / "goal-package.md").read_text(encoding="utf-8")
-        self.assertIn("- **judge**: this session, **blind first**", goal)
+        self.assertIn("- **integrator**: this session.", goal)
+        self.assertIn("This role must not have implemented the result.", goal)
+        self.assertNotIn("- **judge**: this session", goal)
 
     def test_the_stop_hook_reminds_only_what_may_change(self) -> None:
         self.assertIn("references/host-hooks.md", skill_text())
@@ -1383,8 +1385,8 @@ class RolesByStageTests(unittest.TestCase):
     def test_judging_blind_is_an_evidence_based_option(self) -> None:
         doc = self.reference()
         self.assertIn("## Judging blind", doc)
-        self.assertIn("before reading the worker's explanation", doc)
-        self.assertIn("not proof that the verdict is correct", doc)
+        self.assertIn("before reading the worker's explanation", " ".join(doc.split()))
+        self.assertIn("not proof that the verdict is correct", " ".join(doc.split()))
 
     def test_the_two_gate_channels_are_documented(self) -> None:
         doc = (SKILL_ROOT / "references" / "document-system.md").read_text(

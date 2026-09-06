@@ -2,6 +2,8 @@
 Shared goal contract for every execution shape. Save as `<slug>.goal.md` next to
 `<slug>.decisions.md`; workflow/delegation attachments reference this same contract.
 Adapt every path, check and identity to the inspected project before confirmation.
+Replace the illustrative collaboration scope with the owner's actual answer before
+dispatching any role, including research or specification critique.
 This example assumes an existing tests/ directory and a pnpm workspace.
 -->
 
@@ -22,6 +24,9 @@ branch is authorized; pushing and opening the PR is authorized; merging it is no
 commit gate belongs here and nowhere else - a run whose boundary does not authorize commits
 keeps its record in these files and says so, rather than treating a commit as owed each
 turn.
+
+Confirmed collaboration scope: this host's native subagents and independent sessions
+only. Research, specification critique and review use those authorized paths.
 
 **Confidence.** Never call an upgrade safe, passing, or done without the anchor command's
 real output in this session.
@@ -92,17 +97,18 @@ example does not require a critic, a design review or a fixed coder for every ru
   unattended execution; do not treat start authorization as a waiver or record a pass.
 - **carry out**: this session. Writes the code and relevant checks; choose testing order for the change.
   fallback: an authorized worker given Carry-over, previous failed attempts and evidence.
-- **judge**: this session, **blind first**. Run the anchor yourself, write the verdict to
-  `weekly-dep-upgrade.judge-review.md`, and only then read the reviewer's and critic's
-  reports and record where the three readings differ. fallback: none; a judge that reads
-  the reports first has been persuaded before it decided.
+- **integrator**: this session. Join writers, run the anchor and reconcile findings
+  against evidence. Its own implementation checks are not an independent verdict.
+  fallback: none; this session owns integration and delivery.
 - **anchor**: the command in `## Anchor`. No model in the path.
   fallback: none; if it cannot run the outcome is unknown, which is the answer rather than a
   failure.
 - **reviewer**: `/ultra-goal:review weekly-dep-upgrade` as `independent-reviewer`. Use it only after confirming the host gives that fork a distinct native session ID.
   Otherwise invoke a separate reviewer session with the same instructions and approved
   identity. Give it the frozen inputs, boundary and raw anchor output, never this
-  session's argument for correctness. fallback: another independent session using the same verifier
+  session's argument for correctness. This role must not have implemented the result.
+  Retain its blind initial verdict before sharing the execution report, then record
+  differences without overwriting the initial review. fallback: another independent session using the same verifier
   identity and criteria; never the generating session. Otherwise pause unverified.
 - **critic**: `/ultra-goal:critic weekly-dep-upgrade`, after the reviewer. Audits the
   review, not the code. fallback: none; without the third role the review is nobody's job to
@@ -141,9 +147,9 @@ archives when cleaning disposable worker scratch. Only declared review inputs ar
 retained automatically; include every original source needed to check its conclusion.
 
 Run `/ultra-goal:review weekly-dep-upgrade`, then `/ultra-goal:critic weekly-dep-upgrade`.
-Both are forked skills: the fork never sees the invoking conversation, so the author's
-account of why the change is correct cannot reach them - and that account is what a reviewer
-conforms to. Every finding cites file:line and the command whose output proves it. A **critic** then audits that review rather
+Use the actual host's isolated-input mechanism for these roles; fork metadata alone
+does not prove what reaches their contexts. Keep the author's defense out of the
+initial review. Every finding cites file:line and the command whose output proves it. A **critic** then audits that review rather
 than the code, sorting every point into exactly one of agreement, evidence-backed
 disagreement, or concern-based disagreement. The reviewer answers a disagreement with
 evidence, never with a rebuttal. This example allows at most 5 inner rounds; if round 1
@@ -262,7 +268,10 @@ When you believe the goal is met, finish all output edits and required review, t
 goal_run.py verify weekly-dep-upgrade --root <project> --session-id <current-native-session-id>
 using the installed script path. Read its current recorded verdict before final delivery;
 only verification_passed true permits a success claim. Do not edit reviewed outputs afterwards. Committing is authorized for
-this goal, so commit ordinary work turns as `goal(weekly-dep-upgrade): <summary>`, and a
+this goal, so commit each checkable work unit as `goal(weekly-dep-upgrade) step: <summary>`
+with Reason, Check, Evidence, Remaining and the actual product Writer-Session fields
+from the document-system reference. Audit these records before review; legacy work
+commits such as `goal(weekly-dep-upgrade): <summary>` do not assert that step contract. Record a
 completion attempt the gate has measured as
 `goal(weekly-dep-upgrade) turn <N>: <summary> [anchor: green|red|unknown]`, with <N> the
 number in the gate's message - and if a commit is ever refused, say so and leave the state

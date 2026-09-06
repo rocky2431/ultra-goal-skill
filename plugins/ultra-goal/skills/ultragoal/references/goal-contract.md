@@ -251,7 +251,10 @@ join and validate the integrated state before review and a completion claim.
 
 Arming and rebind record requested execution-session bindings before activation.
 Previous bound sessions remain excluded from required review after recovery. These
-records do not discover every delegated writer: the caller must also keep a worker
+checks also exclude `Writer-Session` identities declared in this goal's commits
+since arming. An unreadable recorded Git range refuses the review rather than
+silently losing that evidence; no Git baseline means this additional source is
+unavailable. These declarations do not discover every delegated writer: the caller must also keep a worker
 that authored the result out of its independent review. A recorded frozen-contract
 closure cannot be undone by ordinary re-arming, even after restoring the original
 text. Each observed closure is audited; it consumes an attempt only if a completion

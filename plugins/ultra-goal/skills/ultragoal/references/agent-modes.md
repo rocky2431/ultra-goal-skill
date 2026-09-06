@@ -7,6 +7,8 @@ flattened into one column. The owner caught it. This is the repair.
 
 ## Assign the work that this goal needs
 
+Resolve the collaboration scope below before assigning any worker.
+
 Init and research establish acceptance and authority. The main model then chooses the
 next useful action, the worker if any, and the evidence needed before the next iteration.
 These activities can overlap; they are not mandatory workflow phases.
@@ -21,10 +23,43 @@ A plan file or task list is allowed. Keep mutable execution planning separate fr
 intent and acceptance. Use an existing graph runtime only when one is actually available
 and the task calls for it; this skill does not introduce one.
 
+## Confirm collaboration scope
+
+After understanding intent and basic boundaries, inspect native worker tools and
+registered external targets read-only. Do not launch a worker as an availability
+probe before authorization. Resolve this owner decision before the first dispatch,
+including research, specification critique and review:
+
+> May this goal use only this host's native workers, or may it also delegate to the listed external agents?
+
+- **Current-host only:** use this host's native subagents or independent sessions.
+- **External delegation allowed:** also permit the concrete agent targets the owner
+  accepts; their presence in an inventory does not grant permission to use them.
+
+Recommend the current-host path when it can satisfy the goal. Name the external
+targets being proposed and disclose untested capabilities. Reuse an explicit,
+applicable owner answer; otherwise ask once and wait for the answer. An unresolved
+choice leaves dispatch and unattended startup pending while authorized local
+preparation can continue.
+
+Keep the original answer and its source in the existing decisions record. Put the
+allowed collaboration scope in `## Boundary`, the independent verifier and accepted
+fallbacks in `## Verification`, and assignments in `## Roles`. A template's example
+scope is not an owner answer. Both choices preserve the same final-review rule:
+the main agent may implement and self-test, but a non-implementing verifier in its
+own session must supply the required independent review. A lone execution session
+cannot satisfy that role.
+
+Within the confirmed scope, choose task splits, workers and accepted fallbacks
+without repeating the question. Expanding the scope or changing required review
+needs an owner decision; during a run, use the existing frozen-contract challenge
+procedure instead of editing `Boundary` or `Verification` yourself.
+
 ## Choose an available delegation path
 
-Inspect the current host's worker tools and any installed bridge. Use the capability
-that fits the assignment; there is no mandatory vendor or transport order.
+Inspect the current host's worker tools and any installed bridge. Use a capability
+within the confirmed collaboration scope that fits the assignment; there is no
+mandatory vendor or transport order.
 
 - Suitable native workers do not require `agent-delegation` or `agent-delegate`.
 - If a bridge command and the needed target work but its Skill is not discovered,
@@ -69,6 +104,35 @@ before retrying. Stop hooks do not relay questions or keep a worker alive.
 
 ## Verification and review
 
+### Before dispatching long-running work
+
+Use the existing mission or delegation attachment. Before dispatch, record the
+criteria, candidate failure cases and the commands or observations that would
+settle them. Separate an attack on the worker's result from a missing requirement
+in your own assignment; the latter is an assignment correction, not a worker failure.
+Retain this original version before the worker begins. When Git commits are
+authorized, commit it and give the worker that revision and the starting product
+revision; keep necessary evidence outside disposable scratch or retain it first.
+
+Check four concrete facts in the worker's actual directory:
+
+- Inputs, tools and expected output locations are reachable with its capabilities.
+- Required prior work is integrated: `git merge-base --is-ancestor <required-commit> HEAD`
+  checks a Git prerequisite; a promised merge is not an integrated dependency.
+- Ignored or external resources are actually accessible there. Inspect the named
+  paths in that worktree; its creation does not copy ignored files. Reuse authorized
+  links or mounts for needed resources, without changing the goal's write boundary.
+- The declared writable files/resources do not collide with another active writer.
+  Resolve overlap through an explicit integration order or available isolation.
+
+Keep the observed checks with the mission, then submit using an available task
+handle for work that must outlive its observer. Read results through that handle;
+an observer timeout does not authorize another worker on the same unfinished work.
+Include the work-step record convention in implementation missions and collect the
+worker's actual native session identity. Check committed work against the registered
+failure cases while it is in flight, without editing the worker's active checkout.
+A tentative finding remains tentative until the joined result is reviewed.
+
 Run the accepted anchor and inspect what it covers. Choose test order for the change:
 a reproduced bug benefits from a regression check; a prose change needs structural
 validation. There is no mandatory test-first rule or fixed implementation agent.
@@ -78,6 +142,16 @@ when a costly mistake can survive the anchor. One independent reviewer can be su
 A reviewer plus critic is an optional adversarial protocol for unresolved disagreement or
 false consensus. Its delegation template checks that protocol's fields; ordinary goal
 verification does not have to use it.
+
+For the long-running coding protocol, the main agent may implement and delegate;
+final independent acceptance belongs to a reviewer who did not implement the result.
+Declare that required review when authoring the goal. The main agent can integrate
+findings and run its own checks, but those are not an additional independent verdict.
+Keep every actual product writer out of the review assignment, including delegated
+writers and prior bound sessions. Recorded `Writer-Session` commit fields are also
+checked by the gate; absent records cannot establish that a worker was independent.
+The bound main session remains ineligible even if it only coordinates. Running
+review checks alone does not make a reviewer a product writer.
 
 **A required review is a role with a contract, not just an assignment.** Where an acceptance
 ID is mapped to `review`, `## Verification` names which identities may sign it, which inputs
@@ -90,9 +164,19 @@ so rather than signing from inside the run. Any additional advisory review is fr
 
 ## Judging blind
 
-For sensitive delegated work, consider recording a verdict from the artifact and anchor
-before reading the worker's explanation. This can reduce persuasion by the report; it
-is not proof that the verdict is correct. Reconcile disagreements against evidence.
+For the long-running protocol, retain the independent initial verdict before reading
+the worker's explanation. Give the reviewer the criteria, original evidence and fixed
+product inputs. It first writes its checks and verdict; only then may it receive the
+execution report and record worker-only findings, reviewer-only findings and actual
+disagreements. Keep the initial review intact and put reconciliation after it or in
+the existing review discussion. Do not replace the initial account with a later one.
+
+With Git, retain the preregistration revision before the first worker commit and the
+initial review revision before the reconciliation commit. Check those relationships
+with `git merge-base --is-ancestor <earlier> <later>`; timestamps alone are insufficient.
+For a lighter task, this order remains an evidence-based option. It is not proof that
+the verdict is correct, and Git does not prove which messages reached a model's context.
+Use an actual isolated input path; reconcile disagreements against evidence.
 
 ## How to actually run a fresh-context role
 

@@ -57,6 +57,12 @@ Write `.goals/.work/$ARGUMENTS-review.md` and return the same content. Every fin
 cover, either report a finding or say you exercised it and name the command you ran -
 "no finding" with no command named is an unexercised dimension, not a clean one.
 
+For a long-running goal, retain this initial review before the execution report is
+shared with you. Later reconciliation records findings unique to each side and
+disagreements against the same inputs; it does not overwrite the blind verdict.
+If you implemented any of the reviewed product, report yourself ineligible and do
+not sign. A different session name alone cannot undo participation in implementation.
+
 ```markdown
 # Review: <slug> — round <N>
 
@@ -90,6 +96,9 @@ not write it for you. Four things have to be true before you do:
    at all, **do not write a receipt**: say in your report that this review cannot satisfy the
    required-review condition from here, so the run has to route it to a separate session or
    another vendor. A copied or invented ID is a forged receipt.
+   Also inspect the declared product writers in this goal's commits and mission
+   records. The gate excludes recorded `Writer-Session` identities; you must keep
+   unrecorded or unjoined product writers out of the review role as well.
 3. **The digest is one you computed.** Get it yourself; it binds the frozen terms as well as the contract's `inputs`:
 
    ```bash

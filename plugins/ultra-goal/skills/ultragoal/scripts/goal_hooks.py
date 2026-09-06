@@ -23,6 +23,7 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 from typing import Any, Callable
 
@@ -290,6 +291,51 @@ def read_spec_baseline(goal: ActiveGoal) -> str | None:
     except (OSError, UnicodeError):
         return None
     return text if re.fullmatch(r"[0-9a-f]{12}", text) else None
+
+
+def goal_commits(artifact: Path) -> list[dict]:
+    """Read declared work since arming; Git records provenance, not authorship proof.
+
+    No Git baseline means this optional source is unavailable. Never substitute
+    another branch or all repository history for a recorded range.
+    """
+    slug = artifact.name.removesuffix(".goal.md")
+    baseline_path = artifact.with_name(f"{slug}.baseline")
+    if not baseline_path.is_file():
+        return []
+    baseline = baseline_path.read_text(encoding="utf-8").strip()
+    if baseline == "none":
+        return []
+    if not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", baseline):
+        raise ValueError("Work history has no valid arming-time Git revision.")
+
+    def git(*args: str) -> str:
+        try:
+            result = subprocess.run(["git", *args], cwd=artifact.parent,
+                                    capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise ValueError("Work history is unavailable; inspect the recorded Git range.") from exc
+        if result.returncode:
+            raise ValueError("Work history is unavailable or its baseline is not an ancestor of HEAD.")
+        return result.stdout
+
+    git("merge-base", "--is-ancestor", baseline, "HEAD")
+    parts = git("log", "--reverse", "--no-show-signature",
+                "--format=%H%x00%s%x00%b%x00", f"{baseline}..HEAD", "--").split("\0")
+    prefix = rf"^goal\({re.escape(slug)}\)"
+    records = []
+    for index in range(0, len(parts) - 2, 3):
+        commit, subject, body = parts[index:index + 3]
+        if not re.match(prefix + r"(?:\s*:|\s+(?:step|turn\s+\d+)\s*:)", subject):
+            continue
+        fields: dict[str, list[str]] = {}
+        for key, value in re.findall(r"^(Reason|Check|Remaining|Evidence|Writer-Session):[ \t]*(.*)$", body, re.M):
+            if value.strip():
+                fields.setdefault(key.lower(), []).append(value.strip())
+        records.append({"commit": commit.strip(), "subject": subject,
+                        "step": bool(re.match(prefix + r"\s+step\s*:", subject)),
+                        "fields": fields})
+    return records
 
 
 def event_session(event: dict[str, Any]) -> str | None:

@@ -12,7 +12,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import shutil
 import subprocess
@@ -27,6 +27,7 @@ from goal_hooks import (  # noqa: E402
     sections,
     bullet_blocks,
     completion_attempts,
+    goal_commits,
 )
 from goal_contract import read_review_archive, verification  # noqa: E402
 
@@ -1321,6 +1322,40 @@ def git_claims(artifact: Path) -> dict[int, dict[str, str]] | None:
     return claims
 
 
+def audit_work_records(path: Path) -> tuple[list[dict], list[Finding]]:
+    """Check explicit step records against their own committed evidence snapshots."""
+    records, findings = [], []
+    try:
+        commits = goal_commits(path)
+    except (OSError, ValueError) as exc:
+        return [], [Finding(str(path), "WORK_HISTORY_UNAVAILABLE", str(exc))]
+    for commit in commits:
+        if not commit["step"]:
+            continue  # Legacy work/attempt titles do not assert the new step contract.
+        fields, sha = commit["fields"], commit["commit"]
+        evidence = fields.get("evidence", [])
+        records.append({"commit": sha, "subject": commit["subject"],
+                        **fields, "evidence": evidence})
+        missing = [name for name in ("reason", "check", "remaining", "evidence") if not fields.get(name)]
+        if missing:
+            findings.append(Finding(str(path), "WORK_RECORD_INCOMPLETE",
+                                    f"{sha} is missing step evidence fields: {', '.join(missing)}."))
+        for reference in evidence:
+            ref = PurePosixPath(reference)
+            valid = not ref.is_absolute() and reference != "." and ".." not in ref.parts
+            try:
+                result = subprocess.run(["git", "--literal-pathspecs", "ls-tree", "--full-tree", "-z", sha, "--", reference],
+                                        cwd=path.parent, capture_output=True, text=True, timeout=30) if valid else None
+            except (OSError, subprocess.SubprocessError):
+                result = None
+            entry = result.stdout.rstrip("\0").split("\t", 1) if result is not None else []
+            if (result is None or result.returncode or len(entry) != 2 or entry[1] != reference
+                    or entry[0].split()[0] not in {"100644", "100755"}):
+                findings.append(Finding(str(path), "WORK_EVIDENCE_UNAVAILABLE",
+                                        f"{sha} does not retain evidence file {reference!r}; current files do not replace its snapshot."))
+    return records, findings
+
+
 def audit_artifact(path: Path) -> tuple[dict[str, object], list[Finding]]:
     """Put what the run claimed beside what the gate measured.
 
@@ -1329,7 +1364,7 @@ def audit_artifact(path: Path) -> tuple[dict[str, object], list[Finding]]:
     matching its evidence, which is the question "where did it go wrong"
     reduces to.
     """
-    out: list[Finding] = []
+    work_records, out = audit_work_records(path)
     events = read_log(path)
     checks = [e for e in events if e.get("event") == "anchor_checked"]
     measured = {e.get("turn"): e for e in checks}
@@ -1568,6 +1603,7 @@ def audit_artifact(path: Path) -> tuple[dict[str, object], list[Finding]]:
         "spec_digest_now": now,
         "last_verification": last_verification(path),
         "review_archives": archive_audits,
+        "work_records": work_records,
     }, out
 
 
@@ -1605,6 +1641,8 @@ def audit_paths(paths: list[str]) -> dict[str, object]:
 def print_audit(state: dict[str, object]) -> None:
     for audit in state["audits"]:
         print(f"{audit['slug']}")
+        for record in audit.get("work_records", []):
+            print(f"  step {record['commit'][:12]}: {record['subject']}")
         rows = audit["rows"]
         if not rows:
             print("  no turns recorded and none claimed")

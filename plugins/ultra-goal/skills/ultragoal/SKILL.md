@@ -85,6 +85,15 @@ needs their failure analysis, control limits or source evidence.
 - Keep confirmed decisions in `<slug>.decisions.md` as you go. That record is also
   the interview's progress: recover from it instead of restarting the interview.
 
+**Confirm collaboration scope before any dispatch.** Once intent and basic boundaries
+are understood, inspect native worker tools and external targets read-only. Before
+starting a worker, including for research or specification critique, reuse explicit
+applicable owner authorization or ask whether this goal may use only current-host
+workers or also the named external agents. Availability alone is not authorization.
+Use the [collaboration-scope protocol](references/agent-modes.md#confirm-collaboration-scope)
+to record the answer and required independent review. While the choice is unresolved,
+continue authorized local preparation; keep dispatch and unattended startup pending.
+
 Before freezing, test both **false acceptance** (all checks pass but the owner's
 request remains unsatisfied) and **false rejection** (a valid result fails an
 unrequested method constraint). Use the original request. A correct one-off result
@@ -128,17 +137,21 @@ turning the list into a fixed interview script:
 4. **Means:** label complete declarations `[load-bearing]` or `[droppable]`. The
    owner decides what may be abandoned; the run records why it drops an allowed means.
 5. **Boundary:** specify **Scope**, **Confidence** and **Inference** refusals: allowed
-   paths/effects and approval limits; claims needing measured evidence; conclusions
-   that documents alone cannot establish. Existing authorization remains valid.
+   paths/effects, confirmed collaboration scope and approval limits; claims needing
+   measured evidence; conclusions that documents alone cannot establish. Existing
+   authorization remains valid.
 6. **Verifier:** who checks the result, and **who checks the checker?** A required
    review has accepted identities/fallbacks, bounded inputs, acceptance IDs and a
    receipt written by an independent verifier with its own session. The generator
-   never signs it. Advisory review can vary; a critic is **not mandatory for every
+   never signs it. For long-running coding goals, require final review by a role
+   that did not implement the result; the main agent may still implement and delegate.
+   Advisory review can vary; a critic is **not mandatory for every
    goal**. When choosing repeated review, specify a cap. Fresh context and different
    models can reduce correlation; neither guarantees independence or correctness.
 7. **Shape and split:** start with the main model loop; split when each handoff can
    carry the context and return a verifiable result. Follow owner-assigned roles;
-   otherwise the main model selects a suitable method within its authority.
+   otherwise the main model selects a suitable method within the confirmed collaboration
+   scope and its other authority.
 8. **Read and write surface:** name what each worker reads, writes and returns,
    including shared files, databases, services and resource limits. One goal or one
    operating loop does not prevent resource collisions. Join writers before review.
@@ -240,6 +253,10 @@ another project's correct answer. Never automatically promote them to user-level
 configuration or this Skill. A skill change needs the tested promotion/rollback
 procedure in the evolution reference. Git can preserve the diffs when committing is
 authorized; the event log and retained review evidence remain useful without Git.
+For a long coding run with commit authority, use the work-step records in
+[document-system.md](references/document-system.md#work-step-records) and its existing
+audit consumer. Read the roles reference before dispatch to preregister failure cases,
+check worker prerequisites and preserve the independent blind-review order.
 
 ## Inspect what is running
 

@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -107,6 +108,31 @@ class GoalContractTests(unittest.TestCase):
             "verdict": "pass", "evidence": "Independently read result.txt and exercised the accepted check.",
             "checks": {"result": {"claim": "The result is correct.",
                                    "evidence": [{"path": "result.txt", "quote": "correct"}]}}}))
+
+    def test_a_committed_product_writer_cannot_sign_independent_review(self):
+        def git(*args):
+            return subprocess.run(["git", *args], cwd=self.root, check=True, capture_output=True, text=True)
+
+        git("init", "-q")
+        git("config", "user.name", "Test")
+        git("config", "user.email", "test@example.invalid")
+        (self.root / "result.txt").write_text("draft")
+        git("add", "acceptance.py", "result.txt")
+        git("commit", "-qm", "initial product")
+        self.arm({"path": ".goals/.work/review.json", "verifiers": ["backup"], "inputs": ["result.txt"]})
+        git("checkout", "-qb", "worker-change")
+        (self.root / "result.txt").write_text("correct")
+        git("add", "result.txt")
+        git("commit", "-qm", "worker implementation")
+        git("checkout", "-q", "-")
+        git("merge", "--no-ff", "-qm", "goal(demo) step: implement result\n\n"
+            "Reason: Satisfy the result requirement.\nCheck: acceptance.py exited 0.\n"
+            "Evidence: result.txt\nRemaining: Independent review.\nWriter-Session: worker-session", "worker-change")
+        git("commit", "--allow-empty", "-qm", "goal(other) step: unrelated\n\nWriter-Session: independent-session")
+        self.receipt(session="worker-session")
+        self.assertFalse(run.verify(self.root, "demo", "generator-session")["verification_passed"])
+        self.receipt(session="independent-session")
+        self.assertTrue(run.verify(self.root, "demo", "generator-session")["verification_passed"])
 
     def test_verify_returns_this_attempt_before_stop_and_does_not_repeat_it(self):
         self.arm()

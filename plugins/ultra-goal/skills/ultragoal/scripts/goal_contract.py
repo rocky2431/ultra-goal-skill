@@ -14,7 +14,7 @@ import re
 import tempfile
 import zipfile
 
-from goal_hooks import ActiveGoal, sections, read_events, frozen_digest
+from goal_hooks import ActiveGoal, sections, read_events, frozen_digest, goal_commits
 
 VERIFICATION_BASELINE_SUFFIX = ".verification.baseline"
 ACCEPTANCE = re.compile(r"^\s*[-*]\s+\[[ xX]\]\s+([a-z][a-z0-9_-]*):\s+(.+)$", re.M)
@@ -161,8 +161,10 @@ def check_review(goal: ActiveGoal, spec: str, *, retain: bool = False) -> dict |
     for event in read_events(goal):
         if event.get("event") == "session_binding_requested" and isinstance(event.get("sessions"), list):
             owners.update(s for s in event["sessions"] if isinstance(s, str))
+    for commit in goal_commits(goal.goal_path):
+        owners.update(commit["fields"].get("writer-session", []))
     if not isinstance(session, str) or not session or session in owners:
-        raise ValueError("Review needs a distinct verifier session; the generator cannot verify itself.")
+        raise ValueError("Review needs a distinct verifier session; the generator or a recorded product writer cannot verify itself.")
     files = snapshot(goal.goals_dir.parent, review["inputs"])
     if receipt.get("input_digest") != _input_digest(spec, files):
         raise ValueError("Review is stale or refers to different inputs; review the current result.")

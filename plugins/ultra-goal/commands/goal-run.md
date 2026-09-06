@@ -236,11 +236,22 @@ reconcile the result. On a host that permits only one blocking Stop, a corrected
 candidate may remain unchecked until another native turn: keep it pending and
 never infer success from the host ending.
 
-When commits are explicitly authorized, the optional audit convention for an
-already observed attempt is `goal(<slug>) turn <N>: <summary> [anchor: green|red|unknown]`.
-Ordinary authorized commits may use `goal(<slug>): <summary>`. No commit is
-required to make progress, preserve Carry-over, or finish the task; absent Git
-claims limit the history audit, not the evidence from the anchor.
+For a long coding run with commit authority, commit each checkable work unit before
+starting the next: an implementation, experiment, dispatch preparation or ruling,
+not each tool call. Use `goal(<slug>) step: <summary>` and the work-record fields in
+[document-system.md](../skills/ultragoal/references/document-system.md#work-step-records).
+Include actual product writers' native session IDs, including delegated writers;
+they cannot later sign the independent review. A failed experiment can be a useful
+recorded step: report its actual failure and unfinished work instead of calling it green.
+Run `validate_artifact.py .goals --audit` before handoff and resolve missing step
+fields/evidence. Inspect unrelated historical findings against their actual evidence.
+
+The optional audit convention for an already observed completion attempt remains
+`goal(<slug>) turn <N>: <summary> [anchor: green|red|unknown]`.
+Legacy ordinary commits may use `goal(<slug>): <summary>`; they do not assert the
+step-record contract. Without Git or commit authority, preserve necessary evidence
+and Carry-over in their existing homes and disclose the missing Git history. Never
+manufacture a commit or permission to make an audit look complete.
 
 When you report how the run stands, use the disposition vocabulary and nothing looser:
 `in_progress`, `input_required` (you lack something only the owner can give),

@@ -815,6 +815,36 @@ class AuditTests(Harness):
         self.assertEqual(2, result.returncode)
         self.assertIn("separate reports", result.stderr)
 
+    def test_work_steps_keep_their_own_snapshot_and_report_missing_evidence(self) -> None:
+        baseline = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=self.dir, text=True).strip()
+        (self.dir / "demo.baseline").write_text(baseline)
+        self.write("evidence with spaces.txt", "The measured result.")
+        self.run_git("add", "evidence with spaces.txt")
+        self.run_git("commit", "-qm", "goal(demo) step: validate result\n\n"
+                     "Reason: Test the changed product path.\n"
+                     "Check: smoke command exited 0.\n"
+                     "Evidence: evidence with spaces.txt\n"
+                     "Remaining: Concurrency is untested.\nWriter-Session: worker-1")
+        self.run_git("rm", "evidence with spaces.txt")
+        self.run_git("commit", "-qm", "goal(demo) step: missing record\n\nEvidence: missing.txt")
+        self.write("missing.txt", "A later file cannot replace the missing original evidence.")
+        self.run_git("add", "missing.txt")
+        self.run_git("commit", "-qm", "goal(other) step: unrelated")
+        audit, findings = va.audit_artifact(self.artifact)
+        self.assertEqual(2, len(audit["work_records"]))
+        self.assertEqual(["evidence with spaces.txt"], audit["work_records"][0]["evidence"])
+        missing = [f for f in findings if f.code.startswith("WORK_")]
+        self.assertEqual({"WORK_RECORD_INCOMPLETE", "WORK_EVIDENCE_UNAVAILABLE"}, {f.code for f in missing})
+        self.assertTrue(all(audit["work_records"][1]["commit"] in f.message for f in missing))
+
+    def test_work_history_refuses_a_baseline_outside_head_ancestry(self) -> None:
+        self.run_git("checkout", "-qb", "other-history")
+        self.run_git("commit", "--allow-empty", "-qm", "other history")
+        baseline = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=self.dir, text=True).strip()
+        self.run_git("checkout", "-q", "-")
+        (self.dir / "demo.baseline").write_text(baseline)
+        self.assertIn("WORK_HISTORY_UNAVAILABLE", self.audit_codes())
+
 
 class ChallengeTests(Harness):
     """A challenge is the run's objection, not the owner's decision."""

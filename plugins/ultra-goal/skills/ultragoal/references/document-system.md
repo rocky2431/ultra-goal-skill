@@ -218,6 +218,54 @@ Where a summary is unavoidable, it carries the id or digest of what it summarize
 reader can locate the evidence and detect relevant changes. A digest detects a
 changed file; it cannot reconstruct a deleted file or establish semantic correctness.
 
+## Work-step records
+
+For a long coding goal with commit authority, Git is the trajectory. Commit each
+checkable work unit before starting another; a tool call is not necessarily a unit.
+Use one commit for a coherent change or supported experiment, not an empty commit
+for every status message. Preserve unrelated user changes outside the commit.
+
+```text
+goal(example) step: fix batch timeout
+
+Reason: The existing timeout interrupts valid batches.
+Check: The batch smoke command exited 0 on the updated implementation.
+Evidence: tests/batch-smoke.txt
+Remaining: Concurrent batches have not been checked.
+Writer-Session: actual-native-writer-session
+```
+
+`Reason`, `Check`, `Evidence` and `Remaining` are nonempty work-record fields.
+The check names the actual command and result; use an honest not-run reason for a
+checkpoint that has not been checked. `Remaining: none` is valid when nothing is
+unresolved. Give one `Evidence:` line per repository-root-relative regular file
+retained in that commit: a changed artifact, test, result or note locating the
+original observation. External evidence can stay in its authorized home; retain
+its stable locator and limitations in the referenced note. Do not commit private
+source material without authority. This record is a decision summary, not private
+reasoning or independent proof that the check ran.
+
+For a step that implements or changes the product, add `Writer-Session:` for each
+actual contributing native session, including workers. Preserve those identities
+when squashing worker commits. Preparation and independent review records do not
+make their authors product writers; do not add their sessions under that label.
+Resolve unknown writer identities before calling the review independent; never
+copy the coordinator's identity or invent one for a worker.
+
+The existing `--audit` reads `goal(<slug>) step:` commits since the arming-time Git
+baseline, checks these fields and checks each evidence file in its **original
+commit**, even if the file was later moved or removed. It reports missing records
+and inaccessible evidence; it does not replay checks, certify a conclusion or
+discover uncommitted work. Legacy commit titles remain available to the older
+claim audit and are not retroactively required to contain these fields. No Git
+baseline means no step-history coverage. Keep the work unit's state current before
+its commit; Git then retains each committed revision without a duplicate trajectory.
+
+The required-review gate also excludes `Writer-Session` identities declared in this
+goal's commits. These are inspectable declarations, not authenticated authorship;
+they do not discover omitted writers or work on an unjoined branch. Join writers
+before review, retain their records, and check the actual role assignment.
+
 ## Where multi-worker rounds put things
 
 Delegating uses scratch missions/results and retains the evidence needed for accepted
