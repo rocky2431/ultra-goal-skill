@@ -38,6 +38,8 @@ from goal_contract import read_review_archive, verification  # noqa: E402
 # fallback is what keeps the validator usable on a machine without it.
 FALLBACK_TARGETS = ("claude", "codex", "hermes", "kimi", "opencode", "zcode")
 WHO_VALUES = ("owner", "agent")
+PACKAGE_CONFIRMATION = "confirm package checkpoint"
+FROZEN_CONFIRMATION = re.compile(r"\bfrozen:([0-9a-f]{12})\b", re.I)
 
 
 def known_targets() -> tuple[tuple[str, ...], bool]:
@@ -324,7 +326,7 @@ def check_decisions(path: Path, text: str, out: list[Finding]) -> None:
         if header is not None
         else set()
     )
-    if header is None or not {"rejected", "why", "who"} <= columns:
+    if header is None or not {"decision", "rejected", "why", "who"} <= columns:
         out.append(
             Finding(
                 str(path),
@@ -335,12 +337,17 @@ def check_decisions(path: Path, text: str, out: list[Finding]) -> None:
             )
         )
         return
-    index = [c.strip().lower() for c in header.strip("|").split("|")].index("who")
+    headings = [c.strip().lower() for c in header.strip("|").split("|")]
+    who_index = headings.index("who")
+    decision_index = headings.index("decision")
+    why_index = headings.index("why")
+    required_indices = (decision_index, headings.index("rejected"), why_index, who_index)
+    package_confirmations: list[str] = []
     for row in rows[rows.index(header) + 1 :]:
         cells = [cell.strip() for cell in row.strip("|").split("|")]
         if set("".join(cells)) <= set("- "):
             continue
-        if len(cells) < 4 or not all(cells[:4]):
+        if len(cells) <= max(required_indices) or not all(cells[i] for i in required_indices):
             out.append(
                 Finding(
                     str(path),
@@ -349,17 +356,49 @@ def check_decisions(path: Path, text: str, out: list[Finding]) -> None:
                 )
             )
             return
-        who = cells[index].strip().lower()
+        who = cells[who_index].strip().lower()
         if who not in WHO_VALUES:
             out.append(
                 Finding(
                     str(path),
                     "DECISION_AUTHOR_UNCLEAR",
-                    f"`Who` is {cells[index]!r}; it must be `owner` or `agent` so an "
+                    f"`Who` is {cells[who_index]!r}; it must be `owner` or `agent` so an "
                     f"assumption is never mistaken for an agreement: {row[:80]}",
                 )
             )
             return
+        decision = cells[decision_index].strip("` ").lower()
+        if who == "owner" and decision == PACKAGE_CONFIRMATION:
+            package_confirmations.append(cells[why_index])
+    if not package_confirmations:
+        out.append(
+            Finding(
+                str(path),
+                "OWNER_CONFIRMATION_MISSING",
+                "missing the explicit owner `Confirm package checkpoint` row. Read back "
+                "the current package and record it only after an explicit reply; the row "
+                "is auditable provenance, not authentication",
+            )
+        )
+    elif len(package_confirmations) > 1:
+        out.append(
+            Finding(
+                str(path),
+                "OWNER_CONFIRMATION_DUPLICATE",
+                "keep exactly one `Confirm package checkpoint` row and replace its "
+                "digest after a new C readback; do not append confirmation history",
+            )
+        )
+    elif FROZEN_CONFIRMATION.search(package_confirmations[0]) is None:
+        out.append(
+            Finding(
+                str(path),
+                "OWNER_CONFIRMATION_DIGEST_MISSING",
+                "the `Confirm package checkpoint` row's Why cell must include "
+                "`frozen:<12-hex-digest>` from `goal_run.py spec-digest`; this binds "
+                "the record to the frozen terms the owner was shown",
+            )
+        )
 
 
 def check_pairing(path: Path, out: list[Finding]) -> None:
@@ -1028,10 +1067,17 @@ def decision_count(record: Path) -> int:
     header = next((row for row in rows if "decision" in row.lower()), None)
     if header is None:
         return 0
+    headings = [cell.strip().lower() for cell in header.strip("|").split("|")]
+    if "decision" not in headings:
+        return 0
+    decision_index = headings.index("decision")
     count = 0
     for row in rows[rows.index(header) + 1 :]:
         cells = [cell.strip() for cell in row.strip("|").split("|")]
         if set("".join(cells)) <= set("- "):
+            continue
+        if (len(cells) > decision_index
+                and cells[decision_index].strip("` ").lower() == PACKAGE_CONFIRMATION):
             continue
         count += 1
     return count

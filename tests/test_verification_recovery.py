@@ -74,8 +74,9 @@ class VerificationRecoveryTests(unittest.TestCase):
         path = self.case.goals / "demo.goal.md"
         spec = path.read_text().replace("ceiling: 6", "ceiling: 1")
         path.write_text(spec)
+        self.case.confirm(spec)
         (self.case.goals / "demo.spec.baseline").unlink()
-        run.arm(self.case.root, "demo", "generator-session")
+        run.arm(self.case.root, "demo", "generator-session", allow_no_git=True)
         self.case.goal = hooks.active_goal(self.case.root)
         hooks.append_event(self.case.goal, {"event": "verification_started", "turn": 1,
                                            "verification_id": "interrupted", "session_id": "generator-session"})

@@ -15,6 +15,45 @@ confirmation, attempt a counterexample where every check passes but the owner
 would reject the result. Resolve that counterexample or disclose the remaining
 uncertainty; a deterministic command cannot prove that its specification is right.
 
+Every owner-facing interview turn shows its position before the one question or
+readback, using current files rather than memory:
+
+`Settling: B Execution and evidence · confirmed: 6 · assumed: 2 · open: Verifier, Divergence · next: confirm B`
+
+Confirm content in three checkpoints:
+
+| Checkpoint | Material shown together |
+|---|---|
+| A Framing | Original owner words and interpreted Intent; Boundary, effects and collaboration scope |
+| B Execution and evidence | Every remaining goal section: Anchor and budget, Acceptance, Stop condition, Verification, Means, Roles, Carry-over and Handoff; current decisions and execution attachments |
+| C Package | The complete current goal, decisions and attachments; Means, Roles, critique dispositions and promised result-and-evidence package |
+
+Checkpoint C is the second confirmation of the whole package. A and B update the
+substantive decisions they covered from `agent` to `owner`; they do not add ceremonial
+rows. If critique or later drafting changes confirmed A/B material, repeat the
+affected checkpoint before C. After the explicit C reply, compute the current frozen
+contract digest:
+
+```bash
+python3 <skill-dir>/scripts/goal_run.py spec-digest <slug> --root <project>
+```
+
+Then add exactly one decision named `Confirm package checkpoint`, with `Who` set to
+`owner` and `frozen:<12-hex-digest>` in its Why cell. The validator refuses a missing,
+duplicate or digest-less row, and first arm refuses a digest that does not match the current frozen
+goal terms. Any covered edit reopens its A/B checkpoint and C; remove the package row
+until both confirmations are current. An already-active legacy goal may idempotently resume
+without fabricated backfill; its next fresh arm uses the current process.
+
+The row and digest make omission and stale frozen text detectable. They are provenance
+in an owner-controlled workspace, not authenticated consent, do not freeze mutable
+execution attachments, and cannot prove the criteria are semantically adequate.
+
+Use a native structured question UI when the current host exposes one, with the
+readback in ordinary visible prose and the UI only collecting the answer. Otherwise
+ask one plain explicit question. The invariant is shown material plus an explicit
+reply, not a vendor-specific UI.
+
 During Init, probe only an unknown that could change a material goal decision and
 stop once it is resolved. Testing whether an existing entry point starts is a
 feasibility check; completing the deliverable before the readback is execution.
@@ -36,10 +75,10 @@ reviewer compares each acceptance item with those original words, tries a concre
 all-green-but-unsatisfactory result and a satisfactory result the checks would
 wrongly reject. Resolve material objections in the existing decisions record
 before confirmation; no new ledger or numeric confidence vote is needed.
-If the owner already approved the complete terms and said to start without more
-questions, perform the independent critique against those terms before arming.
-That approval removes a redundant confirmation, not the independent check. A clean
-critique needs no further owner turn; only a material objection needs resolution.
+If the owner says to start before checkpoint C, perform the independent critique
+against the draft, resolve material objections, then show the resulting current
+package. One explicit reply may both confirm C and authorize start; an earlier start
+request cannot approve material that had not yet been shown.
 An explicit owner waiver or an unavailable independent context must be disclosed
 as a limit, never inferred from "start now" or recorded as a passing critique.
 The reviewer needs the original owner request as well as the draft and evidence,

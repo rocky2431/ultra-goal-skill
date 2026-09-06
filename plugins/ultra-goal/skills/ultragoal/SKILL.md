@@ -5,7 +5,7 @@ when_to_use: "When the owner wants work to keep running without them - \"make an
 license: MIT
 metadata:
   author: rocky2431
-  version: "2.15.6"
+  version: "2.15.7"
 ---
 
 # UltraGoal
@@ -85,6 +85,19 @@ needs their failure analysis, control limits or source evidence.
 - Keep confirmed decisions in `<slug>.decisions.md` as you go. That record is also
   the interview's progress: recover from it instead of restarting the interview.
 
+Every owner-facing interview turn includes this one-line indicator before its one
+question or readback:
+
+`Settling: <A/B/C checkpoint> · confirmed: <owner-row count> · assumed: <agent-row count> · open: <material dependencies or none> · next: <one question or checkpoint>`
+
+Derive it from the current draft and decisions record, not conversation memory.
+`open` names unresolved items from the decision dependencies below; never replace it
+with a vague percentage. Use a host-native structured question UI such as
+`AskUserQuestion` or `request_user_input` when the current session actually exposes
+one. Put the full material being confirmed in readable prose, not inside short option
+labels. If no such UI is exposed, ask one ordinary explicit question; do not simulate
+a tool or make the contract depend on one host.
+
 **Confirm collaboration scope before any dispatch.** Once intent and basic boundaries
 are understood, inspect native worker tools and external targets read-only. Before
 starting a worker, including for research or specification critique, reuse explicit
@@ -100,20 +113,44 @@ unrequested method constraint). Use the original request. A correct one-off resu
 need not have a pipeline unless repeatability was required; file existence does
 not prove readability, and an exact quote does not prove the claim follows from it.
 
+Confirm the material in three content checkpoints, not one field at a time:
+
+- **A Framing:** the owner's material words and operational Intent, Boundary and
+  collaboration scope.
+- **B Execution and evidence:** every remaining goal section, including Anchor and
+  budget, Acceptance, Stop condition, Verification, Means, Roles, Carry-over and
+  Handoff; the current decisions rows and every optional execution attachment.
+- **C Package:** after specification critique, the complete current `goal.md`,
+  `decisions.md` and every optional attachment, including Means, Roles, resolved
+  objections and the result-and-evidence package the run must return.
+
+After A or B is explicitly confirmed, update its substantive decisions rows from
+`agent` to `owner`; do not add ceremonial checkpoint rows. C is the second
+confirmation of the whole package. If critique or later drafting changes material
+already confirmed in A or B, repeat the affected checkpoint before C. Only after
+its explicit reply, run
+`goal_run.py spec-digest <slug> --root <project>` and add the one reserved
+`Confirm package checkpoint` owner row described by the canonical contract. A later
+covered edit reopens its A/B checkpoint and C; the digest mechanically detects the
+frozen subset.
+Silence, an earlier partial answer or a short option label is not confirmation.
+
 **Before offering unattended execution, independently critique the specification.**
 Give the reviewer the original owner request, draft and evidence, not your argument
 for it. `/ultra-goal:design-critic <slug>` is the packaged option. Resolve material
 objections in the decisions record before freezing. If independent context is
 unavailable or the owner explicitly waives it, disclose the limit rather than a pass.
 **Start authorization is not a review waiver.** “Start now; do not ask again” means
-run the critique against the already approved terms before arming; a clean result
-needs no further owner turn. Only a material objection needs resolution.
+run the critique against the draft before checkpoint C. Resolve any material objection,
+then read back the current package. One explicit reply may both confirm C and authorize
+start; an earlier start request cannot confirm material the owner has not yet seen.
 
-Read back the **complete contract** against the original words: intent, every
-acceptance requirement, authority, success and exit conditions, labelled means and
-how each requirement will be verified. **Do not arm or present a draft as agreed
-until the owner confirms.** An existing explicit confirmation of those terms counts;
-silence does not. A clearly labelled draft may be written for independent critique.
+Read back the **complete contract** as one package against the original words at checkpoint C: intent,
+every acceptance requirement, authority, success and exit conditions, labelled means,
+how each requirement will be verified, every decisions row and attachment, and the
+completion evidence the owner will receive. **Do not arm or present a draft as agreed
+until C is explicitly confirmed and recorded.** A clearly labelled draft may be
+written for independent critique.
 
 ## Settle the goal's decisions
 
@@ -308,6 +345,16 @@ measured limits. **Windows is unverified**; structural checks are not a native l
 Finite probes do not establish statistical 95% unattended reliability.
 
 ## Validate, then offer to start it
+
+Git is the default before arming. Reuse an enclosing repository with a usable
+`HEAD`; if none exists, propose `git init` and a reviewed baseline commit after
+showing status and checking ignored or suspicious files. `git init` without a commit
+does not establish the baseline. Never stage or commit beyond existing authority.
+If the workspace is not a project, Git is unavailable, or the owner explicitly
+declines baseline creation, add `--allow-no-git` when arming and disclose the loss of step-history
+coverage and committed writer-session exclusion. Do not create a repository merely
+to version an unrelated home or temporary directory. See
+[document-system.md](references/document-system.md).
 
 ```bash
 python3 <skill-dir>/scripts/validate_artifact.py .goals --json

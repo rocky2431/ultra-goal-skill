@@ -12,6 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SKILL = ROOT / "plugins/ultra-goal/skills/ultragoal"
 SCRIPTS = SKILL / "scripts"
 SESSION_KEYS = ("CODEX_SESSION_ID", "CLAUDE_SESSION_ID", "KIMI_SESSION_ID", "ZCODE_SESSION_ID")
+sys.path.insert(0, str(SCRIPTS))
+from goal_hooks import frozen_digest  # noqa: E402
 
 
 class ArmingIdentityTests(unittest.TestCase):
@@ -25,7 +27,29 @@ class ArmingIdentityTests(unittest.TestCase):
         (self.root / "tests" / "accepted.txt").write_text("Owner-controlled test fixture")
         for template, output in (("goal-package.md", "demo.goal.md"),
                                  ("decisions-record.md", "demo.decisions.md")):
-            (self.goals / output).write_text((SKILL / "assets" / template).read_text())
+            text = (SKILL / "assets" / template).read_text()
+            if output.endswith(".decisions.md"):
+                digest = frozen_digest((self.goals / "demo.goal.md").read_text())
+                text = text.replace(
+                    "| --- | --- | --- | --- |",
+                    "| --- | --- | --- | --- |\n"
+                    "| Confirm package checkpoint | Arm without final readback | "
+                    f"Confirmed complete fixture; frozen:{digest} | owner |",
+                    1,
+                )
+            (self.goals / output).write_text(text)
+        subprocess.run(["git", "init", "-q", str(self.root)], check=True)
+        subprocess.run(["git", "-C", str(self.root), "config", "user.name", "Test"], check=True)
+        subprocess.run(
+            ["git", "-C", str(self.root), "config", "user.email", "test@example.invalid"],
+            check=True,
+        )
+        subprocess.run(["git", "-C", str(self.root), "add", "."], check=True)
+        subprocess.run(
+            ["git", "-C", str(self.root), "-c", "commit.gpgsign=false", "-c",
+             "core.hooksPath=", "commit", "-qm", "fixture baseline"],
+            check=True,
+        )
         self.env = {k: v for k, v in os.environ.items() if k not in SESSION_KEYS}
 
     def run_action(self, action="arm", *args, env=None):
@@ -41,6 +65,60 @@ class ArmingIdentityTests(unittest.TestCase):
             result = self.run_action(env=env)
             self.assertEqual(1, result.returncode, result.stdout)
             self.assertFalse((self.goals / "active").exists())
+
+    def test_git_is_default_and_no_git_requires_an_explicit_flag(self):
+        no_git = {**self.env, "PATH": ""}
+        refused = self.run_action("arm", "--session-id", "owner-A", env=no_git)
+        self.assertEqual(1, refused.returncode)
+        self.assertIn("usable Git HEAD by default", refused.stderr)
+        self.assertFalse((self.goals / "active").exists())
+
+        allowed = self.run_action(
+            "arm", "--session-id", "owner-A", "--allow-no-git", env=no_git
+        )
+        self.assertEqual(0, allowed.returncode, allowed.stderr)
+        self.assertEqual("none\n", (self.goals / "demo.baseline").read_text())
+        self.assertIn("No-Git mode was explicitly selected", allowed.stdout)
+
+    def test_package_confirmation_tracks_current_frozen_terms(self):
+        goal = self.goals / "demo.goal.md"
+        goal.write_text(goal.read_text().replace("ceiling: 6", "ceiling: 7"))
+        result = self.run_action("arm", "--session-id", "owner-A")
+        self.assertEqual(1, result.returncode)
+        self.assertIn("OWNER_CONFIRMATION_STALE", result.stderr)
+        self.assertFalse((self.goals / "active").exists())
+
+    def test_spec_digest_reports_current_frozen_terms(self):
+        result = self.run_action("spec-digest")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(
+            frozen_digest((self.goals / "demo.goal.md").read_text()),
+            result.stdout.strip(),
+        )
+
+    def test_rearm_reports_the_write_once_no_git_baseline(self):
+        first = self.run_action(
+            "arm", "--session-id", "owner-A", "--allow-no-git",
+            env={**self.env, "PATH": ""},
+        )
+        self.assertEqual(0, first.returncode, first.stderr)
+        self.assertEqual(0, self.run_action("disarm").returncode)
+        second = self.run_action("arm", "--session-id", "owner-B")
+        self.assertEqual(0, second.returncode, second.stderr)
+        self.assertIn("review baseline none", second.stdout)
+        self.assertIn("No-Git mode was explicitly selected", second.stdout)
+
+    def test_active_legacy_goal_rearms_without_backfilled_confirmation(self):
+        first = self.run_action("arm", "--session-id", "owner-A")
+        self.assertEqual(0, first.returncode, first.stderr)
+        record = self.goals / "demo.decisions.md"
+        record.write_text("\n".join(
+            line for line in record.read_text().splitlines()
+            if "Confirm package checkpoint" not in line
+        ) + "\n")
+        resumed = self.run_action("arm", "--session-id", "owner-A")
+        self.assertEqual(0, resumed.returncode, resumed.stderr)
+        self.assertIn("already armed", resumed.stdout)
 
     def test_identity_is_bound_before_any_stop(self):
         result = self.run_action("arm", "--session-id", "owner-A")

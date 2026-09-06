@@ -2,6 +2,7 @@
 from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -88,12 +89,24 @@ class GoalContractTests(unittest.TestCase):
         (self.root / "result.txt").write_text("correct")
         (self.goals / "demo.decisions.md").write_text(
             "| Decision | Rejected | Why | Who |\n| --- | --- | --- | --- |\n"
+            "| Confirm package checkpoint | Arm without final readback | "
+            "Confirmed complete fixture; frozen:"
+            + "0" * 12 + " | owner |\n"
             "| Accepted checks | Self-report | Independent evidence | owner |\n")
+
+    def confirm(self, spec):
+        record = self.goals / "demo.decisions.md"
+        record.write_text(re.sub(
+            r"frozen:[0-9a-f]{12}",
+            f"frozen:{hooks.frozen_digest(spec)}",
+            record.read_text(),
+        ))
 
     def arm(self, review=None):
         self.spec = spec_text(review)
         (self.goals / "demo.goal.md").write_text(self.spec)
-        run.arm(self.root, "demo", "generator-session")
+        self.confirm(self.spec)
+        run.arm(self.root, "demo", "generator-session", allow_no_git=True)
         self.goal = hooks.active_goal(self.root)
 
     def claim(self):
@@ -364,7 +377,7 @@ class GoalContractTests(unittest.TestCase):
         self.assertIn("Protected evaluator inputs changed", result["reason"])
         self.assertFalse(any(e.get("verification_passed") for e in hooks.read_events(self.goal)))
         with self.assertRaises(ValueError):
-            run.arm(self.root, "demo", "generator-session")
+            run.arm(self.root, "demo", "generator-session", allow_no_git=True)
 
     def test_anchor_cannot_rewrite_its_own_checker(self):
         self.program.write_text("from pathlib import Path\nPath(__file__).write_text('pass')\n")
@@ -419,12 +432,12 @@ class GoalContractTests(unittest.TestCase):
         self.arm()
         self.goal.goal_path.write_text(self.spec.replace("ceiling: 6", "ceiling: 600"))
         with self.assertRaisesRegex(ValueError, "Frozen conditions"):
-            run.arm(self.root, "demo", "generator-session")
+            run.arm(self.root, "demo", "generator-session", allow_no_git=True)
         self.claim()
         self.assertTrue(hooks.completion_attempt(hooks.read_events(self.goal)[-1]))
         self.goal.goal_path.write_text(self.spec)
         with self.assertRaisesRegex(ValueError, "closed"):
-            run.arm(self.root, "demo", "generator-session")
+            run.arm(self.root, "demo", "generator-session", allow_no_git=True)
         self.assertFalse(self.goal.marker_path.exists())
         # Even if removal fails or an outside actor restores a marker, each
         # observed closure stays visible; an ordinary closure is not a candidate.
@@ -442,7 +455,7 @@ class GoalContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "distinct verifier"):
             contract.check_review(hooks.active_goal(self.root), self.spec)
         run.disarm(self.root, "demo")
-        run.arm(self.root, "demo", "third-generator")
+        run.arm(self.root, "demo", "third-generator", allow_no_git=True)
         for session in ("generator-session", "second-generator", "third-generator"):
             self.receipt(session=session)
             with self.assertRaisesRegex(ValueError, "distinct verifier"):

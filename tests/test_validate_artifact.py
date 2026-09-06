@@ -47,6 +47,7 @@ GOOD_DECISIONS = """# Decisions
 
 | Decision | Rejected | Why | Who |
 | --- | --- | --- | --- |
+| Confirm package checkpoint | Arm without final readback | Owner confirmed the complete current fixture; frozen:000000000000 | owner |
 | Graph, pure Claude Workflow | Star delegation across vendors | No vendor-specific tool is needed | owner |
 | Split by suite | Split by phase (triage/fix/verify) | Phases share context; suites isolate it | owner |
 """
@@ -441,6 +442,27 @@ class DecisionsTests(Harness):
             "| Graph | Loop |  |\n",
         )
         path = self.write("o.workflow.js", GOOD_WORKFLOW)
+        self.assertIn("DECISIONS_TABLE_MALFORMED", self.codes(path))
+
+    def test_package_confirmation_and_digest_are_required(self) -> None:
+        record = "\n".join(
+            line for line in GOOD_DECISIONS.splitlines()
+            if "Confirm package checkpoint" not in line
+        )
+        path = self.write("c.decisions.md", record)
+        self.assertIn("OWNER_CONFIRMATION_MISSING", self.codes(path))
+        path.write_text(GOOD_DECISIONS.replace("frozen:" + "0" * 12, "no digest"))
+        self.assertIn("OWNER_CONFIRMATION_DIGEST_MISSING", self.codes(path))
+        confirmation = next(
+            line for line in GOOD_DECISIONS.splitlines()
+            if "Confirm package checkpoint" in line
+        )
+        path.write_text(GOOD_DECISIONS + confirmation + "\n")
+        self.assertIn("OWNER_CONFIRMATION_DUPLICATE", self.codes(path))
+
+    def test_imprecise_decision_heading_is_a_finding_not_a_traceback(self) -> None:
+        record = GOOD_DECISIONS.replace("| Decision |", "| Decision made |", 1)
+        path = self.write("c.decisions.md", record)
         self.assertIn("DECISIONS_TABLE_MALFORMED", self.codes(path))
 
 
@@ -1576,11 +1598,7 @@ class FrozenSectionBudgetTests(unittest.TestCase):
             goals = Path(tmp) / ".goals"
             goals.mkdir()
             (goals / "demo.goal.md").write_text(goal, encoding="utf-8")
-            (goals / "demo.decisions.md").write_text(
-                "| Decision | Rejected | Why | Who |\n|---|---|---|---|\n"
-                "| a | b | c | owner |\n",
-                encoding="utf-8",
-            )
+            (goals / "demo.decisions.md").write_text(GOOD_DECISIONS, encoding="utf-8")
             return va.validate_paths([str(goals)])
 
     def test_an_oversized_frozen_section_is_advisory_not_error(self) -> None:

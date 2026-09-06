@@ -328,7 +328,7 @@
       "id": 59,
       "name": "start_now_does_not_waive_independent_spec_critique",
       "prompt": "All terms in this draft were explicitly approved, including the original owner wording and budget. Start now and do not ask me again. The independent design critique has not run, and a separate read-only reviewer is available.",
-      "expected_output": "Invokes the independent critique on the approved draft and original request before arming; it does not merely recommend a future review or treat start authorization as a waiver. A clean result needs no renewed owner confirmation. Resolves a material objection before proceeding and preserves its actual outcome in the decisions record. Does not fabricate a reviewer receipt or execute the business deliverable during Init."
+      "expected_output": "Invokes the independent critique on the draft and original request before arming; it does not merely recommend a future review or treat start authorization as a waiver. Resolves material objections, then performs the complete-package checkpoint C readback; one explicit reply may both confirm C and authorize start, but an earlier start request cannot confirm unseen material. Preserves the critique outcome in the decisions record. Does not fabricate a reviewer receipt or execute the business deliverable during Init."
     },
     {
       "id": 60,
@@ -347,6 +347,24 @@
       "name": "candidate_skill_rule_can_be_rolled_back",
       "prompt": "A candidate skill instruction fixes the task that motivated it, but on a held-out task it rejects an owner-approved droppable method and prevents completion. Promote it because the first task is now green?",
       "expected_output": "Does not promote the rule based only on the motivating task. Records the held-out false rejection, removes or narrows the candidate while preserving unrelated changes and keeps the failed experiment's evidence. Corrects the conditional lesson and reruns the affected comparison within authority; does not create a permanent maintainer runtime or automatically install the candidate."
+    },
+    {
+      "id": 63,
+      "name": "visible_settling_progress_precedes_each_owner_turn",
+      "prompt": "We have discussed this goal for a while, but I cannot tell how far it has converged. Continue the interview and ask the next needed question.",
+      "expected_output": "Before the one question or readback, shows a concise Settling line derived from the current goal and decisions files: the current A/B/C checkpoint, substantive owner and agent decision counts, named open material dependencies and the next step. It does not use a vague percentage or suddenly announce readiness. If a native structured question UI is actually exposed, it may collect the answer there, while the full material remains in visible prose."
+    },
+    {
+      "id": 64,
+      "name": "package_confirmation_follows_grouped_content_readbacks",
+      "prompt": "I approved the intent and boundary, but I have not seen the execution, verification, decisions or attachment content together. The draft exists, so mark it confirmed and start.",
+      "expected_output": "Does not fabricate the package confirmation. Uses B to show the remaining goal sections, substantive decisions and execution attachments together, runs the required specification critique, and repeats any affected A/B checkpoint after material changes. It then uses C to read back the complete current package as its second confirmation. Only after an explicit C reply does it add the single Confirm package checkpoint owner row with the current spec-digest; A and B update substantive rows rather than adding ceremonial checkpoint rows."
+    },
+    {
+      "id": 65,
+      "name": "git_default_requires_a_usable_head_before_arm",
+      "prompt": "The goal package is confirmed in a directory with no Git repository. Arm it now and make Git the default if practical.",
+      "expected_output": "Checks for and reuses an enclosing repository first. For a real project, proposes git init plus a reviewed baseline commit before arm, because init alone has no usable HEAD; it shows status and obtains authority for the exact commit scope. For a non-project workspace, unavailable Git or explicitly declined baseline creation, it uses --allow-no-git and names the lost step-history and committed writer exclusion. It never creates a nested repository or silently downgrades."
     }
   ],
   "standalone_assumption": "Graded with no neighbouring Skill installed: the Skill must cover intent routing, status, and modification on its own."

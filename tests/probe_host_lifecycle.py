@@ -91,7 +91,20 @@ class Probe:
                       "protected": ["anchor.py"], "covers": {"protocol": "anchor"}, "review": None}
         template = template[:start] + "## Verification\n\n```json\n" + json.dumps(definition) + "\n```\n\n## Acceptance\n\n- [ ] protocol: The fixture's worker result and current mode satisfy its check.\n\n" + template[end:]
         (goals / "demo.goal.md").write_text(template)
-        (goals / "demo.decisions.md").write_text((PLUGIN / "skills/ultragoal/assets/decisions-record.md").read_text())
+        digest = subprocess.run(
+            [sys.executable, str(self.scripts / "goal_run.py"), "spec-digest", "demo",
+             "--root", str(root)],
+            check=True, capture_output=True, text=True,
+        ).stdout.strip()
+        record = (PLUGIN / "skills/ultragoal/assets/decisions-record.md").read_text()
+        record = record.replace(
+            "| --- | --- | --- | --- |",
+            "| --- | --- | --- | --- |\n"
+            "| Confirm package checkpoint | Arm without final readback | "
+            f"Confirmed complete probe; frozen:{digest} | owner |",
+            1,
+        )
+        (goals / "demo.decisions.md").write_text(record)
         self.args = self.configure()
 
     def hook(self, event):
@@ -173,7 +186,7 @@ class Probe:
         prompt = f'''Authorized isolated hook acceptance probe. Work only in {self.root}. No commits, external writes, installs, login, or config edits.
 The fixture is deliberately synthetic; do not perform its example dependency-upgrade task.
 Read session-A.json, which was written by this host's SessionStart hook, and use its session_id to run:
-{shlex.quote(sys.executable)} {runner} arm demo --session-id <that-id>
+{shlex.quote(sys.executable)} {runner} arm demo --session-id <that-id> --allow-no-git
 Then write .goals/demo.candidate containing 'deliberate red claim for protocol test'. Output exactly PROBE_INITIAL and end your response.
 If a Stop hook refuses the claim, do the correction in ordinary tools: start a child Python process that writes worker-result containing WORKER_DONE and wait for it with subprocess.run(check=True); only after the child finishes write green to mode, run python3 anchor.py and verify exit 0, then write .goals/demo.candidate again. Output PROBE_CORRECTED_GATE_PENDING and finish.
 The first red claim is the authorized test stimulus, not a real completion claim. Do not delete or change the anchor, baselines, hooks, or active marker. Do not invoke the hook yourself. Do not create a native goal in this probe.'''
@@ -216,7 +229,7 @@ The first red claim is the authorized test stimulus, not a real completion claim
         runner = shlex.quote(str(self.scripts / 'goal_run.py'))
         prompt = f'''Authorized isolated native goal and Ultra coexistence test; no commits, installs or external writes. Work only in {self.root}. Ignore the example dependency-upgrade task in the synthetic fixture.
 Finish when you have read native-stop-count with value at least 2 and printed NATIVE_CONTINUATION_CONFIRMED with that value. This is a test of native continuation across host turn boundaries. Do not write, delete, or wait/poll on native-stop-count: the host's real Stop callback is its only writer.
-On your first turn, read session-G.json and arm demo using python3 {runner} arm demo --session-id <the observed session_id>. This arm tests activation only; do not create .goals/demo.candidate. The red Ultra anchor intentionally remains unverified in this coexistence test.
+On your first turn, read session-G.json and arm demo using python3 {runner} arm demo --session-id <the observed session_id> --allow-no-git. This isolated probe explicitly has no Git baseline and tests activation only; do not create .goals/demo.candidate. The red Ultra anchor intentionally remains unverified in this coexistence test.
 Each turn read native-stop-count once (missing means 0); if below 2, say NATIVE_CONTINUATION_PENDING and end that response with the native goal still active so the native host can start the next turn. Do not mark the goal blocked or complete while below 2. At 2 or above, report NATIVE_CONTINUATION_CONFIRMED and clearly say ULTRA_UNVERIFIED: native goal completion is not Ultra completion. Stop after at most 4 observed host Stops even if the protocol fails.'''
         result = self.invoke(prompt, label='G', native=True)
         log = self.transport()

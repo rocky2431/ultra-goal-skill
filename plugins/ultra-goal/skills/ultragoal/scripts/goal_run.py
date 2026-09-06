@@ -23,8 +23,9 @@ What arming must establish, before any Stop can run:
   allowed through. The file is deliberately NOT gitignored (`.goals/.gitignore`
   covers only the run-private files), so an authorized commit can preserve it
   and make later rewrites visible;
-- the review baseline (the git revision, or `none` outside Git) is
-  write-once, so a re-arm cannot hand the reviewer an empty range;
+- the review baseline is the Git revision by default, or `none` only after an
+  explicit `--allow-no-git` choice; it is write-once, so a re-arm cannot hand
+  the reviewer an empty range;
 - `.goals/.gitignore` names the run-private files, `*.candidate` included -
   a live claim must not ride into a commit.
 
@@ -40,6 +41,7 @@ import argparse
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+import re
 import subprocess
 import sys
 import uuid
@@ -64,6 +66,32 @@ from goal_contract import pin_verification, check_protection, input_digest  # no
 
 GIT_BASELINE_SUFFIX = ".baseline"
 IGNORE_ENTRIES = (".work/", "active", "*.candidate", "*.verification.lock")
+PACKAGE_CONFIRMATION = "confirm package checkpoint"
+FROZEN_CONFIRMATION = re.compile(r"\bfrozen:([0-9a-f]{12})\b", re.I)
+
+
+def package_confirmation_digest(path: Path) -> str | None:
+    """Read the final owner row without treating it as authenticated consent."""
+    text = path.read_text(encoding="utf-8").split("\n## ", 1)[0]
+    rows = [line.strip() for line in text.splitlines() if line.strip().startswith("|")]
+    header = next((row for row in rows if "decision" in row.lower()), None)
+    if header is None:
+        return None
+    headings = [cell.strip().lower() for cell in header.strip("|").split("|")]
+    if not {"decision", "why", "who"} <= set(headings):
+        return None
+    decision_index, why_index, who_index = (
+        headings.index("decision"), headings.index("why"), headings.index("who")
+    )
+    for row in rows[rows.index(header) + 1 :]:
+        cells = [cell.strip() for cell in row.strip("|").split("|")]
+        if len(cells) <= max(decision_index, why_index, who_index):
+            continue
+        if (cells[decision_index].strip("` ").lower() == PACKAGE_CONFIRMATION
+                and cells[who_index].lower() == "owner"):
+            match = FROZEN_CONFIRMATION.search(cells[why_index])
+            return match.group(1).lower() if match else None
+    return None
 
 
 def initiating_session(explicit: str | None = None) -> str:
@@ -85,9 +113,11 @@ def initiating_session(explicit: str | None = None) -> str:
 
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["git", "-C", str(root), *args], capture_output=True, text=True, timeout=30
-    )
+    command = ["git", "-C", str(root), *args]
+    try:
+        return subprocess.run(command, capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return subprocess.CompletedProcess(command, 127, "", str(exc))
 
 
 def _write_once(path: Path, text: str) -> bool:
@@ -114,7 +144,12 @@ def _armed_slug(marker: Path) -> str | None:
     return slug
 
 
-def arm(root: Path, slug: str, session_id: str | None = None) -> str:
+def arm(
+    root: Path,
+    slug: str,
+    session_id: str | None = None,
+    allow_no_git: bool = False,
+) -> str:
     if _valid_slug(slug) != slug:
         raise ValueError("Expected a goal slug, not a path.")
     session = initiating_session(session_id)
@@ -127,14 +162,28 @@ def arm(root: Path, slug: str, session_id: str | None = None) -> str:
             "here - that is the interview's job, and a run against an artifact "
             "nobody agreed to is the failure this design exists to prevent."
         )
+    marker = goals / "active"
+    legacy_resume = marker.is_file() and _armed_slug(marker) == slug
     report = validate_paths([str(goal_file), str(decisions)])
-    errors = [f for f in report.findings if f.severity == "error"]
+    errors = [
+        finding for finding in report.findings
+        if finding.severity == "error"
+        and not (legacy_resume and finding.code.startswith("OWNER_CONFIRMATION_"))
+    ]
     if errors:
         raise ValueError(
             "Artifact validation failed: " + "; ".join(f.message for f in errors)
         )
 
-    marker = goals / "active"
+    if not legacy_resume:
+        recorded = package_confirmation_digest(decisions)
+        current = frozen_digest(goal_file.read_text(encoding="utf-8"))
+        if recorded != current:
+            raise ValueError(
+                "OWNER_CONFIRMATION_STALE: the package confirmation does not match "
+                "the current frozen goal terms. Read back checkpoint C again, then "
+                "replace its frozen digest before arming."
+            )
     audit_goal = ActiveGoal(slug, goals, goal_file, goals / f"{slug}.events.jsonl", decisions, marker, session)
     prior_events = read_events(audit_goal)
     if any(e.get("event") == "frozen_spec_changed" for e in prior_events):
@@ -174,6 +223,14 @@ def arm(root: Path, slug: str, session_id: str | None = None) -> str:
         return f"{slug} is already armed; baselines unchanged."
 
     revision = _git(root, "rev-parse", "HEAD")
+    if revision.returncode != 0 and not allow_no_git:
+        raise ValueError(
+            "Arming requires a usable Git HEAD by default; `git init` alone is not "
+            "enough. Use the enclosing repository or create a reviewed baseline commit "
+            "before arming. If this is not a project, Git is unavailable, or the owner "
+            "declines baseline creation, rerun with --allow-no-git; step-history "
+            "coverage and committed Writer-Session exclusion will be unavailable."
+        )
     base = revision.stdout.strip() if revision.returncode == 0 else "none"
 
     spec_digest = frozen_digest(goal_file.read_text(encoding="utf-8"))
@@ -189,7 +246,9 @@ def arm(root: Path, slug: str, session_id: str | None = None) -> str:
     spec_kept = not _write_once(
         goals / f"{slug}{SPEC_BASELINE_SUFFIX}", spec_digest + "\n"
     )
-    _write_once(goals / f"{slug}{GIT_BASELINE_SUFFIX}", base + "\n")
+    git_baseline = goals / f"{slug}{GIT_BASELINE_SUFFIX}"
+    _write_once(git_baseline, base + "\n")
+    recorded_base = git_baseline.read_text(encoding="utf-8").strip()
     (goals / f"{slug}.verification.lock").touch(exist_ok=True)
 
     ignore = goals / ".gitignore"
@@ -215,10 +274,16 @@ def arm(root: Path, slug: str, session_id: str | None = None) -> str:
         if spec_kept else ""
     )
     retained = len(completion_attempts(read_events(active_goal(root))))
+    git_note = (
+        " No-Git mode was explicitly selected: step-history coverage and committed "
+        "Writer-Session exclusion are unavailable."
+        if recorded_base == "none"
+        else ""
+    )
     return (
-        f"{slug} armed for session {session}. Spec baseline {spec_digest}; review baseline {base}.{kept_note} "
+        f"{slug} armed for session {session}. Spec baseline {spec_digest}; review baseline {recorded_base}.{kept_note} "
         "The gate is live: completion claims are judged against the frozen "
-        "sections as they stand now. "
+        f"sections as they stand now.{git_note} "
         f"{retained} earlier completion attempt(s) are retained; re-arming does "
         "not reset the ceiling. A fresh run needs a new authorized goal or "
         "the documented explicit reset."
@@ -343,11 +408,19 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__.splitlines()[0],
     )
-    parser.add_argument("action", choices=("arm", "diff", "disarm", "rebind", "review-inputs", "verify"))
+    parser.add_argument(
+        "action",
+        choices=("arm", "diff", "disarm", "rebind", "review-inputs", "spec-digest", "verify"),
+    )
     parser.add_argument("slug")
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--session-id", help="Current native session ID, never another task's ID")
     parser.add_argument("--claim", default="Proposed completion of the accepted contract")
+    parser.add_argument(
+        "--allow-no-git",
+        action="store_true",
+        help="Arm without a usable HEAD after accepting reduced audit coverage",
+    )
     args = parser.parse_args(argv)
     try:
         if args.action == "verify":
@@ -358,8 +431,13 @@ def main(argv: list[str] | None = None) -> int:
             if _valid_slug(args.slug) != args.slug:
                 raise ValueError("Expected a goal slug, not a path.")
             print(input_digest(args.root, (args.root / ".goals" / f"{args.slug}.goal.md").read_text()))
+        elif args.action == "spec-digest":
+            if _valid_slug(args.slug) != args.slug:
+                raise ValueError("Expected a goal slug, not a path.")
+            goal = args.root / ".goals" / f"{args.slug}.goal.md"
+            print(frozen_digest(goal.read_text(encoding="utf-8")))
         elif args.action == "arm":
-            print(arm(args.root, args.slug, args.session_id))
+            print(arm(args.root, args.slug, args.session_id, args.allow_no_git))
         elif args.action == "rebind":
             print(rebind(args.root, args.slug, args.session_id))
         elif args.action == "diff":

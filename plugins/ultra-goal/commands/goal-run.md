@@ -37,14 +37,27 @@ If either is missing, stop and say so. Do not author one here — that is the in
 job, and starting a run against an artifact nobody agreed to is the failure this whole
 design exists to prevent.
 
-## 2. Validate, then arm - one fence, because they are one step
+## 2. Establish the Git default, then validate and arm
+
+Before the fence, inspect the current directory for an enclosing repository and a
+usable `HEAD`. Reuse an enclosing repository; never run `git init` inside one. If
+there is no repository or it has no commit, the default is to establish Git and a
+reviewed baseline commit **before** arming. `git init` alone is insufficient because
+it has no revision to record. Show `git status --short`, inspect ignored and suspicious
+paths, and obtain authority for the exact baseline commit scope before staging it.
+
+If the workspace is not a project, the owner declines baseline creation, Git is
+unavailable, or baseline creation fails, the goal may run with `--allow-no-git`.
+Disclose that step-history coverage and committed `Writer-Session` exclusion will be
+unavailable. Never initialize Git merely to version an unrelated home or temporary
+directory, and never add the flag merely to get past a failure: without it, the fence
+refuses before writing any run state.
 
 For an unattended run, check that the independent specification critique actually
-happened. If missing, invoke it against the approved terms before arming. Do not
-reinterpret "start now" or "do not ask again" as a waiver: this is an independent
-check, not another owner interview. A clean critique needs no new confirmation;
-a material objection must be resolved. Disclose an explicitly waived or unavailable
-critique instead of treating it as a pass.
+happened before checkpoint C. If missing, return to goal compilation: invoke it on
+the draft, resolve material objections, then repeat the complete-package readback
+and C confirmation. Do not reinterpret "start now" or "do not ask again" as a waiver.
+Disclose an explicitly waived or unavailable critique instead of treating it as a pass.
 
 Before executing the fence, replace `<resolved-native-session-id>` with the current
 host's actual native ID from its own command substitution or tool environment. Never
@@ -69,7 +82,11 @@ session_id='<resolved-native-session-id>'
 if command -v python3 >/dev/null 2>&1; then exec python3 "$runner" arm "$ARGUMENTS" --session-id "$session_id"; else exec python "$runner" arm "$ARGUMENTS" --session-id "$session_id"; fi
 ```
 
-The script validates before creating any active marker, then records three things: the
+When there is no usable `HEAD` and the reduced path is accepted, append
+`--allow-no-git` to the one final `arm` invocation above; do not run both forms.
+
+The script validates before creating any active marker, requires a usable Git `HEAD`
+unless `--allow-no-git` records the explicit weaker path, then records three things: the
 frozen spec digest in `.goals/$ARGUMENTS.spec.baseline`, the declared evaluator files'
 hashes in `.goals/$ARGUMENTS.verification.baseline`, and the review start revision in
 `.goals/$ARGUMENTS.baseline`. Re-arming preserves all of them; another active goal, another

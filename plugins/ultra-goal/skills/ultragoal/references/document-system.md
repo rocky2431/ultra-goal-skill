@@ -20,11 +20,21 @@ the skill does not replace the host's context assembly or persistence.
 | `<slug>.candidate` | the run's completion claim, one line | the run, once per claim | at each claim | consumed by the gate when it rules | no |
 | git history | the evolution | git | when an existing authorization permits a commit | immutable | — |
 
-"In Git" describes intended tracked artifacts, not an automatic commit. Every
-commit or publication still needs authority, and local evidence may contain
-sensitive inputs. Arming writes `.goals/.gitignore` for transient machinery such
-as `.work/` and `active`. Required evidence must survive cleanup whether or not
-there is a Git repository or permission to commit.
+Git is the default for a goal run. Reuse an enclosing repository with a usable
+`HEAD`; never initialize another repository inside it. With no repository or an
+unborn one, propose `git init` plus a reviewed baseline commit before arming:
+`git init` alone creates no revision. Show the exact status and inspect ignored or
+suspicious paths before requesting authority to stage the baseline. Commit the
+confirmed goal package with that baseline when authority permits.
+
+"In Git" still describes intended tracked artifacts, not automatic permission to
+commit or publish. If the workspace is not a project, the owner declines baseline
+creation, Git is unavailable, or the baseline fails, arm with `--allow-no-git` and
+disclose that step-history coverage and committed `Writer-Session` exclusion are
+unavailable. Do not initialize a repository merely to version an unrelated home or
+temporary directory. Arming writes
+`.goals/.gitignore` for transient machinery such as `.work/` and `active`; required
+evidence must survive cleanup in either mode.
 
 ```
 decisions.md ──defines──► goal.md spec sections   [FROZEN during a run]

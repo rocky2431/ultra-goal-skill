@@ -40,6 +40,28 @@ independent verifier and accepted fallbacks in `Verification`. Both choices reta
 independent final review. Within that scope, routine worker choices need no new
 question; expanding it requires your decision. See the [collaboration-scope protocol](../plugins/ultra-goal/skills/ultragoal/references/agent-modes.md#confirm-collaboration-scope).
 
+Every interview turn shows a `Settling:` line with the current checkpoint, counts of
+substantive owner and agent decisions, open material decisions and the next question.
+Content converges through three checkpoints: **A Framing** (Intent, Boundary and
+collaboration), **B Execution and evidence** (every remaining goal section, current
+decisions and execution attachments), then **C Package** (the complete package after
+critique, including the promised result-and-evidence package). A and B update the
+substantive decision rows they covered; C is the second confirmation of the whole
+package. A covered edit reopens its A/B checkpoint and C. Only C adds a reserved
+owner row, bound to the current frozen goal digest.
+The validator checks the row and digest shape, and first arm checks that the digest
+still matches; this detects omission and stale frozen text, not owner identity or
+semantic adequacy. A host-native structured question UI is used when actually
+exposed, with the full readback kept in visible prose; otherwise the agent asks one
+plain question.
+
+Git is the default for a run. An enclosing repository with a usable `HEAD` is reused.
+With no repository or no commit, the agent proposes initialization and a reviewed
+baseline commit before arming, after showing status and checking suspicious paths.
+The arming fence refuses a missing Git baseline unless this is not a project, Git is
+unavailable, or baseline creation is explicitly declined and `--allow-no-git` is
+used; that path loses step-history coverage and committed writer exclusion.
+
 The resulting contract contains:
 
 | Field | What it establishes |
@@ -61,14 +83,14 @@ outcome; file existence is not proof of usability.
 
 Before offering unattended execution, the instructions require independent
 specification critique, using the original request, draft and evidence before
-the author's defense. Resolve material objections, then read back the complete
-contract. Existing explicit confirmation counts; silence does not. "Start now"
-is not a review waiver. A clean critique of already approved terms does not
-require another confirmation.
+the author's defense. Resolve material objections, then perform checkpoint C's
+complete-package readback. Existing explicit confirmation can be recorded; silence
+does not count. "Start now" is not a review waiver. A clean critique only changes
+the draft when it finds a material issue; C confirms the resulting current package.
 
-Collaboration confirmation, critique and the quality of the interview are currently
-**model-followed instructions**. Structural validation cannot establish that they happened or
-that the criteria fully express the owner's intent.
+The package row is auditable provenance, not authenticated consent. Progress display,
+A/B readback quality, execution-attachment confirmation and specification critique
+remain **model-followed instructions**.
 
 See the [canonical goal contract](../plugins/ultra-goal/skills/ultragoal/references/goal-contract.md).
 
@@ -452,6 +474,8 @@ a directory look complete. Commit, install and publish only with authority.
 
 | Symptom | Check and response |
 |---|---|
+| `OWNER_CONFIRMATION_MISSING`, `OWNER_CONFIRMATION_DUPLICATE`, `OWNER_CONFIRMATION_DIGEST_MISSING` or `OWNER_CONFIRMATION_STALE` on an older or draft record | Treat it as unconfirmed under the current contract. Show A and B, then read back C from the current files; only after the explicit C reply keep one package row with the current `spec-digest`. Never auto-backfill it. An already-active legacy run may idempotently resume, but its next fresh arm uses this process |
+| `arm` says there is no usable Git `HEAD` | Reuse an enclosing repository or establish an authorized baseline commit. If the owner explicitly accepts reduced audit coverage, rerun `arm` with `--allow-no-git` |
 | `active` exists, but nothing is verified | Check hook discovery, actual event `cwd`, marker format and owning session; an ordinary Stop also does not verify |
 | Legacy marker contains only a slug, or its session binding is invalid | `--status` reports `SESSION_BINDING_INVALID` with recovery guidance; Stop also emits a `systemMessage` diagnostic. The gate remains inactive and files stay untouched |
 | UI hides the allowing diagnostic | Inspect raw hook output/logs; emitting a diagnostic is not proof that every host UI displays it |

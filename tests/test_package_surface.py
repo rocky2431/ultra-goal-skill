@@ -315,6 +315,9 @@ class SkillContractTests(unittest.TestCase):
             "true_quote_does_not_prove_its_conclusion",
             "silent_worker_requires_native_status_evidence",
             "candidate_skill_rule_can_be_rolled_back",
+            "visible_settling_progress_precedes_each_owner_turn",
+            "package_confirmation_follows_grouped_content_readbacks",
+            "git_default_requires_a_usable_head_before_arm",
         ):
             self.assertIn(required, names)
 
@@ -405,14 +408,29 @@ class SkillContractTests(unittest.TestCase):
 
 
 class TemplateTests(unittest.TestCase):
-    """The shipped templates must satisfy the shipped validator."""
+    """Worked templates validate after their confirmation rows are resolved."""
 
     def _validate(self, pairs: list[tuple[str, str]]) -> None:
         with tempfile.TemporaryDirectory() as work:
             for source, name in pairs:
-                shutil.copy(SKILL_ROOT / "assets" / source, Path(work) / name)
+                text = (SKILL_ROOT / "assets" / source).read_text(encoding="utf-8")
+                if source == "decisions-record.md":
+                    text = text.replace(
+                        "| --- | --- | --- | --- |",
+                        "| --- | --- | --- | --- |\n"
+                        "| Confirm package checkpoint | Arm without final readback | "
+                        f"Confirmed complete fixture; frozen:{'0' * 12} | owner |",
+                        1,
+                    )
+                (Path(work) / name).write_text(text, encoding="utf-8")
             report = va.validate_paths([work])
             self.assertTrue(report.ok, [f.as_dict() for f in report.findings])
+
+    def test_unedited_decisions_template_cannot_claim_owner_confirmation(self) -> None:
+        findings = va.validate_file(
+            SKILL_ROOT / "assets" / "decisions-record.md", "decisions"
+        )
+        self.assertIn("OWNER_CONFIRMATION_MISSING", {finding.code for finding in findings})
 
     def test_goal_template_validates(self) -> None:
         self._validate(
@@ -1544,6 +1562,7 @@ class RolesByStageTests(unittest.TestCase):
         self.assertIn("You are the run, not its designer.", command)
         self.assertIn("disarm $ARGUMENTS", command)
         self.assertIn("rm .goals/active", command)
+        self.assertIn("--allow-no-git", command)
         for manifest in (".claude-plugin/plugin.json", ".codex-plugin/plugin.json",
                          "kimi.plugin.json"):
             with self.subTest(manifest=manifest):
@@ -1569,6 +1588,19 @@ class DecisionAuthorContractTests(unittest.TestCase):
         self.assertIn("| Decision | Rejected | Why | Who |", record)
         self.assertIn("| owner |", record)
         self.assertIn("| agent |", record)
+
+    def test_convergence_is_visible_grouped_and_digest_bound(self) -> None:
+        skill = " ".join(skill_text().split())
+        for phrase in (
+            "Every owner-facing interview turn includes this one-line indicator",
+            "**A Framing:**",
+            "**B Execution and evidence:**",
+            "**C Package:**",
+            "`Confirm package checkpoint`",
+            "goal_run.py spec-digest",
+            "`AskUserQuestion` or `request_user_input`",
+        ):
+            self.assertIn(phrase, skill)
 
 
 if __name__ == "__main__":
@@ -2038,6 +2070,15 @@ class ArmingRangeContractTests(unittest.TestCase):
         "    return _Report()\n"
     )
 
+    @staticmethod
+    def confirmed_record(spec: str) -> str:
+        return (
+            "| Decision | Rejected | Why | Who |\n"
+            "| --- | --- | --- | --- |\n"
+            "| Confirm package checkpoint | Arm without final readback | "
+            f"Confirmed fixture package; frozen:{va.frozen_digest(spec)} | owner |\n"
+        )
+
     def stage_fence(self, scripts_dir: Path, stub_validator: bool = True) -> None:
         """Stage the real arming fence: goal_run.py and its shared plumbing
         are always the shipped files; the validator is real when the test
@@ -2075,6 +2116,17 @@ class ArmingRangeContractTests(unittest.TestCase):
             timeout=60, env=env,
         )
 
+    def init_repo(self, cwd: Path) -> None:
+        for args in (
+            ("init", "-q", "."),
+            ("config", "user.email", "t@e.st"),
+            ("config", "user.name", "t"),
+            ("add", "-A"),
+            ("-c", "commit.gpgsign=false", "-c", "core.hooksPath=", "commit", "-qm",
+             "fixture baseline"),
+        ):
+            subprocess.run(["git", *args], cwd=str(cwd), check=True, capture_output=True)
+
     def test_the_expanded_prompt_binds_the_slug_end_to_end(self) -> None:
         """The settlement Codex asked for, as far as a no-install mission can
         run it: expand `$ARGUMENTS` the way Kimi, Claude Code and zCode each
@@ -2089,10 +2141,14 @@ class ArmingRangeContractTests(unittest.TestCase):
             (cwd / ".goals").mkdir()
             (cwd / "acceptance.py").write_text("pass\n")
             from test_goal_contract import spec_text
-            (cwd / ".goals" / "demo.goal.md").write_text(spec_text(), "utf-8")
-            (cwd / ".goals" / "demo.decisions.md").write_text("# Decisions\n", "utf-8")
+            spec = spec_text()
+            (cwd / ".goals" / "demo.goal.md").write_text(spec, "utf-8")
+            (cwd / ".goals" / "demo.decisions.md").write_text(
+                self.confirmed_record(spec), "utf-8"
+            )
             root = cwd / "pluginroot" / "skills" / "ultragoal" / "scripts"
             self.stage_fence(root)
+            self.init_repo(cwd)
             fence = next(
                 f for f in self.fences(expanded) if 'arm "demo"' in f
             )
@@ -2155,8 +2211,11 @@ class ArmingRangeContractTests(unittest.TestCase):
             goals.mkdir()
             (cwd / "acceptance.py").write_text("pass\n")
             from test_goal_contract import spec_text
-            (goals / "demo.goal.md").write_text(spec_text(), "utf-8")
-            (goals / "demo.decisions.md").write_text("# Decisions\n", "utf-8")
+            spec = spec_text()
+            (goals / "demo.goal.md").write_text(spec, "utf-8")
+            (goals / "demo.decisions.md").write_text(
+                self.confirmed_record(spec), "utf-8"
+            )
             scripts = (
                 cwd / "home" / ".kimi-code" / "plugins" / "managed" / "ultra-goal"
                 / "skills" / "ultragoal" / "scripts"
@@ -2168,6 +2227,7 @@ class ArmingRangeContractTests(unittest.TestCase):
                 "raise SystemExit(1)\n", "utf-8"
             )
             home = cwd / "home"
+            self.init_repo(cwd)
             refused = self.run_sh(
                 self.arming_fence(), cwd, env=self.sandbox_env(home)
             )
@@ -2206,17 +2266,16 @@ class ArmingRangeContractTests(unittest.TestCase):
             (cwd / ".goals").mkdir()
             (cwd / "acceptance.py").write_text("pass\n")
             from test_goal_contract import spec_text
-            (cwd / ".goals" / "demo.goal.md").write_text(spec_text(), "utf-8")
-            (cwd / ".goals" / "demo.decisions.md").write_text("# Decisions\n", "utf-8")
+            spec = spec_text()
+            (cwd / ".goals" / "demo.goal.md").write_text(spec, "utf-8")
+            (cwd / ".goals" / "demo.decisions.md").write_text(
+                self.confirmed_record(spec), "utf-8"
+            )
             root = cwd / "pluginroot" / "skills" / "ultragoal" / "scripts"
             self.stage_fence(root)
             env = self.sandbox_env(cwd, PLUGIN_ROOT=str(cwd / "pluginroot"))
             arming = self.arming_fence()
-            for args in (
-                ("init", "-q", "."), ("config", "user.email", "t@e.st"),
-                ("config", "user.name", "t"),
-            ):
-                subprocess.run(["git", *args], cwd=str(cwd), capture_output=True)
+            self.init_repo(cwd)
             self.run_sh(arming, cwd, env=env)
             first = (cwd / ".goals" / "demo.baseline").read_text(encoding="utf-8")
             (cwd / "work.txt").write_text("one turn of work\n", encoding="utf-8")

@@ -5,6 +5,12 @@ when you assumed it or set it outright - an assumption the owner never saw is no
 agreement, and without the column the two are indistinguishable. Decisions only: no
 architecture description, no node list, no restatement of what the script does. The script or prompt is the only
 description of the thing; a prose copy goes stale and starts lying.
+`Confirm package checkpoint` is reserved and deliberately absent from this template,
+so copying it cannot pass the gate. After showing checkpoint C and receiving an
+explicit reply, add it as an `owner` row whose Why cell includes
+`frozen:<12-hex-digest>` from `goal_run.py spec-digest`. The digest binds the record
+to the shown frozen goal terms; it does not authenticate the owner. A or B confirmation
+updates the substantive rows it covered instead of adding more checkpoint rows.
 When a decision changes later, EDIT that row and move the old decision into Rejected.
 Never append a history log.
 
