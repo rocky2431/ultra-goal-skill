@@ -1,4 +1,11 @@
 // Optional execution attachment; requires the shared goal and decisions record.
+// It targets one specific workflow runtime: the host feature that provides agent(),
+// pipeline(), parallel() and the meta block. This Skill ships the sample, not the
+// engine - validate_artifact.py checks the structure and node --check parses the
+// source, and neither executes it nor proves the runtime exists in this session.
+// The returned { confirmed } object is the runtime's answer, not Goal completion:
+// completion is settled only by the shared contract below - the frozen evaluator
+// baselines, any required independent review, and the current anchor run.
 // Use only with an installed, exercised workflow consumer. All shapes arm the
 // same goal and submit completion candidates against that contract.
 // goal: `review-changed-files.goal.md`

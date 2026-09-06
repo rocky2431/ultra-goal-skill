@@ -327,12 +327,29 @@ class DelegationTests(Harness):
         self.assertIn("CRITIC_MISSING", self.codes(path))
 
     def test_reviewer_and_critic_on_the_same_vendor_is_reported(self) -> None:
-        """Same model, same blind spots - the critic would mostly agree."""
+        """Brand correlation advises; it does not fail the package.
+
+        Same model can mean shared blind spots, but the same vendor can also run two
+        genuinely independent sessions - and two vendors can share one model. The
+        required-review contract checks an owner-approved declared verifier, a session
+        distinct from the run, and current bounded inputs, so the finding is advisory and
+        validation still exits 0.
+        """
         self.write("sv.decisions.md", GOOD_DECISIONS)
         path = self.write(
             "sv.delegation.md", GOOD_DELEGATION.replace("- target: kimi", "- target: codex")
         )
-        self.assertIn("SAME_VENDOR_REVIEW", self.codes(path))
+        report = va.validate_paths([str(path)])
+        finding = next(f for f in report.findings if f.code == "SAME_VENDOR_REVIEW")
+        self.assertEqual("advisory", finding.severity)
+        self.assertTrue(report.ok, [f.as_dict() for f in report.findings])
+        result = subprocess.run(
+            [sys.executable, str(VALIDATOR), str(self.dir)],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertIn("SAME_VENDOR_REVIEW", result.stdout)
 
     def test_a_critic_without_the_three_classes_is_reported(self) -> None:
         self.write("dc.decisions.md", GOOD_DECISIONS)

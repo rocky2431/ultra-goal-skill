@@ -476,7 +476,9 @@ class GateAndDocumentSystemTests(unittest.TestCase):
         # graph diagram in the entry. The executable route still shares one goal.
         skill = " ".join(skill_text().split())
         self.assertIn("references/document-system.md", skill)
-        self.assertIn("loop and graph differ in **when routing gets decided**", skill)
+        # The corrected shape claim: routing time is a design choice inside either
+        # shape, not the boundary between loop and graph.
+        self.assertIn("either shape can be fixed or dynamic", skill)
         doc = (SKILL_ROOT / "references" / "document-system.md").read_text(encoding="utf-8")
         for node in ("<slug>.goal.md", "<slug>.decisions.md", "<slug>.events.jsonl",
                      "## Carry-over", "## Acceptance", "required review's receipt"):

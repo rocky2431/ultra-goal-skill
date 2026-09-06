@@ -11,9 +11,10 @@ metadata:
 # UltraGoal
 
 Turn the owner's objective into an executable goal they can start and leave running.
-The goal is the invariant; loop and graph differ in **when routing gets decided**.
-This skill defines the goal and hands it to the host. The host supplies execution,
-continuation, permissions and resource controls.
+The goal is the invariant; loop and graph are two shapes it can take - a loop repeats
+against fresh feedback, a graph spells out tasks, dependencies and joins - and either
+shape can be fixed or dynamic. This skill defines the goal and hands it to the host.
+The host supplies execution, continuation, permissions and resource controls.
 
 **One goal contract, whatever the execution shape.** Every run owns
 `.goals/<slug>.goal.md` and `<slug>.decisions.md`. A workflow or delegation package

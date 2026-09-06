@@ -38,10 +38,21 @@ that fits the assignment; there is no mandatory vendor or transport order.
   missing verification condition; the generator cannot replace that verifier.
 
 For `agent-delegate`, inspect `agent-delegate list --json` only when the command is
-available. First calls need `--caller <actual-registered-caller>`; nested calls preserve
-the received caller and chain. Never substitute `human` or a renamed target to bypass
-a rejection. A same-product worker can be a separate session; if the chosen bridge
-cannot create it, use another supported path rather than claiming a circular delegation.
+available. On top-level calls, pass `--caller <actual-host-label>` when it is known;
+otherwise the wrapper records `unknown`. Nested calls preserve the received caller and
+chain. Never substitute `human` or a renamed target to bypass a rejection. A same-product
+worker can be a separate session; if the chosen bridge cannot create it, use another
+supported path rather than claiming a circular delegation.
+
+The bridge version checked for this text, `agent-delegate` 0.4.0, exposes **task
+handles and non-owning observation** (`submit` returns an ID; `status` and `wait` read
+it), **named native sessions** (`--session <name>` on `submit` or `run`, continued by
+repeating the same target, directory and name), **task or session cancellation and
+session close**, and a private per-run receipt directory holding events and diagnostics
+during execution. Those are wrapper facts at that version: a wrapper that lacks a knob
+says nothing about what the underlying protocol could do, and a newer wrapper may expose
+more. Check the installed version rather than assuming either direction, and keep any
+platform-specific limit you state tied to the version you actually observed.
 
 Give the worker a self-contained mission: accepted terms, existing authority, relevant
 source evidence and failed attempts, actual read/write scope, result location and checks.
@@ -112,7 +123,13 @@ are not portable tool APIs. Invoke the main Skill through the host's plugin surf
 
 Decide whether review is required or useful, what each reviewer receives, and what would
 resolve a finding. Fresh context and a different model can reduce correlated judgment;
-neither eliminates shared errors. Select them by risk, availability and cost.
+neither eliminates shared errors. The brand correlation runs in both directions: a
+different vendor is not proof of independence, and the same vendor is not proof of
+dependence — one vendor can run two genuinely separate sessions over isolated inputs,
+and two vendors can share a model or the author's framing. A required review's contract
+checks that the declared verifier name is owner-approved, the verifier session differs
+from the run's, and the receipt matches the bounded current inputs. Select reviewers by
+risk, availability and cost.
 
 For a repeated exchange, choose a round cap and stop early when the issue is settled.
 The optional triad template uses at most five rounds. That cap does not apply to a
@@ -127,9 +144,11 @@ their findings rather than count agreement as proof.
 
 ## What is *not* on this page
 
-**Loop versus graph is not a role question.** It asks when routing gets decided - at
-authoring time or during inference - and it belongs to the shape question, not here. Putting
-it in a list of role options was the clearest symptom of the original mistake.
+**Loop versus graph is not a role question.** A graph expresses tasks, dependencies and
+joins; a loop expresses the feedback pass that corrects the next action from the latest
+result - and either shape can fix its routing at authoring time or decide it during
+inference. That is the shape question, and it belongs to `graph-topology.md`, not here.
+Putting it in a list of role options was the clearest symptom of the original mistake.
 
 ## Declared degradation
 

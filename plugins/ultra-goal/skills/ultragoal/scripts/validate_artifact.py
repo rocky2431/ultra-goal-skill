@@ -807,13 +807,25 @@ def check_delegation(path: Path, text: str, out: list[Finding]) -> None:
                     )
                 )
 
+    # Brand correlation is a hint, not a verdict, in either direction: one vendor can
+    # run two genuinely independent sessions over isolated inputs, and two vendors can
+    # share the same model or the author's framing. What a required review's independence
+    # rests on is what `goal_contract.py` checks - an owner-approved declared verifier,
+    # a session distinct from the run, and current bounded inputs - so this observation is
+    # advisory. As an error it failed
+    # packages that could meet the owner's policy, on evidence (a target name) that
+    # proves neither dependence nor independence.
     if len(targets) == 2 and targets["reviewer"] == targets["critic"]:
         out.append(
             Finding(
                 str(path),
                 "SAME_VENDOR_REVIEW",
-                f"reviewer and critic are both {targets['reviewer']!r}: agents that share "
-                "a model share its blind spots, so the critic would mostly agree",
+                f"reviewer and critic are both {targets['reviewer']!r}: a shared model or "
+                "shared scaffolding can correlate their judgment, but the brand alone "
+                "proves neither dependence nor independence - a required review instead "
+                "checks an owner-approved declared verifier, a session distinct from the "
+                "run, and current bounded inputs; a target name establishes none of those",
+                "advisory",
             )
         )
 

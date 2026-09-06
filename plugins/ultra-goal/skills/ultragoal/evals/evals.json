@@ -58,7 +58,7 @@
       "id": 9,
       "name": "single_worker_delegation_keeps_goal_contract",
       "prompt": "Here is my graph: one worker agent, delegated from me, running until done.",
-      "expected_output": "Keeps one shared goal contract for the delegated work. Explains that a loop is a cyclic graph and the useful distinction is when routing is decided, not whether one worker earns a graph label. Avoids unused topology machinery while preserving the actual worker and verification obligations."
+      "expected_output": "Keeps one shared goal contract for the delegated work. Explains that a loop is a cyclic graph, that a graph can be dynamic and a loop deterministic, and that one worker does not earn a graph label by itself - routing may be authored or decided at runtime in either shape. Avoids unused topology machinery while preserving the actual worker and verification obligations."
     },
     {
       "id": 10,
