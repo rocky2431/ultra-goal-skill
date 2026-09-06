@@ -15,7 +15,7 @@ provides the goal definition and verification procedure.
 Use it for work that needs several rounds of investigation, implementation and
 review. For a small one-off task, the agent can handle the request directly.
 
-Version: 2.15.5. Core scripts require Python 3.10 or later.
+Version: 2.15.6. Core scripts require Python 3.10 or later.
 
 - [Install and start](#install-and-start)
 - [Your first goal](#your-first-goal)
@@ -137,10 +137,10 @@ Changes to success criteria, required methods, permissions or budgets need your
 approval. It can resolve repository facts and ordinary implementation choices
 without asking you again.
 
-The same goal can drive a loop, where the agent chooses the next step during
-execution, or a graph, where routes are written in advance. Both use the same
-acceptance and authority contract. Execution comes from the host; UltraGoal does
-not bundle a separate Agent Runtime or workflow engine.
+A loop repeats work against feedback; a graph makes tasks, dependencies and joins
+explicit. Either shape can use fixed routes or choose routes at runtime. Both use
+the same acceptance and authority contract. Execution comes from the host;
+UltraGoal does not bundle a separate Agent Runtime or workflow engine.
 
 ## Files and progress
 

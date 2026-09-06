@@ -14,10 +14,9 @@ import unittest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+PLUGIN_ROOT = REPO_ROOT / "plugins" / "ultra-goal"
 SCRIPTS = (
-    REPO_ROOT
-    / "plugins"
-    / "ultra-goal"
+    PLUGIN_ROOT
     / "skills"
     / "ultragoal"
     / "scripts"
@@ -703,7 +702,8 @@ class ZCodeRootLauncherTests(Harness):
         guard the interpreter's, and any failure before the script runs is
         exit 0 - never the exit 2 every host reads as a deliberate block."""
         for relative in ("plugins/ultra-goal/hooks/hooks.json",
-                         "plugins/ultra-goal/hooks/claude.json"):
+                         "plugins/ultra-goal/hooks/claude.json",
+                         "plugins/ultra-goal/hooks/codex.json"):
             manifest = json.loads(
                 (REPO_ROOT / relative).read_text(encoding="utf-8")
             )
@@ -722,6 +722,13 @@ class ZCodeRootLauncherTests(Harness):
                                           "the interpreter is selected, not assumed")
                             self.assertIn("|| exit 0", windows,
                                           "a missing interpreter fails open too")
+                            script = windows.split('"')[1]
+                            self.assertTrue(
+                                (PLUGIN_ROOT / script.removeprefix(
+                                    "%CLAUDE_PLUGIN_ROOT%\\"
+                                ).replace("\\", "/")).is_file(),
+                                f"registered script does not exist: {script}",
+                            )
 
 
 class CheckedTransitionTests(Harness):

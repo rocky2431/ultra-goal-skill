@@ -479,6 +479,12 @@ class GateAndDocumentSystemTests(unittest.TestCase):
         # The corrected shape claim: routing time is a design choice inside either
         # shape, not the boundary between loop and graph.
         self.assertIn("either shape can be fixed or dynamic", skill)
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        readme_zh = (REPO_ROOT / "README.zh-CN.md").read_text(encoding="utf-8")
+        self.assertIn("Either shape can use fixed routes or choose routes at runtime.", readme)
+        self.assertIn("两种结构都可以使用固定路由，也可以在运行时选择路由。", readme_zh)
+        self.assertNotIn("graph, where routes are written in advance", readme)
+        self.assertNotIn("Graph 执行，提前写出路由", readme_zh)
         doc = (SKILL_ROOT / "references" / "document-system.md").read_text(encoding="utf-8")
         for node in ("<slug>.goal.md", "<slug>.decisions.md", "<slug>.events.jsonl",
                      "## Carry-over", "## Acceptance", "required review's receipt"):
@@ -1034,6 +1040,10 @@ class HostManifestTests(unittest.TestCase):
                 for key in keys:
                     node = node[key]
                 self.assertEqual(version, node)
+        self.assertIn(f"Version: {version}.",
+                      (REPO_ROOT / "README.md").read_text(encoding="utf-8"))
+        self.assertIn(f"版本：{version}。",
+                      (REPO_ROOT / "README.zh-CN.md").read_text(encoding="utf-8"))
 
     def test_zcode_and_kimi_declare_skills_in_their_own_shapes(self) -> None:
         """A string for zCode, an array for Kimi. Measured, not guessed."""
