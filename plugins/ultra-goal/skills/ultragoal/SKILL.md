@@ -5,7 +5,7 @@ when_to_use: "When the owner wants work to keep running without them - \"make an
 license: MIT
 metadata:
   author: rocky2431
-  version: "2.15.7"
+  version: "2.16.0"
 ---
 
 # UltraGoal
@@ -26,6 +26,12 @@ workers and carried state within the accepted terms; it may not make success eas
 Use this skill to create, inspect or modify an executable goal package, workflow
 script or delegation package. An ordinary task or a broader authority-model question
 needs its own answer, not a goal interview. Assume no other Skill is installed.
+
+Standalone use includes this workflow's own clarification and necessary research,
+goal preparation, Carry-over, worker coordination and required verification. Preserve
+that complete path within the host's actual execution/continuation capabilities.
+Deep Thinking, Task State and Agent Delegation are optional ways to reuse existing
+work or tools; none is a prerequisite and no particular combination is mandatory.
 
 ## Recognize the intent first
 
@@ -70,6 +76,14 @@ Do not preload all references. Read [anti-patterns.md](references/anti-patterns.
 needs their failure analysis, control limits or source evidence.
 
 ## Interview protocol
+
+When a result, specification or task record is supplied, read it and its decisive
+sources first. Preserve accepted outcome, acceptance IDs and requirement meanings,
+exclusions, evidence conditions, corrections and existing authority. Record its path
+and relevant revision/uncommitted inputs in the goal package. Reuse confirmed answers;
+resolve only missing or conflicting goal terms. Delivery of an upstream result alone
+does not mean the owner accepted it or authorized this goal. The final concrete
+package still follows the confirmation and frozen-contract rules below.
 
 - **Facts are yours, decisions are theirs.** Resolve repository, test, CI and
   standing-instruction facts first. Probe only unknowns that could change the goal;
@@ -276,6 +290,13 @@ say **read it before acting and rewrite it before finishing**:
 - `### Lessons`: compact causal findings that change the next action.
 - `### Next`: exactly one immediate recovery objective inside the frozen intent;
   link a longer plan when useful.
+
+Choose one current execution-state record and writer. When an existing Task record
+owns that state, Carry-over keeps its exact path, necessary run facts and an instruction
+to read that record for the current next action; do not maintain a competing plan.
+When Carry-over owns the state, no companion Task record is needed. Research history
+stays in its source draft, and accepted goal terms remain in this contract. Reconcile
+source requirements and evidence before resuming, not just matching IDs or file hashes.
 
 **A lesson is a cause and a next action, not an event.** Keep the relevant lessons;
 three is a compaction suggestion, not a correctness limit. **Rewrite, never append**

@@ -17,7 +17,7 @@ import zipfile
 from goal_hooks import ActiveGoal, sections, read_events, frozen_digest, goal_commits
 
 VERIFICATION_BASELINE_SUFFIX = ".verification.baseline"
-ACCEPTANCE = re.compile(r"^\s*[-*]\s+\[[ xX]\]\s+([a-z][a-z0-9_-]*):\s+(.+)$", re.M)
+ACCEPTANCE = re.compile(r"^\s*[-*]\s+\[[ xX]\]\s+([A-Za-z][A-Za-z0-9_-]*):\s+(.+)$", re.M)
 
 
 def verification(spec: str) -> dict:

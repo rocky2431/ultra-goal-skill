@@ -294,6 +294,17 @@ remain unobserved and the main model must inspect their actual results. A succes
 the same target/tool clears an observed call failure; it does not prove every mission
 for that target completed.
 
+**The asynchronous `submit` / `wait` / `status` path is outside this hook's automatic
+failure/recovery coverage, as are wrappers such as `rtk proxy`.** Do not interpret an
+absent event as success or widen command-string guesses to infer asynchronous outcomes.
+The caller must retain the returned delegation ID and inspect that task's terminal
+receipt and artifacts. An observation timeout means keep watching the same ID; an
+unknown execution outcome means inspect native state and effects before retrying.
+Record the receipt path and consumer's business checks in the selected work record.
+The transport's `success` is a normally ended model turn, never acceptance or a
+replacement for a required independent review. A receipt adapter is only warranted
+when a real automated consumer needs those versioned results.
+
 **So joining is the run's job, not the hook's.** Wait for every role invoked, then open the
 artifact it was told to write and read it —
 the round's evidence is the file the role was told to write.

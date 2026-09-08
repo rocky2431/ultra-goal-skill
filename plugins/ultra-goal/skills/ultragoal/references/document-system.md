@@ -4,6 +4,21 @@ Use the existing goal artifacts, observations and required evidence. The distinc
 borrowed from SKILL.state is immutable specification versus mutable execution state;
 the skill does not replace the host's context assembly or persistence.
 
+For business deliverables, use the owner's explicit path, then this task's existing
+documents, then the project's established `docs/` or `documents/` convention. With no
+convention, use `documents/<work-id>/`. Reuse the source result/specification and its
+acceptance meanings; do not migrate existing `.goals/`, `.tasks/` or private receipts
+for directory uniformity. Pass exact accessible paths at handoff instead of rescanning
+the workspace or requiring another Skill to be installed.
+
+There is one current execution-state record and one designated writer. Standalone
+goals use Carry-over. If an existing task note owns current execution understanding,
+Carry-over retains its locator and essential run facts; `### Next` directs recovery to
+read that note for the current action. The run updates the chosen note and reconciles
+the pointer before ending. Other workers return evidence for that writer. Do not keep
+contradictory next-action lists in both files. The contract always owns accepted terms,
+while source research and tool/verifier receipts retain their respective evidence.
+
 | File | Role | Who writes it | When | Mutability | In Git |
 |---|---|---|---|---|---|
 | `<slug>.goal.md` — spec sections | the specification | owner + agent, together | Ask and explicit Modify **only** | **frozen for the duration of a run** | yes |

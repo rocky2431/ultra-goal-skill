@@ -87,7 +87,10 @@ the complete contract, not a blank authorization to invent weaker criteria later
 
 ## Required machine contract
 
-Every acceptance bullet has a stable ID. The text is frozen; `[ ]`/`[x]` are
+Every acceptance bullet has a stable ID. IDs are case-sensitive, beginning with a letter
+and continuing with letters, digits, `_` or `-` (for example `A1` or `import-total`).
+Preserve upstream IDs exactly in both Acceptance and `covers`; never lowercase them
+or silently replace them during handoff. The text is frozen; `[ ]`/`[x]` are
 mutable claims. A claim never supplies completion evidence.
 
 ````markdown

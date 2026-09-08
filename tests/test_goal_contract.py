@@ -367,6 +367,16 @@ class GoalContractTests(unittest.TestCase):
             validator.check_goal(Path("demo.goal.md"), text, findings)
             self.assertIn("VERIFICATION_CONTRACT_INVALID", [f.code for f in findings])
 
+    def test_upstream_acceptance_ids_preserve_case_and_exact_coverage(self):
+        text = spec_text().replace('"result": "anchor"', '"A1": "anchor"').replace(
+            "- [ ] result:", "- [ ] A1:")
+        self.assertEqual({"A1": "anchor"}, contract.verification(text)["covers"])
+        with self.assertRaises(ValueError):
+            contract.verification(text.replace('"A1": "anchor"', '"a1": "anchor"'))
+        with self.assertRaises(ValueError):
+            contract.verification(text.replace("## Carry-over", "- [ ] A1: A second requirement.\n\n## Carry-over"))
+        self.assertNotEqual(hooks.frozen_digest(text), hooks.frozen_digest(text.replace("A1", "a1")))
+
     def test_changed_evaluator_cannot_turn_red_into_verified_green(self):
         self.arm()
         (self.root / "result.txt").write_text("wrong")
