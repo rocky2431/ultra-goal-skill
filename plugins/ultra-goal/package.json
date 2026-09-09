@@ -1,0 +1,11 @@
+{
+  "name": "ultra-goal",
+  "version": "2.17.0",
+  "private": true,
+  "keywords": ["pi-package"],
+  "pi": {
+    "skills": ["./skills"],
+    "extensions": ["./pi/extension.ts"],
+    "prompts": ["./commands"]
+  }
+}

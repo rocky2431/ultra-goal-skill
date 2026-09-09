@@ -2272,6 +2272,7 @@ class ContinuationBudgetTests(Harness):
         self.assertEqual(7, facts["claude"].continuation_budget)
         self.assertEqual(2, facts["zcode"].continuation_budget)
         self.assertEqual(1, facts["kimi"].continuation_budget)
+        self.assertEqual(1, facts["pi"].continuation_budget)
         self.assertIsNone(facts["codex"].continuation_budget)
         for name, fact in facts.items():
             with self.subTest(host=name):
@@ -2285,6 +2286,7 @@ class ContinuationBudgetTests(Harness):
                 "codex": "stop_hook_active",
                 "zcode": None,
                 "kimi": None,
+                "pi": None,
             },
             {name: fact.chain_flag for name, fact in facts.items()},
         )

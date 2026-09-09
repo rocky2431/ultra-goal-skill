@@ -317,3 +317,17 @@ An unavailable advisory reviewer need not stop the work. An unavailable required
 leaves verification incomplete unless an accepted independent fallback supplies it.
 A review that cannot happen is a missing review, not a red anchor. Say so in the report;
 do not let it read as a pass or ask the owner to solve ordinary routing choices.
+
+## Pi independent workers
+
+Pi has no built-in subagent tool. Within the accepted collaboration scope, a
+separate native `pi -p` session can run a bounded worker/reviewer mission using
+Pi's own CLI; Agent Delegation remains optional. Explicitly load the required
+role Skill and UltraGoal extension from this package with `--skill <role-dir>`
+and `--extension <plugin-root>/pi/extension.ts`. Supply the original request,
+frozen inputs and expected receipt path, and collect the process result.
+Use `ultra_goal` action `session` inside that worker for its own native identity.
+Do not pass the parent's session ID or reuse its session file for independent
+review. A completed Pi process is not review acceptance; inspect the required
+evidence as above. If no authorized independent execution path is available,
+report the missing review instead of making the main session its own reviewer.

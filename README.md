@@ -7,7 +7,7 @@ acceptance criteria, permission boundaries and a way to check the result. The
 agent can then work through the task, keep its progress in files and ask for
 input when a decision falls outside the agreed terms.
 
-It runs inside Claude Code, Codex, Kimi Code or zCode as a Skill with Python
+It runs inside Claude Code, Codex, Kimi Code, zCode or Pi as a Skill with Python
 scripts and hooks. A hook is a script the host calls at an event such as the end
 of a turn. The host provides the model, tools and continued execution; UltraGoal
 provides the goal definition and verification procedure.
@@ -15,7 +15,7 @@ provides the goal definition and verification procedure.
 Use it for work that needs several rounds of investigation, implementation and
 review. For a small one-off task, the agent can handle the request directly.
 
-Version: 2.16.0. Core scripts require Python 3.10 or later.
+Version: 2.17.0. Core scripts require Python 3.10 or later.
 
 - [Install and start](#install-and-start)
 - [Your first goal](#your-first-goal)
@@ -60,6 +60,19 @@ The host must load both the manifest and its hooks for the verification hook to
 run. See the [hook coverage table](docs/usage.md#hooks-and-host-coverage) for the
 events each adapter registers.
 
+### Pi
+
+```bash
+pi install /absolute/path/to/ultra-goal-skill/plugins/ultra-goal
+```
+
+The native Pi package loads Skills, the `goal-run` prompt and its extension.
+Use `/skill:ultragoal`, then the `ultra_goal` tool to arm an agreed contract,
+verify completion or disarm it. Session identity comes directly from Pi.
+Recovery and candidate checks reuse the existing Python scripts; one corrective
+follow-up per user prompt is supported. Ordinary stops do not start a loop.
+See [Pi lifecycle and validation limits](plugins/ultra-goal/skills/ultragoal/references/pi-host.md).
+
 ### Local copy
 
 The Kimi Code and zCode plugin loaders use a local package directory. Clone this
@@ -78,6 +91,7 @@ cd ultra-goal-skill
 | Codex | `$ultragoal` |
 | Kimi Code | `/skill:ultragoal` |
 | zCode | Select `ultragoal` in its Skill picker |
+| Pi | `/skill:ultragoal`, with the packaged extension |
 
 `ultra-goal` remains the plugin package ID. Claude writes plugin entries as
 `<plugin>:<skill>`, which is why its command contains both names. UltraGoal does
@@ -177,8 +191,8 @@ they cannot catch every unsupported statement or authenticate identities stored
 in shared files. Timeouts, unavailable checks and exhausted budgets leave a goal
 unverified.
 
-The package includes four host adapters, but full unattended execution across
-all four hosts and Windows lifecycle behavior remain unverified. See
+The package includes five host adapters, but full unattended execution across
+all five hosts and Windows lifecycle behavior remain unverified. See
 [remaining validation scope](docs/wip/outstanding.md) before relying on a host
 for unattended work.
 

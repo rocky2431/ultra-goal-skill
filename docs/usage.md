@@ -324,6 +324,13 @@ Codex uses `hooks/codex.json`, and Kimi declares its profile in `kimi.plugin.jso
 The package includes host-specific output and Windows command adapters; their
 presence does not establish Windows lifecycle acceptance.
 
+Pi uses the native extension in `pi/extension.ts` instead of these hook manifests.
+It maps session/compaction recovery, bash results and candidate checks to the same
+scripts, supplies the actual Pi session ID through `ultra_goal`, and permits one
+corrective follow-up per user prompt. See [Pi host support](../plugins/ultra-goal/skills/ultragoal/references/pi-host.md)
+for the event mapping and native validation limits. Ordinary stops do not resume
+execution, and Pi has no UltraGoal-provided background goal service.
+
 A normal Stop with **no completion candidate** does not run the Anchor or spend an
 attempt. Stop is not a background service or a universal write-permission gate.
 Frozen-spec changes are detected at Stop; evaluator protection is checked at

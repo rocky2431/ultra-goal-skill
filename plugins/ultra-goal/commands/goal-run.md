@@ -37,6 +37,17 @@ If either is missing, stop and say so. Do not author one here — that is the in
 job, and starting a run against an artifact nobody agreed to is the failure this whole
 design exists to prevent.
 
+## Pi entry
+
+On Pi, load the packaged extension and use `ultra_goal` with `action: "arm"`
+and the agreed `slug` instead of the shell fence below. It invokes the same
+validator/runner and supplies `ctx.sessionManager.getSessionId()` directly.
+Use `action: "session"` to obtain this session identity for review receipts.
+The Git, confirmation, recovery and cancellation rules below still apply.
+For an accepted no-Git path pass `allowNoGit: true`. Use `verify` with a nonempty
+`claim` for explicit verification, and `disarm` when canceling an active goal.
+See [Pi host behavior](../skills/ultragoal/references/pi-host.md).
+
 ## 2. Establish the Git default, then validate and arm
 
 Before the fence, inspect the current directory for an enclosing repository and a

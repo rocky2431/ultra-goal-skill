@@ -8,7 +8,7 @@ UltraGoal 帮助编码 Agent 把一句开放式要求整理成有验收标准、
 
 适合需要多轮调查、实施和评审的任务。小型的一次性工作可以直接交给 Agent 处理。
 
-版本：2.16.0。核心脚本需要 Python 3.10 或更新版本。
+版本：2.17.0。核心脚本需要 Python 3.10 或更新版本。
 
 - [安装与开始使用](#安装与开始使用)
 - [第一个目标](#第一个目标)
@@ -143,3 +143,17 @@ python3 -m unittest discover -s tests -v
 [MIT](LICENSE)。
 
 Kimi Code 的插件目录遵循 `KIMI_CODE_HOME`，默认是 `~/.kimi-code`。参见 [Kimi Skill 目录](https://www.kimi.com/code/docs/kimi-code-cli/customization/skills.html)。
+
+## Pi 原生支持
+
+```bash
+pi install /absolute/path/to/ultra-goal-skill/plugins/ultra-goal
+```
+
+包内包含 Skill、`goal-run` 提示模板和 Pi 扩展。通过 `/skill:ultragoal` 准备目标，
+再用 `ultra_goal` 工具绑定已确认的目标、核验结果或解除绑定。真实会话 ID 由 Pi
+直接提供；恢复、上下文压缩和验收复用已有 Python 实现。
+
+每个用户请求最多支持一次验收失败后的纠正续跑，普通停止不会启动新一轮工作。
+单独复制 Markdown Skill 不包含这些运行能力，也不等于无人值守目标服务。
+[安装、事件映射与验证边界](plugins/ultra-goal/skills/ultragoal/references/pi-host.md)。

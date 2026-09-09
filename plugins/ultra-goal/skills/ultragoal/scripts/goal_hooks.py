@@ -109,6 +109,7 @@ class HostFacts:
 
 
 HOSTS: dict[str, HostFacts] = {
+    "pi": HostFacts(1, "Pi extension allows one corrective follow-up per user prompt; ordinary stops do not continue"),
     # Claude Code force-ends a turn after 8 consecutive Stop blocks with no
     # tool progress in between (the counter is `stopHookBlockingCount`,
     # reset by progress, raisable via CLAUDE_CODE_STOP_HOOK_BLOCK_CAP; read

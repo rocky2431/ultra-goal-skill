@@ -138,3 +138,9 @@ Windows CI executes all `commandWindows` launchers with stub scripts, checking
 one execution, preservation of exit 2, and missing-script allow. This does not
 verify a Windows host lifecycle. Finite probes do not establish a statistical
 95% reliability claim.
+
+## Pi
+
+The native Pi package adapts lifecycle events to these same scripts; see
+[pi-host.md](pi-host.md) for installation, identity, recovery, correction limits
+and tested coverage. Pi does not inherit another host's Stop-hook semantics.
