@@ -59,6 +59,14 @@ stop once it is resolved. Testing whether an existing entry point starts is a
 feasibility check; completing the deliverable before the readback is execution.
 Do not turn exploration into an unconfirmed implementation project.
 
+Separate the desired outcome, explicitly required constraints, examples and proposed
+means before drafting acceptance. For a consequential proposal, explain what evidence
+or owner choice supports it and the premise connecting it to the outcome. Distinguish
+necessity from conditional usefulness. A plausible satisfactory result without the
+means challenges necessity; it does not override an owner's explicit requirement.
+Apply this to the agent's own proposals. Repetition, confidence and agreement without
+a substantive decision do not promote them into owner terms.
+
 A counterexample must identify an unmet part of the owner's actual intent.
 Manual production of a correct one-off result is not a counterexample unless
 repeatability is required. Do not promote a preferred method, reproducible
@@ -84,6 +92,19 @@ as a limit, never inferred from "start now" or recorded as a passing critique.
 The reviewer needs the original owner request as well as the draft and evidence,
 not just the author's rationale. Confirmation approves
 the complete contract, not a blank authorization to invent weaker criteria later.
+
+Keep material qualifications and example/proposal status when consuming a research
+handoff; an earlier Skill's summary is not fresh evidence or additional authority.
+On a consequential challenge, record the previous judgment, inspected evidence or
+correction, resulting judgment and execution consequence in the existing decisions
+record. An unresolved fact stays unresolved; retain a supported view when the challenge
+does not defeat it. This does not permit editing frozen terms: use the existing
+owner-approved modification path when those terms need to change.
+
+These inference and revision checks adapt [Academic Research Skills' argumentation](https://github.com/imbad0202/academic-research-skills/blob/c7af8b9017954c745ed7ad4afed4dba460a6c247/deep-research/references/argumentation_reasoning_framework.md)
+and [Socratic questioning](https://github.com/imbad0202/academic-research-skills/blob/c7af8b9017954c745ed7ad4afed4dba460a6c247/deep-research/references/socratic_questioning_framework.md)
+(inspected 2026-09-11). They guide semantic judgment; no claim of measured improvement
+or deterministic intent alignment follows from these instructions.
 
 ## Required machine contract
 

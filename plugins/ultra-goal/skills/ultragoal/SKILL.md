@@ -5,7 +5,7 @@ when_to_use: "When the owner wants work to keep running without them - \"make an
 license: MIT
 metadata:
   author: rocky2431
-  version: "2.17.0"
+  version: "2.17.1"
 ---
 
 # UltraGoal
@@ -34,6 +34,11 @@ Deep Thinking, Task State and Agent Delegation are optional ways to reuse existi
 work or tools; none is a prerequisite and no particular combination is mandatory.
 
 ## Recognize the intent first
+
+Interpret follow-ups in the current task before routing them. An example, objection
+or candidate means is not by itself a new goal or a change to frozen terms. Preserve
+the user's actual correction; update the task when they clearly change it. Do not
+turn a question inside an example into an implementation assignment.
 
 | Intent | Signal | Action |
 |---|---|---|
@@ -187,6 +192,8 @@ turning the list into a fixed interview script:
    not host turns, tool calls, tokens or money. Set native budgets separately.
 4. **Means:** label complete declarations `[load-bearing]` or `[droppable]`. The
    owner decides what may be abandoned; the run records why it drops an allowed means.
+   Examine why each proposed means supports the intent before elaborating it;
+   usefulness does not establish necessity, and repeated discussion is not acceptance.
 5. **Boundary:** specify **Scope**, **Confidence** and **Inference** refusals: allowed
    paths/effects, confirmed collaboration scope and approval limits; claims needing
    measured evidence; conclusions that documents alone cannot establish. Existing

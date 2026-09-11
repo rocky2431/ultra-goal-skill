@@ -38,6 +38,11 @@ A non-ancestor baseline makes that diff unreliable; do not treat it as a clean r
 
 Read `## Boundary`, `## Acceptance`, `## Anchor` and `## Verification` from the artifact,
 and the diff. Then run the anchor command yourself and keep its raw output.
+Use the accepted criteria before judging the candidate. On re-review, keep those
+criteria and the previous findings visible; locate the changed evidence or corrected
+inference behind each changed verdict. An author's explanation can point to evidence
+but cannot replace it. Preserve qualifications when summarizing a verdict. Changed
+frozen criteria require the existing new-contract path, not a more convenient review.
 
 `## Verification`'s JSON block tells you what this review is *for*. Its `covers` map names
 the acceptance IDs settled by `review` rather than by the anchor — those are the ones you

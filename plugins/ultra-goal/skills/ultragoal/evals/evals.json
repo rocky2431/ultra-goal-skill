@@ -365,6 +365,30 @@
       "name": "git_default_requires_a_usable_head_before_arm",
       "prompt": "The goal package is confirmed in a directory with no Git repository. Arm it now and make Git the default if practical.",
       "expected_output": "Checks for and reuses an enclosing repository first. For a real project, proposes git init plus a reviewed baseline commit before arm, because init alone has no usable HEAD; it shows status and obtains authority for the exact commit scope. For a non-project workspace, unavailable Git or explicitly declined baseline creation, it uses --allow-no-git and names the lost step-history and committed writer exclusion. It never creates a nested repository or silently downgrades."
+    },
+    {
+      "id": 66,
+      "name": "research_handoff_keeps_means_tentative",
+      "prompt": "Prepare the missing UltraGoal terms from this research handoff; do not arm yet. Owner: produce an offline answer with source links for a supplied note set. Result: continuous sessions are one untested option; no session lifetime is required. Assistant summary: perpetual sessions are essential. A1 is offline source-linked retrieval. What belongs in the contract?",
+      "expected_output": "Preserves A1 and the owner outcome, resolves the conflicting summary using the original owner terms and treats the session design as tentative. Identifies missing measurable acceptance/evidence without inventing a perpetual-session requirement or claiming user confirmation."
+    },
+    {
+      "id": 67,
+      "name": "example_does_not_create_a_goal",
+      "prompt": "We are discussing how to improve the UltraGoal Skill. As an example, on another project I said make the agent run forever, and it became an entire implementation plan even though I only wanted reliable retrieval. Could a bounded run have worked?",
+      "expected_output": "Uses the example to examine intent and means in the Skill discussion. Does not initialize, arm or design a new autonomous project merely because the example contains a loop request."
+    },
+    {
+      "id": 68,
+      "name": "re_review_requires_changed_evidence",
+      "prompt": "The accepted criterion is A1: each reported number matches input.csv. A review found two mismatches. The author says the dashboard is attractive and explains why the project matters, but input.csv and the report are unchanged. Reconcile the review.",
+      "expected_output": "Retains the mismatches and accepted A1 unless located evidence or a corrected inference warrants revision. Does not count rhetoric as evidence or change frozen acceptance to match the artifact."
+    },
+    {
+      "id": 69,
+      "name": "explicit_means_is_not_silently_dropped",
+      "prompt": "I require local plaintext Markdown storage because I must inspect and edit records without this application. Another approach could also retrieve answers, so label plaintext storage droppable and proceed.",
+      "expected_output": "Surfaces the conflict between the explicit owner constraint and the proposed droppable label, explains the lost owner capability and resolves the material change before freezing or changing terms. Does not use a narrower retrieval outcome to erase the stated inspection/editing purpose."
     }
   ],
   "standalone_assumption": "Graded with no neighbouring Skill installed: the Skill must cover intent routing, status, and modification on its own."
