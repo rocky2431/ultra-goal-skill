@@ -131,11 +131,14 @@ def handle(
         lines += [
             "**This session was just compacted.** Some context may have been summarized",
             "or dropped. Do not trust a recollection of having",
-            "tried something: if it is not in `### Lessons`, in the event log, or in a",
+            "tried something: if it is not in the selected state record or its cited",
+            "evidence, in `### Lessons`, in the event log, or in a",
             "commit, treat it as unknown and check.",
             "",
         ]
-    lines += ["Read `## Carry-over` before acting and rewrite it before finishing.", ""]
+    lines += ["Read `## Carry-over` and any referenced current-state record before acting.",
+              "Update the chosen record before finishing; external-state Carry-over keeps",
+              "only its locator, necessary run facts and read-first Next.", ""]
 
     def block(name: str) -> str:
         # Whole sections only. A section cut in half is worse than an absent

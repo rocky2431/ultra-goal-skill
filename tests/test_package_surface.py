@@ -411,10 +411,14 @@ class SkillContractTests(unittest.TestCase):
 class TemplateTests(unittest.TestCase):
     """Worked templates validate after their confirmation rows are resolved."""
 
-    def _validate(self, pairs: list[tuple[str, str]]) -> None:
+    def _validate(self, pairs: list[tuple[str, str]], carry_over: str | None = None) -> None:
         with tempfile.TemporaryDirectory() as work:
             for source, name in pairs:
                 text = (SKILL_ROOT / "assets" / source).read_text(encoding="utf-8")
+                if source == "goal-package.md" and carry_over is not None:
+                    start, tail = text.split("## Carry-over\n", 1)
+                    _, handoff = tail.split("## Handoff\n", 1)
+                    text = start + carry_over + "\n## Handoff\n" + handoff
                 if source == "decisions-record.md":
                     text = text.replace(
                         "| --- | --- | --- | --- |",
@@ -440,6 +444,17 @@ class TemplateTests(unittest.TestCase):
                 ("decisions-record.md", "weekly-dep-upgrade.decisions.md"),
             ]
         )
+
+    def test_documented_state_locations_keep_the_goal_runnable(self) -> None:
+        reference = (SKILL_ROOT / "references/document-system.md").read_text(encoding="utf-8")
+        examples = re.findall(r"```markdown\n(## Carry-over\n.*?)```", reference, re.S)
+        self.assertEqual(2, len(examples))
+        for example in examples:
+            with self.subTest(carry_over=example):
+                self._validate([
+                    ("goal-package.md", "weekly-dep-upgrade.goal.md"),
+                    ("decisions-record.md", "weekly-dep-upgrade.decisions.md"),
+                ], carry_over=example)
 
     def test_workflow_template_validates(self) -> None:
         self._validate(

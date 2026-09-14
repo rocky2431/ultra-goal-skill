@@ -172,6 +172,14 @@ retires an acceptance requirement or makes a required review optional.
 Then follow `## Roles` for who does what this turn, `## Acceptance` for what is still not
 true, and `### Next` for the one objective this round is aimed at.
 
+Keep the explicitly selected current-state record. Arming does not move it into
+Carry-over. If Carry-over points to an existing record, read that actual content and
+reconcile its evidence before acting; update state there and retain only the locator,
+necessary run facts and read-first Next in the goal. Otherwise Carry-over owns state.
+Do not create a competing task ledger. Choose one recovery provider for this same task
+using existing session bindings; leave companion recovery unselected or deactivate only
+this session's selection. Manual state reading and maintenance remain available.
+
 When choosing a worker, fallback or feedback channel, read
 [agent-modes.md](../skills/ultragoal/references/agent-modes.md). Another installed Skill
 is not required; choose a callable path that preserves the accepted verification terms.
@@ -192,8 +200,9 @@ load-bearing, and they are yours, not the hook's:
   path this change claims to fix. Not the full suite every iteration: the applicable
   check for the change at hand.
 - Before you end any turn: make this turn's important results visible in the ordinary
-  tool output above, and write the durable state — `## Carry-over` rewritten, `### Next`
-  re-aimed, the current evidence saved. Commit only when existing owner authorization covers
+  tool output above, and update the chosen durable state. Reconcile `## Carry-over` and
+  `### Next` with it, retaining a read-first Next for external state and saving current
+  evidence. Commit only when existing owner authorization covers
   it. What is only in your context when the turn ends is gone.
 
 When you invoke a reviewer or critic, **the round's evidence is the file the role was

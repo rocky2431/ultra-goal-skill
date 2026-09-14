@@ -5,6 +5,10 @@ Adapt every path, check and identity to the inspected project before confirmatio
 Replace the illustrative collaboration scope with the owner's actual answer before
 dispatching any role, including research or specification critique.
 This example assumes an existing tests/ directory and a pnpm workspace.
+If applicable, cite adopted upstream direction and plan/milestone in Intent by
+path/section and date/revision, and state this goal's contribution. Omit absent
+layers. External links supplement concrete confirmed clauses, never replace them.
+Remove instructional comments before confirming the finished contract.
 -->
 
 # Goal: weekly-dep-upgrade
@@ -180,6 +184,11 @@ that may compact or be interrupted.
 
 ## Carry-over
 
+<!-- This example owns state here. If an existing record owns it, use the external
+     state example in references/document-system.md#state-location-and-recovery.
+     Retain State/Lessons/Next headings, necessary run facts and an explicit read-first
+     action; do not copy the external progress list. Arming does not move ownership. -->
+
 Read this before acting; reconcile it with the cited evidence and rewrite it before
 finishing. Remove stale summaries while retaining their necessary source evidence.
 Git retains committed revisions only; an uncommitted rewrite has no automatic history.
@@ -233,7 +242,10 @@ against it honestly. If the plugin's install root is reachable, arm from it - `p
 refuses without one rather than leaving the run unowned for whichever session stops first.
 
 ```
-Read the Carry-over section of .goals/weekly-dep-upgrade.goal.md first. Then upgrade
+Read the Carry-over section of .goals/weekly-dep-upgrade.goal.md and the full confirmed
+contract before acting. If Carry-over names an external
+current-state record, read that actual content and reconcile its evidence before acting.
+Then upgrade
 dependencies until `pnpm audit --audit-level=high` reports 0 findings, touching only
 package.json and the lockfile - never application source or CI config.
 You have not met this goal until you have actually run `pnpm test -- --run && pnpm build`
@@ -259,9 +271,12 @@ If a role in `## Roles` could not be reached, say so in the report and put it in
 `### Lessons`: a review that could not happen is a missing review, not a pass. Retry the
 role or its declared fallback before claiming completion, and wait for every role you
 invoked to finish.
-Rewrite the Carry-over section before you finish - State gets where the work stands,
+Update the chosen current-state record before you finish. Rewrite the Carry-over section
+from that record. When Carry-over owns state, State gets where the work stands,
 Lessons gets the relevant causal findings and source pointers, Next gets the single
-objective for the following round. Prune stale summaries, not their only evidence.
+objective for the following round. With external state, reconcile Carry-over's locator,
+necessary run facts and read-first Next; do not create a second progress list.
+Prune stale summaries, not their only evidence.
 If a push or PR creation times out, retain the known operation/branch identity and
 query the actual remote state before retrying. Missing confirmation is unknown,
 not proof that nothing happened or that the owner must answer another question.

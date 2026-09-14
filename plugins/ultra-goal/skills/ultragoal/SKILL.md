@@ -5,7 +5,7 @@ when_to_use: "When the owner wants work to keep running without them - \"make an
 license: MIT
 metadata:
   author: rocky2431
-  version: "2.18.0"
+  version: "2.19.0"
 ---
 
 # UltraGoal
@@ -271,6 +271,17 @@ A moved goalpost closes the run; do not restore a baseline to conceal the change
 
 Default location is the project's `.goals/`, not one host's private directory.
 
+Keep owner intent above the adopted approach, and the approach above current state.
+Read adopted upstream direction and plan/milestone sources when applicable; cite their
+path/section and date or revision in Intent and preserve this goal's concrete confirmed
+meaning, boundary and acceptance. External links supplement frozen terms; mutable
+sources never replace them. A goal can cover a milestone or one independently accepted
+outcome within it; ordinary steps need no separate goals. Small tasks need no invented
+North Star or roadmap. Each level needs its own outcome evidence: completed steps alone
+prove neither a milestone nor the long-term purpose. New findings revise judgments and
+authorized means; explicit owner changes use the existing Modify process for affected
+frozen terms. Preserve unaffected work and still-valid evidence.
+
 | When | Artifact | Template |
 |---|---|---|
 | Always | `<slug>.goal.md`, including Acceptance, Verification, Carry-over and Handoff | [goal-package.md](assets/goal-package.md) |
@@ -305,6 +316,18 @@ to read that record for the current next action; do not maintain a competing pla
 When Carry-over owns the state, no companion Task record is needed. Research history
 stays in its source draft, and accepted goal terms remain in this contract. Reconcile
 source requirements and evidence before resuming, not just matching IDs or file hashes.
+
+Keep the explicitly selected record, then reuse a suitable existing document or
+section; otherwise use standalone Carry-over. Arming never transfers record ownership.
+Task State may maintain Carry-over without adding a file or changing frozen headings;
+a bounded Deep Thinking inquiry may use existing research/result sections without
+copying the main task's status. Separate research branches retain their own evidence.
+The state owner and recovery provider are separate choices. Select one recovery provider
+for this task through existing session bindings: when UltraGoal restores the contract
+and external state locator, leave companion recovery unselected for this session or
+deactivate its existing session selection. Preserve other sessions and use manual
+reading as needed. Do not add automatic discovery or a shared registry. See the two
+[Carry-over examples](references/document-system.md#state-location-and-recovery).
 
 **A lesson is a cause and a next action, not an event.** Keep the relevant lessons;
 three is a compaction suggestion, not a correctness limit. **Rewrite, never append**

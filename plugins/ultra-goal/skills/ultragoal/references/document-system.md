@@ -23,7 +23,7 @@ while source research and tool/verifier receipts retain their respective evidenc
 |---|---|---|---|---|---|
 | `<slug>.goal.md` — spec sections | the specification | owner + agent, together | Ask and explicit Modify **only** | **frozen for the duration of a run** | yes |
 | `<slug>.workflow.js` / `<slug>.delegation.md` | an optional execution attachment, naming the contract above | owner + agent, at authoring time | Ask and explicit Modify | follows the contract; adds execution, never terms | yes |
-| `<slug>.goal.md` — `## Carry-over` | the execution state | the running agent | before finishing **every** turn | rewritten, never appended | yes |
+| `<slug>.goal.md` — `## Carry-over` | execution state, or its locator and essential run facts | the running agent | before finishing **every** turn | reconciled with the chosen record; current summaries rewritten | yes |
 | `<slug>.events.jsonl` | the observations | **the gate and hook scripts, never model-authored rows** | at explicit verify attempts, Stop, prompt, delegation events and compaction | **append-only, never edited** | yes |
 | `<slug>.decisions.md` | the decision tree | owner + agent | Ask and Modify | rows edited, never appended | yes |
 | `.goals/.work/*` | worker intermediates | each delegated worker | while a round runs | disposable | **no** |
@@ -34,6 +34,78 @@ while source research and tool/verifier receipts retain their respective evidenc
 | `<slug>.reviews/<digest>.zip` | the exact reviewed evidence retained for later audit | **the gate, after the current checks** | during successful post-anchor review verification | content-addressed snapshot; historical, never a current receipt fallback | only with authority |
 | `<slug>.candidate` | the run's completion claim, one line | the run, once per claim | at each claim | consumed by the gate when it rules | no |
 | git history | the evolution | git | when an existing authorization permits a commit | immutable | — |
+
+## State location and recovery
+
+Keep the explicitly selected record, then reuse an appropriate existing document or
+section, otherwise use standalone Carry-over. This order does not depend on which
+Skills are installed or which file changed most recently. A reference must terminate
+at current content, not point back in a loop. One writer integrates worker evidence.
+
+Direction, adopted approach/milestones, current goal and current understanding are
+information roles, not four required files or exclusive Skill assignments. Reuse an
+adopted result as the plan. A long-lived project may adopt `NORTH_STAR.md` alongside
+`AGENTS.md`; an existing equivalent takes precedence, and location grants no authority
+or automatic loading. Small tasks need neither file. Cite the adopted source and its
+revision/date in the goal while retaining concrete confirmed Intent, Boundary and
+Acceptance locally. Do not move `.goals/`, remove the paired decisions record or rename
+machine-consumed sections to consolidate documents.
+
+Read upstream direction when planning or owner steering changes it; read the adopted
+plan at milestone transitions or when its assumptions fail; read current goal terms
+and state before execution, recovery and review. Lower-level work states its contribution;
+the parent references acceptance evidence instead of copying daily progress. Revise
+only affected outcomes after explicit owner changes, preserving unaffected evidence.
+
+**State in the goal.** A standalone goal, or a task already using Carry-over, needs
+no Task State file. A companion Skill may maintain these mutable sections in place:
+
+```markdown
+## Carry-over
+Read this before acting; update it from current evidence before finishing.
+### State
+- A1 is unverified: fixture export has 50 of 137 items (evidence/page-1.json).
+- Verification attempt 2 failed; see export.events.jsonl.
+### Lessons
+- HTTP success did not establish coverage; compare exported IDs with the server total.
+### Next
+- Follow next_cursor and verify all fixture IDs before repeating the anchor.
+```
+
+**State in an existing record.** Arming a goal does not take over a longer task note.
+For example, keep `.tasks/export.md` as the current understanding, judgments, evidence
+and action record. Its content can reference the goal for accepted terms, but it must
+actually contain state. Use this alternative Carry-over, adapting facts to observations:
+
+```markdown
+## Carry-over
+Read this and the selected record before acting; update that record and reconcile this locator before finishing.
+### State
+- Current execution record: .tasks/export.md, Current understanding; this run integrates updates there.
+- Goal contribution: plan.md#milestone-2, adopted revision abc1234; confirmed terms remain in this goal.
+- Verification attempt 2 failed; see export.events.jsonl. A1 remains unverified.
+### Lessons
+- Current causal findings and supporting evidence: .tasks/export.md, Judgments and corrections.
+### Next
+- Read .tasks/export.md in full, reconcile its current evidence with this goal, then perform its current next action within the confirmed boundary.
+```
+
+An optional last-observed action summary must name its source section and observation
+time/revision, and be refreshed from that source. It is derived recovery context, not
+an independently editable plan. Update the actual record and reconcile the locator and
+run facts before finishing. Required events and independent review receipts remain
+original evidence; neither a rewritten summary nor separate files establishes permission.
+
+Choose the recovery provider independently of state location. UltraGoal may recover
+the contract and external locator; the agent then reads the full state. For this same
+task, keep Task State recovery unselected (or use its existing session `deactivate`),
+while still using its read/maintenance capabilities. Change launch selectors at the
+host when applicable; a child shell cannot change a live parent environment. Other
+sessions retain their explicit choices. No common runtime or automatic hook arbitration
+is implied. Verify the selected host path; a read instruction alone does not prove it
+was followed. Borrowed goals follow the goal lifecycle, never Task State's archive path.
+
+## Git and retained evidence
 
 Git is the default for a goal run. Reuse an enclosing repository with a usable
 `HEAD`; never initialize another repository inside it. With no repository or an

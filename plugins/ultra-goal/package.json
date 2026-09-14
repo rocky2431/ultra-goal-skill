@@ -1,6 +1,6 @@
 {
   "name": "ultra-goal",
-  "version": "2.18.0",
+  "version": "2.19.0",
   "private": true,
   "keywords": ["pi-package"],
   "pi": {
