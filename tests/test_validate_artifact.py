@@ -1168,6 +1168,16 @@ class TargetDiscoveryTests(unittest.TestCase):
         else:
             self.assertEqual(va.FALLBACK_TARGETS, names)
 
+    def test_explicit_loaded_entry_is_used_without_a_global_command(self) -> None:
+        from unittest.mock import patch
+        import subprocess
+        with patch.dict(va.os.environ, {"AGENT_DELEGATION_ENTRY": "/host/plugin/scripts/agent_delegate.py"}), \
+             patch.object(va.subprocess, "run", return_value=subprocess.CompletedProcess([], 0,
+                 '{"targets":[{"name":"pi"}]}')) as run:
+            self.assertEqual(va.known_targets(), (("pi",), True))
+            self.assertEqual(run.call_args.args[0], [va.sys.executable,
+                "/host/plugin/scripts/agent_delegate.py", "list", "--json"])
+
     def test_the_fallback_is_used_and_downgraded_when_the_tool_is_absent(self) -> None:
         import subprocess as sp
         original = sp.run

@@ -72,7 +72,7 @@ mandatory vendor or transport order.
   unattended execution. During a run, continue independent authorized work, but retain the
   missing verification condition; the generator cannot replace that verifier.
 
-For `agent-delegate`, inspect `agent-delegate list --json` only when the command is
+For `agent-delegate`, inspect `python3 "<delegation-skill-dir>/scripts/agent_delegate.py" list --json` only when the command is
 available. On top-level calls, pass `--caller <actual-host-label>` when it is known;
 otherwise the wrapper records `unknown`. Nested calls preserve the received caller and
 chain. Never substitute `human` or a renamed target to bypass a rejection. A same-product
@@ -287,7 +287,7 @@ still belongs in the report and in `### Lessons`; what changed is that it is a f
 transport, not a missing acceptance condition.
 
 
-Detection is deliberately narrow: a recognized direct `agent-delegate run --to <target>`
+Detection is deliberately narrow: a recognized direct `python3 "<delegation-skill-dir>/scripts/agent_delegate.py" run --to <target>`
 command (or a structured call to that exact tool). Search strings, tool output, opaque
 scripts and compound shell commands are not delegation evidence. Unsupported shapes
 remain unobserved and the main model must inspect their actual results. A success for

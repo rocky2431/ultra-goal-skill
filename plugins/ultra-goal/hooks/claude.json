@@ -1,5 +1,5 @@
 {
-  "description": "Claude Code's additional hook file: PreCompact, which zCode does not document and therefore cannot live in the shared hooks/hooks.json that both hosts auto-discover. Claude Code loads this file because the manifest's hooks field names it as an addition to the auto-discovered standard file.",
+  "description": "Claude-specific compact recovery, event-driven wakeup for an explicitly waiting autonomous goal, and session-end suspension. The shared hooks file supplies synchronous Stop verification and continuation.",
   "hooks": {
     "PreCompact": [
       {
@@ -11,6 +11,33 @@
             "commandWindows": "(if not exist \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultragoal\\scripts\\goal_pre_compact.py\" exit 0) & where py >nul 2>nul || exit 0 & py -3 \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultragoal\\scripts\\goal_pre_compact.py\"",
             "timeout": 10,
             "statusMessage": "Recording the loop's carried state"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "P=\"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/skills/ultragoal/scripts/goal_drive.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\" interrupt; else exec python \"$P\" interrupt; fi",
+            "commandWindows": "(if not exist \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultragoal\\scripts\\goal_drive.py\" exit 0) & where py >nul 2>nul || exit 0 & py -3 \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultragoal\\scripts\\goal_drive.py\" interrupt",
+            "timeout": 1
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "P=\"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/skills/ultragoal/scripts/goal_drive.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\" wake-hook; else exec python \"$P\" wake-hook; fi",
+            "commandWindows": "(if not exist \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultragoal\\scripts\\goal_drive.py\" exit 0) & where py >nul 2>nul || exit 0 & py -3 \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultragoal\\scripts\\goal_drive.py\" wake-hook",
+            "timeout": 86400,
+            "asyncRewake": true
           }
         ]
       }

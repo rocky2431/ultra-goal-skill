@@ -3,7 +3,7 @@ Example of one optional adversarial-review triad. Save as `<slug>.delegation.md`
 `<slug>.decisions.md`. Here a main agent edits, a reviewer reviews the artifact and a
 critic reviews the review. Adapt the roles and use the current host's available tools.
 If choosing an installed agent-delegate bridge, confirm its registered targets with
-`agent-delegate list --json` before naming them. The bridge is optional.
+`python3 "<delegation-skill-dir>/scripts/agent_delegate.py" list --json` before naming them. The bridge is optional. Resolve `<delegation-skill-dir>` from the Agent Delegation Skill loaded by this host. For validator target discovery, set `AGENT_DELEGATION_ENTRY` to that same absolute script path.
 See references/adversarial-review.md for why the third role is the one that matters.
 -->
 
@@ -69,8 +69,8 @@ Replace caller, targets and paths with the actual available identities and resou
 First bridge calls must supply `--caller`; nested calls preserve the received chain.
 
 ```bash
-agent-delegate run --to codex --caller claude --cwd /absolute/repo --task-file /absolute/reviewer-mission.md
-agent-delegate run --to kimi  --caller claude --cwd /absolute/repo --task-file /absolute/critic-mission.md
+python3 "<delegation-skill-dir>/scripts/agent_delegate.py" run --to codex --caller claude --cwd /absolute/repo --task-file /absolute/reviewer-mission.md
+python3 "<delegation-skill-dir>/scripts/agent_delegate.py" run --to kimi  --caller claude --cwd /absolute/repo --task-file /absolute/critic-mission.md
 ```
 
 When the bridge is missing, use another available path that meets the same contract;

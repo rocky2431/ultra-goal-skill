@@ -298,11 +298,11 @@ python3 "$ULTRAGOAL_SCRIPTS/goal_run.py" arm "$ULTRAGOAL_SLUG" \
   --root "$ULTRAGOAL_PROJECT" --session-id "$ULTRAGOAL_SESSION"
 ```
 
-Arming activates the gate. Native goal mode supplies continued execution. When a
-model-callable native mechanism exists and is authorized, use it; if the host
-exposes only a user command, the owner must invoke that actual command. Without
-a driver, the agent can work in the current turn but cannot promise later turns.
-Do not start a detached process to evade native cancellation or continuation bounds.
+Arming activates the gate. On POSIX Codex or Claude Code, append `--driver codex`
+or `--driver claude` to enable autonomous execution without native Goal. Other
+hosts retain their existing continuation path. See [autonomous execution](../plugins/ultra-goal/skills/ultragoal/references/autonomous-execution.md)
+for result waiting, pause/resume and cancellation. Host cancellation, permissions
+and resource limits remain binding.
 
 ## Hooks and host coverage
 
@@ -462,8 +462,9 @@ python3 "$ULTRAGOAL_SCRIPTS/goal_run.py" rebind "$ULTRAGOAL_SLUG" \
 ```
 
 Recovery never renews authority, budgets or canceled work. Cancellation must be
-reconciled in **both** native goal state and the Skill's gate. Disarming alone
-does not cancel a native goal:
+reconciled with the selected driver and the Skill's gate. Disarm cancels
+UltraGoal's driver and pending waits. If a native Goal was separately enabled,
+stop it through its own control as well:
 
 ```bash
 python3 "$ULTRAGOAL_SCRIPTS/goal_run.py" disarm "$ULTRAGOAL_SLUG" \
@@ -471,7 +472,7 @@ python3 "$ULTRAGOAL_SCRIPTS/goal_run.py" disarm "$ULTRAGOAL_SLUG" \
 ```
 
 After a current verified completion, the agent reports deliverables, evidence and
-limits, updates native goal state through its actual controls, and disarms the
+limits, updates any separately enabled native goal through its actual controls, and disarms the
 gate. Keep the goal, decisions, events, baselines and required review evidence for
 the agreed retention period. Remove only disposable scratch after checking that
 necessary evidence survives. Never remove unsettled-attempt evidence just to make

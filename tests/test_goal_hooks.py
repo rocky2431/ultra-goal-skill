@@ -23,6 +23,16 @@ SCRIPTS = (
 )
 sys.path.insert(0, str(SCRIPTS))
 import goal_hooks as lh  # noqa: E402
+from goal_tool_failure import delegation_target
+
+
+class BundledDelegationEntryTests(unittest.TestCase):
+    def test_bundled_python_entry_is_observed_but_mentions_are_not(self) -> None:
+        entry = 'python3 "/absolute/plugin cache/skills/agent-delegation/scripts/agent_delegate.py" run --to codex'
+        for command in (entry, '"/absolute/agent_delegate.py" run --to codex'):
+            self.assertEqual(delegation_target({"tool_name": "Bash", "tool_input": {"command": command}}), "codex")
+        for command in ('echo ' + entry, entry + ' ; echo done', 'rg "agent_delegate.py run --to codex" .'):
+            self.assertIsNone(delegation_target({"tool_name": "Bash", "tool_input": {"command": command}}))
 
 
 # `true` and `test -f` are not commands on cmd.exe, so the fixtures drive the

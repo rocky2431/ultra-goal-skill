@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 import re
@@ -65,7 +66,7 @@ from goal_contract import pin_verification, check_protection, input_digest  # no
 
 
 GIT_BASELINE_SUFFIX = ".baseline"
-IGNORE_ENTRIES = (".work/", "active", "*.candidate", "*.verification.lock")
+IGNORE_ENTRIES = (".work/", "active", "*.candidate", "*.verification.lock", "*.driver.json", "*.driver.lock", "*.driver.tmp", "*.driver.interrupt")
 PACKAGE_CONFIRMATION = "confirm package checkpoint"
 FROZEN_CONFIRMATION = re.compile(r"\bfrozen:([0-9a-f]{12})\b", re.I)
 
@@ -315,6 +316,8 @@ def rebind(root: Path, slug: str, session_id: str | None = None) -> str:
         raise ValueError("Cannot preserve previous executing sessions before rebind.")
     candidate = goals / f"{slug}.candidate"
     candidate.unlink(missing_ok=True)
+    from goal_drive import halt
+    halt(active_goal(root), "paused", "Session rebound; old wait delivery is invalid")
     marker.write_text(f"{slug}\nsession {session}\n", encoding="utf-8")
     return f"{slug} rebound to session {session}; baselines preserved, previous completion claim discarded."
 
@@ -325,6 +328,8 @@ def disarm(root: Path, slug: str) -> str:
         raise ValueError(
             "The active marker does not name this goal; nothing was removed."
         )
+    from goal_drive import halt
+    halt(active_goal(root), "canceled", "Explicit disarm")
     try:
         marker.unlink()
     except OSError as exc:
@@ -416,6 +421,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--session-id", help="Current native session ID, never another task's ID")
     parser.add_argument("--claim", default="Proposed completion of the accepted contract")
+    parser.add_argument("--driver", choices=("codex", "claude"),
+                        help="Enable autonomous continuation without native Goal mode")
     parser.add_argument(
         "--allow-no-git",
         action="store_true",
@@ -437,7 +444,12 @@ def main(argv: list[str] | None = None) -> int:
             goal = args.root / ".goals" / f"{args.slug}.goal.md"
             print(frozen_digest(goal.read_text(encoding="utf-8")))
         elif args.action == "arm":
+            if args.driver and os.name != "posix":
+                raise ValueError("Autonomous execution currently requires a POSIX host.")
             print(arm(args.root, args.slug, args.session_id, args.allow_no_git))
+            if args.driver:
+                from goal_drive import start
+                print(json.dumps(start(active_goal(args.root), args.driver)))
         elif args.action == "rebind":
             print(rebind(args.root, args.slug, args.session_id))
         elif args.action == "diff":

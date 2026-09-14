@@ -578,6 +578,8 @@ def handle(
         interrupted = [entry for entry in completion_attempts(read_events(goal))
                        if entry.get("event") == "verification_started"]
         if interrupted:
+            from goal_drive import halt
+            halt(goal, "paused", "Verification was interrupted; reconcile actual state before resuming")
             # The former gate no longer holds this lock. Its anchor/remote effects
             # may still have occurred; never replay a surviving candidate blindly.
             try:
@@ -601,7 +603,10 @@ def handle(
             candidate = goal.goals_dir / f"{goal.slug}.candidate"
             if not candidate.exists():
                 candidate.write_text(claim.strip().splitlines()[0][:200] + "\n", encoding="utf-8")
-        return _handle(event, goal, host, command=command)
+        previous_count = len(read_events(goal))
+        payload = _handle(event, goal, host, command=command)
+        from goal_drive import after_gate
+        return after_gate(goal, event, host, command, payload, previous_count)
 
 
 def _handle(

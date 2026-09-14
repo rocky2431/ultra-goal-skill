@@ -376,7 +376,7 @@ This explicit completion attempt uses the same gate as Stop and returns its actu
 recorded observation as JSON before the final response. Exit 0 requires this attempt's
 `verification_passed: true`; a missing record, refusal, unknown or exhausted ceiling
 returns nonzero. It never starts a model or simulates a host lifecycle event. Read the
-result, reconcile native goal status using the host's real tools, and deliver the
+result, reconcile any separately enabled native goal using the host's real tools, and deliver the
 output/evidence paths, attempt and remaining limits. Do not edit reviewed outputs
 after verification; changes require fresh review and verification. Subsequent ordinary
 Stop does not repeat the consumed attempt. The observation is about that measured

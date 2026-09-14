@@ -1,5 +1,5 @@
 {
-  "description": "Codex's hook set. The .codex-plugin manifest's hooks field replaces the default hooks/hooks.json location, so this file is the whole registration: Stop (tagged for the gate's per-host continuation budget), SessionStart and PreCompact. Codex documents no PostToolUseFailure event, so the delegation-failure recording this plugin does elsewhere is absent here and the run's report is the only record of a degraded round. Each handler carries a commandWindows override, the field Codex's hooks reference documents as \"an optional Windows-only command override\"; without it a Windows Codex would run a POSIX shell string. Windows CI executes every commandWindows launcher with a stub script, checking one execution, deliberate exit 2, and missing-script allow. This does not verify a Windows Codex lifecycle.",
+  "description": "Codex Stop verification and autonomous continuation, session recovery, compact recording and interruption suspension. Event-driven wakeup uses the original session message queue.",
   "hooks": {
     "Stop": [
       {
@@ -39,6 +39,19 @@
             "commandWindows": "(if not exist \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultragoal\\scripts\\goal_pre_compact.py\" exit 0) & where py >nul 2>nul || exit 0 & py -3 \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultragoal\\scripts\\goal_pre_compact.py\"",
             "timeout": 10,
             "statusMessage": "Recording the loop's carried state"
+          }
+        ]
+      }
+    ],
+    "Interrupt": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "P=\"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/skills/ultragoal/scripts/goal_drive.py\"; [ -f \"$P\" ] || exit 0; if command -v python3 >/dev/null 2>&1; then exec python3 \"$P\" interrupt; else exec python \"$P\" interrupt; fi",
+            "commandWindows": "(if not exist \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultragoal\\scripts\\goal_drive.py\" exit 0) & where py >nul 2>nul || exit 0 & py -3 \"%CLAUDE_PLUGIN_ROOT%\\skills\\ultragoal\\scripts\\goal_drive.py\" interrupt",
+            "timeout": 3
           }
         ]
       }

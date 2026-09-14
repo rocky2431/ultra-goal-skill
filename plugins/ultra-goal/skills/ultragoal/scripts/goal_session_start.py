@@ -101,6 +101,12 @@ def handle(
         "You are the run, not its designer. Do not reopen the design as an interview.",
         "",
     ]
+    from goal_drive import read
+    driver = read(goal)
+    if driver:
+        lines += [f"UltraGoal driver: {driver['phase']} on {driver['host']}. Read {goal.slug}.driver.json.",
+                  "Do not restart a paused, canceled or completed run automatically. A paused run needs "
+                  "an authorized goal_drive.py resume; an interrupted wait is not a successful result.", ""]
     if last is not None and last.get("event") in {"verification_started", "verification_interrupted"}:
         lines += [
             f"Latest verification: attempt {last.get('turn')} has no recorded result "

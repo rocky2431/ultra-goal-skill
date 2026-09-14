@@ -324,7 +324,7 @@ class SkillContractTests(unittest.TestCase):
     def test_skill_is_host_neutral(self) -> None:
         skill = " ".join(skill_text().split())
         self.assertIn("## Starting a run, on whichever host you are", skill)
-        self.assertIn("run works in ordinary host turns", skill)
+        self.assertIn("ordinary stops continue", skill)
         self.assertIn("requires a workflow runtime", skill)
         self.assertIn("do **not** emit `<slug>.workflow.js`", skill)
         self.assertNotIn(".claude/workflows", skill)
@@ -341,14 +341,14 @@ class SkillContractTests(unittest.TestCase):
         skill = " ".join(skill_text().split())
         for host in ("Claude Code", "Codex", "Kimi", "zCode", "OpenCode"):
             self.assertIn(host, skill)
-        self.assertEqual(4, skill.count("`/goal <objective>`"))
-        self.assertIn("Goal mode supplies the turns; the gate judges the claims", skill)
-        self.assertIn("cannot schedule the next turn", skill)
-        self.assertIn("**`/ultra-goal:goal-run <slug>`**", skill)
+        self.assertIn("UltraGoal supplies continuation and event-driven waiting", skill)
+        self.assertIn("Native Goal mode is not required", skill)
+        self.assertIn("references/autonomous-execution.md", skill)
+        self.assertIn("commands/goal-run.md", skill)
         self.assertIn("this attempt's recorded `verification_passed` result", skill)
-        self.assertNotIn("a host's goal mode is no longer needed", skill)
-        self.assertIn("not proof of absence", skill)
-        self.assertIn("Check your own host rather than trusting this table", skill)
+        self.assertIn("A live host session is required", skill)
+        self.assertIn("existing gate/host-continuation paths", skill)
+        self.assertIn("Windows native autonomous execution is unsupported", skill)
 
     def test_skill_carries_no_external_scheduling_machinery(self) -> None:
         """Dropped in 0.6.0: the use case is a goal started by hand, not cron."""
@@ -365,7 +365,8 @@ class SkillContractTests(unittest.TestCase):
         self.assertNotIn(".claude/workflows", goal)
         handoff = goal.split("## Handoff", 1)[1]
         # The pasteable goal line, with all three clauses that make it hold.
-        self.assertIn("/goal ", handoff)
+        self.assertIn("--driver codex", handoff)
+        self.assertIn("--driver claude", handoff)
         self.assertIn("You have not met this goal until you have actually", handoff)
         self.assertIn("do not claim completion from reasoning about the code", handoff)
         self.assertIn("Stop after 6 completion attempts even if\nunmet", handoff)
@@ -378,7 +379,7 @@ class SkillContractTests(unittest.TestCase):
         # Recovery retains useful causal findings without a count-based validity gate.
         self.assertIn("Lessons gets the relevant causal findings and source pointers", handoff)
         self.assertIn("Prune stale summaries, not their only evidence", handoff)
-        # Goal mode supplies continuation; the plugin command arms the evidence gate.
+        # Supported hosts select the driver as well as the evidence gate.
         # The handoff must also name the portable prompt fallback.
         self.assertIn("`/ultra-goal:goal-run weekly-dep-upgrade`", handoff)
         self.assertIn("arm the gate", handoff)
@@ -516,7 +517,7 @@ class GateAndDocumentSystemTests(unittest.TestCase):
         self.assertIn("references/host-hooks.md", skill_text())
         doc = (SKILL_ROOT / "references" / "host-hooks.md").read_text(encoding="utf-8")
         self.assertIn("**Three outcomes, not two.**", doc)
-        self.assertIn("**Nearly every path lets the turn end.**", doc)
+        self.assertIn("With no autonomous driver selected, nearly every path lets the turn end.", doc)
         self.assertIn("A changed specification closes the run", doc)
         self.assertIn("`rm .goals/active`", doc)
         self.assertIn("ULTRA_GOAL_HOOKS_DISABLED=1", doc)
@@ -663,6 +664,7 @@ class HygieneTests(unittest.TestCase):
             if path.is_file()
             and ".git" not in path.relative_to(REPO_ROOT).parts
             and "__pycache__" not in path.relative_to(REPO_ROOT).parts
+            and path.relative_to(REPO_ROOT).parts[0] not in {".tasks", "work"}
             and path.relative_to(REPO_ROOT).parts[:2] not in records
         ]
         relative = {path.relative_to(REPO_ROOT).as_posix() for path in files}
@@ -672,7 +674,7 @@ class HygieneTests(unittest.TestCase):
         scripts = SKILL_ROOT / "scripts"
         hook_scripts = sorted(p.name for p in scripts.glob("goal_*.py"))
         self.assertEqual(
-            ["goal_contract.py", "goal_hooks.py", "goal_pre_compact.py", "goal_prompt_submit.py",
+            ["goal_contract.py", "goal_drive.py", "goal_hooks.py", "goal_pre_compact.py", "goal_prompt_submit.py",
              "goal_run.py", "goal_session_start.py", "goal_stop.py",
              "goal_tool_failure.py", "goal_tool_success.py",
              "goal_turn_started.py"],
@@ -681,7 +683,7 @@ class HygieneTests(unittest.TestCase):
         for name in hook_scripts:
             # goal_hooks is the shared plumbing and goal_run is the owner's
             # arming fence, not a host hook: neither routes through run_hook.
-            if name in ("goal_contract.py", "goal_hooks.py", "goal_run.py"):
+            if name in ("goal_contract.py", "goal_drive.py", "goal_hooks.py", "goal_run.py"):
                 continue
             source = (scripts / name).read_text(encoding="utf-8")
             self.assertIn("run_hook(", source, name)
@@ -1143,7 +1145,7 @@ class PerHostHookRegistrationTests(unittest.TestCase):
     DOCUMENTED = {
         "claude": {
             "SessionStart", "UserPromptSubmit", "PreToolUse", "PermissionRequest",
-            "PostToolUse", "PostToolUseFailure", "Stop", "PreCompact",
+            "PostToolUse", "PostToolUseFailure", "Stop", "PreCompact", "SessionEnd",
         },
         "zcode": {
             "SessionStart", "UserPromptSubmit", "PreToolUse", "PermissionRequest",
@@ -1191,13 +1193,13 @@ class PerHostHookRegistrationTests(unittest.TestCase):
         file; Claude Code reaches it through its manifest's ADDITIONAL hook
         files, Codex through its manifest's replaced hook list."""
         claude_extra = self.hook_file("hooks/claude.json")
-        self.assertEqual({"PreCompact"}, self.events_of(claude_extra))
+        self.assertEqual({"PreCompact", "Stop", "SessionEnd"}, self.events_of(claude_extra))
         self.assertLessEqual(
             self.events_of(claude_extra), self.DOCUMENTED["claude"]
         )
         codex = self.hook_file("hooks/codex.json")
         self.assertEqual(
-            {"Stop", "SessionStart", "PreCompact"}, self.events_of(codex)
+            {"Stop", "SessionStart", "PreCompact", "Interrupt"}, self.events_of(codex)
         )
         self.assertLessEqual(self.events_of(codex), self.DOCUMENTED["codex"])
 
@@ -1316,7 +1318,7 @@ class PerHostHookRegistrationTests(unittest.TestCase):
                         self.assertIn("py -3 ", windows)
                         self.assertIn(r"%CLAUDE_PLUGIN_ROOT%", windows)
                     events.append(event)
-        self.assertEqual(["Stop", "SessionStart", "PreCompact"], events)
+        self.assertEqual(["Stop", "SessionStart", "PreCompact", "Interrupt"], events)
         # The host tag travels on the Windows branch too, or a Windows Codex
         # would be gated with another host's continuation budget.
         stop = codex["hooks"]["Stop"][0]["hooks"][0]["commandWindows"]
@@ -1337,7 +1339,7 @@ class RolesByStageTests(unittest.TestCase):
     def test_the_interview_discovers_before_it_asks(self) -> None:
         skill = " ".join(skill_text().split())
         self.assertIn("discover actual available targets rather than asking the owner", skill)
-        self.assertIn("`agent-delegate list --json`", skill)
+        self.assertIn('`python3 "<delegation-skill-dir>/scripts/agent_delegate.py" list --json`', skill)
         self.assertIn("do not assume the bridge is installed", skill)
 
     def test_every_stage_is_the_owners_to_assign(self) -> None:
@@ -1903,11 +1905,9 @@ class AuditFixTests(unittest.TestCase):
         self.assertIn("`.goals/.gitignore`", command)
         fence_src = (PLUGIN_ROOT / "skills" / "ultragoal" / "scripts" /
                      "goal_run.py").read_text(encoding="utf-8")
-        self.assertIn(
-            'IGNORE_ENTRIES = (".work/", "active", "*.candidate", "*.verification.lock")', fence_src,
-            "the arming fence writes the rule; a document claiming it alone was "
-            "the original defect",
-        )
+        from goal_run import IGNORE_ENTRIES
+        self.assertTrue({".work/", "active", "*.candidate", "*.verification.lock",
+                         "*.driver.json", "*.driver.lock", "*.driver.tmp"} <= set(IGNORE_ENTRIES))
 
     def test_arming_records_where_the_review_diff_starts(self) -> None:
         """The reviewer used to be handed `git diff HEAD` - uncommitted work
@@ -2028,10 +2028,10 @@ class AuditFixTests(unittest.TestCase):
         }
         self.assertEqual(
             {"Stop", "SessionStart", "PreCompact", "PostToolUseFailure",
-             "PostToolUse", "UserPromptSubmit", "TurnStarted"},
+             "PostToolUse", "UserPromptSubmit", "TurnStarted", "Interrupt", "SessionEnd"},
             events,
         )
-        self.assertIn("contains seven hooks", skill)
+        self.assertIn("contains nine hooks", skill)
         self.assertIn("| `PostToolUseFailure` |", skill)
         self.assertIn("| `PostToolUse` |", skill)
         self.assertIn("| `UserPromptSubmit` |", skill)

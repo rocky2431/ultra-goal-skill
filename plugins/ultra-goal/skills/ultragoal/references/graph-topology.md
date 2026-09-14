@@ -128,7 +128,7 @@ That constrains the design in three ways worth stating in the artifact:
   session is distinct from the run's, and its receipt matches the bounded current inputs.
 
 Confirm the registered targets before naming any of them in the artifact rather than
-assuming a vendor is installed — `agent-delegate list --json` answers that on a machine
+assuming a vendor is installed — `python3 "<delegation-skill-dir>/scripts/agent_delegate.py" list --json` answers that on a machine
 that has the bridge. A delegation package is an attachment too: it names its
 contract with `` goal: `<slug>.goal.md` `` and adds who runs what, never its own acceptance.
 

@@ -15,7 +15,7 @@ provides the goal definition and verification procedure.
 Use it for work that needs several rounds of investigation, implementation and
 review. For a small one-off task, the agent can handle the request directly.
 
-Version: 2.17.1. Core scripts require Python 3.10 or later.
+Version: 2.18.0. Core scripts require Python 3.10 or later.
 
 - [Install and start](#install-and-start)
 - [Your first goal](#your-first-goal)
@@ -176,13 +176,16 @@ Scripts maintain verification records, baselines and review archives. See
 You can ask the agent to inspect progress or explain why a run stopped. For
 manual status checks, session recovery and cancellation, follow the
 [usage guide](docs/usage.md). Canceling a run requires stopping both the host's
-native goal and UltraGoal's active binding.
+native goal, if separately enabled, and UltraGoal's active binding. Disarming also
+cancels the autonomous driver and suppresses its pending wait delivery.
 
 ## Current limits
 
-Continued execution depends on the host's native goal mechanism and budgets.
-A Stop hook runs when a turn ends; it cannot wake a closed agent. An ordinary
-Stop without a completion claim does not run the Anchor. The agent should call
+POSIX Codex and Claude Code can use UltraGoal's own continuation and event-wait
+driver without native Goal mode. See [autonomous execution](plugins/ultra-goal/skills/ultragoal/references/autonomous-execution.md)
+for host/session requirements and observed coverage. Other hosts retain their
+existing continuation paths. A closed application is not restarted automatically.
+An ordinary Stop without a completion claim does not run the Anchor. The agent should call
 `verify` before its final answer so it can report the result in that answer.
 
 The model is responsible for asking useful questions, choosing methods, saving

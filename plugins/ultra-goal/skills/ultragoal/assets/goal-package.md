@@ -219,10 +219,11 @@ run to this session and records its authorized baselines. The run then works in 
 host turns, and the gate judges completion claims - it refuses a claim while the claimed
 completion's anchor is still red.
 
-**Arming is not a continuation service.** The gate decides what the run may claim; it does
-not supply the next turn. This host has goal mode, so an unattended run is started under
-`/goal` **as well as** armed - and on a host without one, the run stops at each turn
-boundary and the report says it is awaiting a prompt rather than running unattended.
+On supported POSIX Codex or Claude Code, the run command selects `--driver codex`
+or `--driver claude`: ordinary stops continue and an awaited command result wakes
+the original live session, without native Goal. The gate still decides completion.
+Other hosts use their available continuation mechanism; if none is available,
+report that another prompt is needed. See the installed autonomous-execution reference.
 
 Where the plugin is absent, paste the text below as a plain prompt. Without the plugin
 there is no gate to satisfy: run the anchor yourself, show its real output, and report
@@ -232,7 +233,7 @@ against it honestly. If the plugin's install root is reachable, arm from it - `p
 refuses without one rather than leaving the run unowned for whichever session stops first.
 
 ```
-/goal Read the Carry-over section of .goals/weekly-dep-upgrade.goal.md first. Then upgrade
+Read the Carry-over section of .goals/weekly-dep-upgrade.goal.md first. Then upgrade
 dependencies until `pnpm audit --audit-level=high` reports 0 findings, touching only
 package.json and the lockfile - never application source or CI config.
 You have not met this goal until you have actually run `pnpm test -- --run && pnpm build`

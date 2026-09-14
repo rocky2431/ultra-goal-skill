@@ -49,16 +49,18 @@ Each host's goal mode differs in how it holds the model to the objective: Claude
 to end the turn, Codex accounts goal progress after every tool call, Kimi can pause and
 resume a goal, zCode also offers a headless `--target`. None of that changes the artifact.
 
-**Goal mode is the continuation service, and there is no substitute for it here.** It is what
-starts the next turn after one ends. A Stop hook — this Skill's included — runs inside a turn
-that is already ending: it can refuse that ending while a completion claim is refusable, but
-it cannot schedule a turn and cannot revive a dead process. So where the host has goal mode,
-an unattended run uses it; where it does not, the run is not unattended and the report says
-the run is awaiting a prompt.
+On supported POSIX Codex and Claude Code, UltraGoal now supplies its own ordinary
+Stop continuation and event-driven waiting through native host hooks and delivery.
+Select `--driver codex` or `--driver claude`; do not also enable native Goal.
+The live host still owns model execution, permissions and resource limits.
+See [autonomous execution](autonomous-execution.md) for tested surfaces and commands.
+Other hosts retain their existing continuation path. If no continuation mechanism
+is available, report that the run awaits another prompt; a closed application is
+not restarted by these hooks.
 
-What every host has in common is the gap: **goal mode asks the model whether the objective is
-met.** That is the half the anchor closes, in the goal text and in the gate — not by
-replacing the host's continuation:
+Whatever supplies continuation, the existing gate measures whether the accepted
+verification contract passed. Where a separate native Goal is needed, its prompt
+must retain the same accepted terms:
 
 ```
 /goal <objective, inside <boundary>>. You have not met this goal until you have actually

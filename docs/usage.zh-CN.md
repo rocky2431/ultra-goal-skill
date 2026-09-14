@@ -185,7 +185,7 @@ python3 "$ULTRAGOAL_SCRIPTS/goal_run.py" arm "$ULTRAGOAL_SLUG" \
   --root "$ULTRAGOAL_PROJECT" --session-id "$ULTRAGOAL_SESSION"
 ```
 
-`arm` 启用验收门，原生 Goal 模式提供继续执行的机会。存在已授权、模型可调用的原生机制时就使用；如果宿主只暴露用户命令，则由用户调用那条真实命令。没有续跑机制时，Agent 可以在当前回合工作，但不能承诺后续自动唤醒。不得通过后台脱离进程绕过宿主的取消或续跑限制。
+`arm` 启用验收门。在 POSIX Codex 或 Claude Code 中增加 `--driver codex` 或 `--driver claude`，即可选择 UltraGoal 自身的续跑机制，无需原生 Goal。其他宿主保留已有路径。等待、暂停、恢复与取消命令见[自主执行说明](../plugins/ultra-goal/skills/ultragoal/references/autonomous-execution.md)。宿主权限、取消和资源限制仍然有效。
 
 ## Hook 与宿主覆盖
 
@@ -283,14 +283,14 @@ python3 "$ULTRAGOAL_SCRIPTS/goal_run.py" rebind "$ULTRAGOAL_SLUG" \
   --root "$ULTRAGOAL_PROJECT" --session-id "$ULTRAGOAL_SESSION"
 ```
 
-恢复不会续期授权、增加预算或重新启动已取消工作。取消需要同时处理**原生目标状态和 Skill 验收门**。只解除绑定不会取消原生目标：
+恢复不会续期授权、增加预算或重新启动已取消工作。解除绑定会取消 UltraGoal 自主执行及待投递的等待结果。如果另外启用了原生目标，也需通过它的原生控制停止：
 
 ```bash
 python3 "$ULTRAGOAL_SCRIPTS/goal_run.py" disarm "$ULTRAGOAL_SLUG" \
   --root "$ULTRAGOAL_PROJECT"
 ```
 
-本次验收通过后，Agent 报告交付物、证据和限制，通过实际原生工具同步目标状态，再解除绑定。按约定期限保留目标、决策、事件、基线和必需评审证据。确认必要资料仍可读取之后，只清理可丢弃中间文件。不能为了让目录看起来完成就删掉未结算尝试的材料。提交、安装、发布仍需相应授权。
+本次验收通过后，Agent 报告交付物、证据和限制，若另外启用了原生目标，通过它的原生工具同步状态，再解除绑定。按约定期限保留目标、决策、事件、基线和必需评审证据。确认必要资料仍可读取之后，只清理可丢弃中间文件。不能为了让目录看起来完成就删掉未结算尝试的材料。提交、安装、发布仍需相应授权。
 
 ## 故障排查
 

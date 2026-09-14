@@ -15,18 +15,20 @@ section for `rebind` versus disarm/arm recovery; never erase history to hide dri
 
 ## Events and their scope
 
-The union of the installed manifests contains seven hooks. Each host registers
+The union of the installed manifests contains nine hooks. Each host registers
 only the events whose input/output contract it supports.
 
 | Hook | Observes or delivers | Can block? |
 |---|---|---|
-| `Stop` | Judges an explicit completion candidate; ordinary stops only get a bounded omission notice | A refusable claim, within the gate's denial bound |
+| `Stop` | Judges completion; a selected Codex/Claude driver continues ordinary stops; Claude also waits for result events | Completion correction or selected autonomous continuation |
 | `SessionStart` | Restores the active specification and carried state on supported session boundaries | No; not registered on Kimi, where the event cannot inject context |
 | `PreCompact` | Records carried state and the observed context transition | No; not registered on zCode, whose compact recovery uses `SessionStart` |
 | `PostToolUseFailure` | Records `role_unavailable` for a recognized failed delegation call | No; Codex documents no such event |
 | `PostToolUse` | Records `role_recovered` for a later successful call to the same target | No; not registered on Codex, which records no matching failure |
 | `UserPromptSubmit` | Kimi only: supplies a fixed-size goal pointer and last recorded gate decision | No; a prompt is not every possible host turn |
 | `TurnStarted` | Kimi only: records `turn_id` and `origin_kind` for each host turn, whatever its origin | No; it establishes a turn boundary, not recovery or goal success |
+| `Interrupt` | Codex only: pauses the autonomous driver and invalidates pending wait delivery | No |
+| `SessionEnd` | Claude only: pauses the autonomous driver before session exit | No |
 
 Delegation detection recognizes a direct `agent-delegate run --to <target>` or a
 structured call to that exact tool. Search strings, output text, opaque scripts
@@ -34,7 +36,7 @@ and compound shell commands are not transport evidence. Even a recognized succes
 does not prove the worker finished or produced its required result. Read
 [agent-modes.md](agent-modes.md) before relying on a fallback or join.
 
-## A completion check is not a continuation service
+## Completion checks and autonomous execution
 
 **The anchor runs at exactly one moment: a completion candidate.** `verify`
 requests that check through an ordinary tool call so the model can read its actual
@@ -48,7 +50,7 @@ proof of an incorrect product. Contract verification also requires the current
 frozen specification, protected evaluator inputs and any required review.
 A historical green is never a pass input.
 
-**Nearly every path lets the turn end.** A red anchor or unmet verification
+With no autonomous driver selected, nearly every path lets the turn end. A red anchor or unmet verification
 contract may deny a refusable claim. Ordinary stops, unavailable observations,
 spent bounds and frozen-spec closure end with their limits stated. Letting a turn
 end is not a successful verification. A changed specification closes the run;
@@ -73,6 +75,9 @@ For example, an anchor exit 1 alone cannot establish that a goal is unachievable
 That needs independent evidence of permanent impossibility under the frozen
 terms. An unavailable service is normally retryable; a spent budget is exhausted.
 The disposition vocabulary does not add another mechanical completion oracle.
+
+For the Codex/Claude autonomous driver, see [autonomous execution](autonomous-execution.md).
+Acceptance checks remain here; waiting and continued work do not create completion attempts.
 
 ## Output is host-specific
 

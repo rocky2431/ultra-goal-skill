@@ -6,17 +6,17 @@ allowed-tools: Bash, Read
 
 Start the run for `$ARGUMENTS`.
 
-The main model owns the work loop. This command validates and arms the completion
-gate; a Stop hook can ask for a bounded correction, but cannot schedule another
-turn or restart a stopped process. Use an available, authorized native goal mode
-when the run needs unattended continuation across host turns. Without such a
-driver, work within the current turn and report any unfinished run as awaiting
-another prompt. Never promise unattended completion from arming alone.
+The main model owns the work loop. On POSIX Codex and Claude Code, arm with
+`--driver codex` or `--driver claude`: UltraGoal continues ordinary stops and
+resumes after an awaited command finishes, without enabling native Goal mode.
+Use the current host's actual identity, never an inherited parent-host variable.
+Other hosts retain the completion gate and their existing continuation mechanism.
+Read [autonomous execution](../skills/ultragoal/references/autonomous-execution.md)
+for waiting, pause/resume, cancellation and the tested host surfaces.
 
-Honor cancellation across both layers. If the owner cancels, stop or clear this
-run's native goal using its available native control, then disarm this gate and
-preserve the canceled state. Disarming only disables hooks; it does not cancel
-a native goal. If the host interrupted execution before these steps could run,
+Honor cancellation. Disarm this run to cancel its driver and pending wait delivery.
+If a native goal was separately enabled, stop or clear it with its native control
+as well; disarming cannot cancel that separate service. If the host interrupted execution before these steps could run,
 reconcile the owner's cancellation at the next authorized opportunity and never
 automatically re-arm or restart it. A pause preserves state and is not completion.
 
@@ -95,6 +95,12 @@ if command -v python3 >/dev/null 2>&1; then exec python3 "$runner" arm "$ARGUMEN
 
 When there is no usable `HEAD` and the reduced path is accepted, append
 `--allow-no-git` to the one final `arm` invocation above; do not run both forms.
+
+On POSIX Codex or Claude Code, append `--driver codex` or `--driver claude`
+to the final `arm` invocation. Select it from the actual current host, not by
+checking which parent-host environment variables happen to be inherited. Do not
+start native Goal mode in addition. The command returns the driver phase; a
+paused or terminal phase is not an automatic resume.
 
 The script validates before creating any active marker, requires a usable Git `HEAD`
 unless `--allow-no-git` records the explicit weaker path, then records three things: the
@@ -238,7 +244,7 @@ goal is met:
    --claim "<acceptance IDs and evidence>"` using the resolved installed script path.
    It consumes a completion candidate through the same gate and returns JSON before
    your final response. Exit 0 requires a newly recorded `verification_passed: true`.
-3. Read that observation. On success, reconcile the native goal with its actual tool
+3. Read that observation. On success, reconcile any separately enabled native goal with its actual tool
    and deliver the result paths, measured attempt and limits. On failure, use the
    evidence to continue within the remaining budget or report a precise unmet exit.
    Do not edit reviewed outputs after the check; edits require review and verification again.
@@ -298,7 +304,7 @@ root="${CLAUDE_PLUGIN_ROOT}"
 python3 "$root/skills/ultragoal/scripts/goal_run.py" disarm $ARGUMENTS
 ```
 
-That disarms the gate without needing the agent's cooperation: the checked
+That cancels the driver and its pending wait, then disarms the gate without needing the agent's cooperation: the checked
 removal of the marker (and any pending candidate), with the slug verified
 against the marker's slug line - the same escape hatch `LOOP` never had.
 Nothing in this plugin runs again until the marker returns; the events log

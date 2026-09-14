@@ -61,7 +61,11 @@ def delegation_target(event: dict[str, Any]) -> str | None:
             tokens = list(lexer)
         except ValueError:
             return None
-        if len(tokens) < 4 or Path(tokens[0]).name != "agent-delegate" or tokens[1] != "run":
+        if (len(tokens) > 1 and Path(tokens[0]).name in {"python", "python3"}
+                and Path(tokens[1]).name == "agent_delegate.py"):
+            tokens = tokens[1:]
+        if (len(tokens) < 4 or Path(tokens[0]).name not in {"agent-delegate", "agent_delegate.py"}
+                or tokens[1] != "run"):
             return None
         if any(token and all(c in ";&|<>()" for c in token) for token in tokens):
             return None
@@ -80,6 +84,9 @@ def delegation_target(event: dict[str, Any]) -> str | None:
 def handle(
     event: dict[str, Any], goal: ActiveGoal, host: str | None
 ) -> dict[str, Any] | None:
+    if event.get("is_interrupt") is True:
+        from goal_drive import halt
+        halt(goal, "paused", "User interrupted a tool; explicit resume required")
     role = delegation_target(event)
     if role is None:
         return None

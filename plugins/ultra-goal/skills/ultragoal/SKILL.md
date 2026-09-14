@@ -5,7 +5,7 @@ when_to_use: "When the owner wants work to keep running without them - \"make an
 license: MIT
 metadata:
   author: rocky2431
-  version: "2.17.1"
+  version: "2.18.0"
 ---
 
 # UltraGoal
@@ -14,7 +14,8 @@ Turn the owner's objective into an executable goal they can start and leave runn
 The goal is the invariant; loop and graph are two shapes it can take - a loop repeats
 against fresh feedback, a graph spells out tasks, dependencies and joins - and either
 shape can be fixed or dynamic. This skill defines the goal and hands it to the host.
-The host supplies execution, continuation, permissions and resource controls.
+The host supplies model/tool execution, permissions and resource controls. On supported
+Codex and Claude Code sessions, UltraGoal supplies continuation and event-driven waiting.
 
 **One goal contract, whatever the execution shape.** Every run owns
 `.goals/<slug>.goal.md` and `<slug>.decisions.md`. A workflow or delegation package
@@ -227,7 +228,7 @@ Reconsider the initial shape after the decisions are clear.
 
 For delegation, discover actual available targets rather than asking the owner to
 inventory them. Use suitable native worker tools or an available bridge; another
-Skill is not required. If using the installed delegation bridge, `agent-delegate list --json`
+Skill is not required. If using the installed delegation bridge, resolve `<delegation-skill-dir>` from that host's loaded Agent Delegation Skill; `python3 "<delegation-skill-dir>/scripts/agent_delegate.py" list --json`
 provides that inventory; do not assume the bridge is installed. A discovered Skill,
 a callable bridge and a usable target are separate facts. Missing optional tooling
 does not block ordinary authorized work. Pass current decisions, failures and evidence,
@@ -355,21 +356,17 @@ that remain valid. An objection does not authorize rebaselining an active run.
 
 ## Starting a run, on whichever host you are
 
-**Goal mode supplies the turns; the gate judges the claims.** The run works in ordinary
-host turns. A Stop can refuse a completion claim within a bound; it **cannot schedule
-the next turn** or revive an exited process. Arming alone is not unattended execution.
+On POSIX Codex and Claude Code, the run command selects UltraGoal's own driver:
+ordinary stops continue, waiting suspends model calls, and a terminal result wakes
+the original session. Native Goal mode is not required. Read
+[autonomous execution](references/autonomous-execution.md) for the actual commands,
+transport requirements, pause/resume and cancellation. A live host session is required;
+a stopped application is not restarted automatically.
 
-| Host surface previously measured | Native goal entry | Check in this session |
-|---|---|---|
-| Claude Code | `/goal <objective>` | CLI/native continuation and resource controls |
-| Codex | `/goal <objective>` | Application goal service; do not infer parity in `codex exec` |
-| Kimi | `/goal <objective>` | Native pause/resume/cancel and current hook support |
-| zCode | `/goal <objective>` | Interactive mode or supported headless target mode |
-| OpenCode | No goal entry found in the measured surface | Absence of evidence, not proof of absence |
-
-Check your own host rather than trusting this table. The host reference and actual
-session decide capabilities. Read the host-hooks reference for per-host contracts and
-measured limits. **Windows is unverified**; structural checks are not a native lifecycle.
+Kimi, zCode and Pi retain their existing gate/host-continuation paths. Check the
+current host rather than transferring another host's hook semantics. OpenCode
+autonomous execution has not been verified. Windows
+native autonomous execution is unsupported; gate-only use remains available.
 Finite probes do not establish statistical 95% unattended reliability.
 
 ## Validate, then offer to start it
@@ -403,7 +400,7 @@ content in the conversation, but you are now the run, not its designer. Frozen-s
 checks and `## Challenges from the run` preserve that boundary without another interview.
 
 Before the owner walks away, finish the authorized setup: exercise the actual entry
-point, confirm native continuation and resource controls, arm with the current native
+point, confirm the selected continuation driver and host resource controls, arm with the current native
 session identity, and establish where results will be read. An attachment runs against
 the same armed contract. Native permissions own effects; Stop cannot undo a write.
 If continuation or result delivery is missing, state the interactive limitation.

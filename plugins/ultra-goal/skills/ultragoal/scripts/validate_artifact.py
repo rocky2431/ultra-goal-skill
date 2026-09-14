@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 import json
+import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
@@ -49,8 +50,10 @@ def known_targets() -> tuple[tuple[str, ...], bool]:
     a stale constant reports a working target as a typo.
     """
     try:
+        entry = os.environ.get("AGENT_DELEGATION_ENTRY")
+        command = [sys.executable, entry] if entry else ["agent-delegate"]
         completed = subprocess.run(
-            ["agent-delegate", "list", "--json"],
+            [*command, "list", "--json"],
             capture_output=True,
             text=True,
             timeout=20,
