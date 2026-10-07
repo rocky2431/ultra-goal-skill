@@ -96,10 +96,11 @@ to.
 ## Cross-vendor graph: a star, not a mesh
 
 Cross-vendor delegation is a request/response through the orchestrator. The bridge
-version checked for this text, `agent-delegate` 0.4.0, supports task IDs with
+version checked for this text, `agent-delegate` 0.7.1, supports task IDs with
 asynchronous `submit`/`status`/`wait`, **named native sessions** (`--session <name>`,
 continued by repeating the same target, directory and name), **task or session
-cancellation and session close**, and a private per-run receipt directory where events
+cancellation and session close**, completion delivery back to the originating host,
+and a private per-run receipt directory where events
 and diagnostics land during execution. So a worker can be re-entered and its task
 observed without a second registration. This interface still provides no worker-to-worker
 channel or shared cross-vendor state: every edge runs through the orchestrator, and the

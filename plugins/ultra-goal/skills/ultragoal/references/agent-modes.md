@@ -79,12 +79,13 @@ chain. Never substitute `human` or a renamed target to bypass a rejection. A sam
 worker can be a separate session; if the chosen bridge cannot create it, use another
 supported path rather than claiming a circular delegation.
 
-The bridge version checked for this text, `agent-delegate` 0.4.0, exposes **task
+The bridge version checked for this text, `agent-delegate` 0.7.1, exposes **task
 handles and non-owning observation** (`submit` returns an ID; `status` and `wait` read
 it), **named native sessions** (`--session <name>` on `submit` or `run`, continued by
 repeating the same target, directory and name), **task or session cancellation and
-session close**, and a private per-run receipt directory holding events and diagnostics
-during execution. Those are wrapper facts at that version: a wrapper that lacks a knob
+session close**, **completion delivery to the originating host** (`submit --notify`,
+`wait --event`) with one collected result per task (`ack`, `wait --replay`), and a
+private per-run receipt directory holding events and diagnostics during execution. Those are wrapper facts at that version: a wrapper that lacks a knob
 says nothing about what the underlying protocol could do, and a newer wrapper may expose
 more. Check the installed version rather than assuming either direction, and keep any
 platform-specific limit you state tied to the version you actually observed.
