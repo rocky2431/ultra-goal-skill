@@ -2027,13 +2027,11 @@ class AuditFixTests(unittest.TestCase):
         self.assertIn("status --porcelain", critic)
 
     def test_the_gate_table_counts_the_hooks_that_ship(self) -> None:
-        """Six hooks ship; which ones register is a per-host fact, because an
-        event a host does not document is an error or a dead gate. The union
-        of the three hook files plus Kimi's inline list is the full set."""
+        """The table covers the union; each native manifest selects its own events."""
         self.assertIn("references/host-hooks.md", skill_text())
         skill = (SKILL_ROOT / "references" / "host-hooks.md").read_text(encoding="utf-8")
         events: set[str] = set()
-        for relative in ("hooks/hooks.json", "hooks/claude.json", "hooks/codex.json"):
+        for relative in ("hooks/hooks.json", "hooks/claude.json", "hooks/codex.json", "hooks/grok.json"):
             events |= set(json.loads((PLUGIN_ROOT / relative).read_text("utf-8"))["hooks"])
         events |= {
             h["event"]
@@ -2043,10 +2041,11 @@ class AuditFixTests(unittest.TestCase):
         }
         self.assertEqual(
             {"Stop", "SessionStart", "PreCompact", "PostToolUseFailure",
-             "PostToolUse", "UserPromptSubmit", "TurnStarted", "Interrupt", "SessionEnd"},
+             "PostToolUse", "UserPromptSubmit", "TurnStarted", "Interrupt", "SessionEnd",
+             "PostCompact", "StopCancelled", "StopFailure"},
             events,
         )
-        self.assertIn("contains nine hooks", skill)
+        self.assertIn("contains twelve hooks", skill)
         self.assertIn("| `PostToolUseFailure` |", skill)
         self.assertIn("| `PostToolUse` |", skill)
         self.assertIn("| `UserPromptSubmit` |", skill)

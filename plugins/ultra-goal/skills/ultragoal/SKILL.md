@@ -5,7 +5,7 @@ when_to_use: "When the owner wants work to keep running without them - \"make an
 license: MIT
 metadata:
   author: rocky2431
-  version: "2.19.1"
+  version: "2.20.0"
 ---
 
 # UltraGoal
@@ -379,7 +379,7 @@ that remain valid. An objection does not authorize rebaselining an active run.
 
 ## Starting a run, on whichever host you are
 
-On POSIX Codex and Claude Code, the run command selects UltraGoal's own driver:
+On POSIX Codex, Claude Code and Grok Build, the run command selects UltraGoal's own driver:
 ordinary stops continue, waiting suspends model calls, and a terminal result wakes
 the original session. Native Goal mode is not required. Read
 [autonomous execution](references/autonomous-execution.md) for the actual commands,

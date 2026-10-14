@@ -421,7 +421,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--session-id", help="Current native session ID, never another task's ID")
     parser.add_argument("--claim", default="Proposed completion of the accepted contract")
-    parser.add_argument("--driver", choices=("codex", "claude"),
+    parser.add_argument("--driver", choices=("codex", "claude", "grok"),
                         help="Enable autonomous continuation without native Goal mode")
     parser.add_argument(
         "--allow-no-git",

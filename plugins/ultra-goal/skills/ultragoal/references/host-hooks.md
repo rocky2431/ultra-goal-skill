@@ -15,20 +15,22 @@ section for `rebind` versus disarm/arm recovery; never erase history to hide dri
 
 ## Events and their scope
 
-The union of the installed manifests contains nine hooks. Each host registers
+The union of the installed manifests contains twelve hooks. Each host registers
 only the events whose input/output contract it supports.
 
 | Hook | Observes or delivers | Can block? |
 |---|---|---|
-| `Stop` | Judges completion; a selected Codex/Claude driver continues ordinary stops; Claude also waits for result events | Completion correction or selected autonomous continuation |
+| `Stop` | Judges completion; a selected Codex/Claude/Grok driver continues ordinary stops; Claude also waits for result events | Completion correction or selected autonomous continuation |
 | `SessionStart` | Restores the active specification and carried state on supported session boundaries | No; not registered on Kimi, where the event cannot inject context |
 | `PreCompact` | Records carried state and the observed context transition | No; not registered on zCode, whose compact recovery uses `SessionStart` |
 | `PostToolUseFailure` | Records `role_unavailable` for a recognized failed delegation call | No; Codex documents no such event |
 | `PostToolUse` | Records `role_recovered` for a later successful call to the same target | No; not registered on Codex, which records no matching failure |
-| `UserPromptSubmit` | Kimi only: supplies a fixed-size goal pointer and last recorded gate decision | No; a prompt is not every possible host turn |
+| `UserPromptSubmit` | Kimi supplies a fixed-size goal pointer and last recorded gate decision; Grok records its native promptId | No; Grok discards allowing output |
 | `TurnStarted` | Kimi only: records `turn_id` and `origin_kind` for each host turn, whatever its origin | No; it establishes a turn boundary, not recovery or goal success |
 | `Interrupt` | Codex only: pauses the autonomous driver and invalidates pending wait delivery | No |
-| `SessionEnd` | Claude only: pauses the autonomous driver before session exit | No |
+| `SessionEnd` | Claude/Grok: pauses the autonomous driver before session exit | No |
+| `PostCompact` | Grok: marks the bound contract for delivery with the next tool result | No |
+| `StopCancelled`, `StopFailure` | Grok: pauses the driver and invalidates its pending waiter | No |
 
 Delegation detection recognizes a direct `agent-delegate run --to <target>` or a
 structured call to that exact tool. Search strings, output text, opaque scripts
@@ -76,7 +78,7 @@ That needs independent evidence of permanent impossibility under the frozen
 terms. An unavailable service is normally retryable; a spent budget is exhausted.
 The disposition vocabulary does not add another mechanical completion oracle.
 
-For the Codex/Claude autonomous driver, see [autonomous execution](autonomous-execution.md).
+For the Codex/Claude/Grok autonomous driver, see [autonomous execution](autonomous-execution.md).
 Acceptance checks remain here; waiting and continued work do not create completion attempts.
 
 ## Output is host-specific

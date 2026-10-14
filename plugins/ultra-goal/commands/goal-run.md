@@ -6,8 +6,8 @@ allowed-tools: Bash, Read
 
 Start the run for `$ARGUMENTS`.
 
-The main model owns the work loop. On POSIX Codex and Claude Code, arm with
-`--driver codex` or `--driver claude`: UltraGoal continues ordinary stops and
+The main model owns the work loop. On POSIX Codex, Claude Code and Grok Build, arm with
+`--driver codex`, `--driver claude` or `--driver grok`: UltraGoal continues ordinary stops and
 resumes after an awaited command finishes, without enabling native Goal mode.
 Use the current host's actual identity, never an inherited parent-host variable.
 Other hosts retain the completion gate and their existing continuation mechanism.
@@ -75,6 +75,13 @@ host's actual native ID from its own command substitution or tool environment. N
 select the first available ID across hosts: even a single variable can belong to a
 parent agent. If the identity cannot be established, report the gate inactive.
 
+On Grok, use the absolute directory of the loaded UltraGoal Skill and read
+`GROK_SESSION_ID` from this native Grok tool environment. `GROK_PLUGIN_ROOT` is
+provided to hooks, not ordinary terminal tools. Instead of the generic fence below,
+run `python3 <loaded-skill-dir>/scripts/goal_run.py arm <slug> --session-id <native-id> --driver grok`.
+This uses the same validator and baseline checks. Apply the accepted `--allow-no-git`
+exception only when appropriate. Never fall back to another host's plugin cache.
+
 The fence is a script, not prose in this file: it validates through the
 real validator (a function call whose exception is the refusal - nothing to
 talk past, no fail-open branch to reach), refuses while another goal is
@@ -121,6 +128,7 @@ The native command/skill substitutions, where this host expands them, are:
 - Kimi: `${KIMI_SESSION_ID}`
 - zCode: `${ZCODE_SESSION_ID}`
 - Codex: read `CODEX_SESSION_ID` from the current tool environment.
+- Grok Build: read `GROK_SESSION_ID` from its current native tool environment.
 
 Literal, unexpanded placeholders are not identities. Do not choose an ID from a
 directory scan or another task. If the current identity cannot be obtained,

@@ -90,8 +90,8 @@ def selected(goal, state):
 
 
 def start(goal, host):
-    if host not in {"codex", "claude"}:
-        raise ValueError("Autonomous execution is supported only for codex and claude.")
+    if host not in {"codex", "claude", "grok"}:
+        raise ValueError("Autonomous execution is supported only for codex, claude and grok.")
     with driver_lock(goal):
         state = read(goal)
         if state and state["phase"] in {"completed", "canceled"}:
@@ -194,8 +194,8 @@ def after_gate(goal, event, host, command, payload, previous_count):
         "Do not end an ordinary turn merely to wait for another user prompt.")}
 
 
-def wait_command(goal, argv, timeout=None):
-    if not argv or any(not isinstance(arg, str) or "\0" in arg for arg in argv):
+def wait_command(goal, argv, timeout=None, *, yield_turn=None):
+    if (not argv and not yield_turn) or any(not isinstance(arg, str) or "\0" in arg for arg in argv):
         raise ValueError("Supply an executable argument list after --; no shell is implied.")
     if timeout is not None and timeout <= 0:
         raise ValueError("Wait timeout must be positive.")
@@ -203,6 +203,8 @@ def wait_command(goal, argv, timeout=None):
         state = read(goal)
         if not selected(goal, state) or state["phase"] != "running":
             raise ValueError("Wait requires the matching running autonomous goal.")
+        if yield_turn and state["host"] != "grok":
+            raise ValueError("Turn handoff is supported only for Grok's native background terminal.")
         executable = None
         if state["host"] == "codex":
             executable = shutil.which("codex")
@@ -214,8 +216,12 @@ def wait_command(goal, argv, timeout=None):
         wait_id = uuid.uuid4().hex
         directory = goal.goals_dir / ".work" / f"{goal.slug}-wait-{wait_id}"
         directory.mkdir(parents=True)
+        if yield_turn:
+            os.mkfifo(directory / "turn-end.fifo", 0o600)
         state.update(phase="waiting", wait=dict(id=wait_id, status="starting", directory=str(directory),
                      argv=argv, timeout=timeout, codex=executable, run_id=state["run_id"]))
+        if yield_turn:
+            state["wait"]["yield_turn"] = yield_turn
         save(goal, state)
         log = (directory / "observer.log").open("ab")
         try:
@@ -280,7 +286,7 @@ def delivery(goal, wait_id):
         save(goal, state)
         append_event(goal, {"event": "driver_delivery", "run_id": state["run_id"],
                             "wait_id": wait_id, "delivery_status": waiting["status"]})
-        return message if state["host"] == "claude" and state["phase"] == "running" else None
+        return message if state["host"] in {"claude", "grok"} and state["phase"] == "running" else None
 
 
 def worker(goal, wait_id):
@@ -289,6 +295,7 @@ def worker(goal, wait_id):
         return
     directory = Path(initial["wait"]["directory"])
     with lock(directory / "wait.lock"):
+        handoff = os.open(directory / "turn-end.fifo", os.O_RDONLY | os.O_NONBLOCK) if initial["wait"].get("yield_turn") else None
         print("READY", flush=True)
         with driver_lock(goal):
             state = read(goal)
@@ -298,13 +305,24 @@ def worker(goal, wait_id):
         outcome = dict(wait_id=wait_id, started_at=stamp(), argv=waiting["argv"])
         with (directory / "output.log").open("wb") as output:
             try:
-                result = subprocess.run(waiting["argv"], cwd=goal.goals_dir.parent, stdin=subprocess.DEVNULL,
-                                        stdout=output, stderr=subprocess.STDOUT, timeout=waiting["timeout"])
-                outcome.update(status="finished", exit_code=result.returncode)
+                if handoff is not None:
+                    import select
+                    select.select([handoff], [], [])
+                    if os.read(handoff, 128).decode() != state["run_id"]:
+                        raise ValueError("Turn handoff identity mismatch")
+                    outcome.update(status="finished", exit_code=0)
+                else:
+                    result = subprocess.run(waiting["argv"], cwd=goal.goals_dir.parent, stdin=subprocess.DEVNULL,
+                                            stdout=output, stderr=subprocess.STDOUT, timeout=waiting["timeout"])
+                    outcome.update(status="finished", exit_code=result.returncode)
             except subprocess.TimeoutExpired:
                 outcome.update(status="timeout", exit_code=None)
-            except OSError as exc:
+            except (OSError, ValueError) as exc:
                 outcome.update(status="launch_failed", exit_code=None, error=str(exc))
+            finally:
+                if handoff is not None:
+                    os.close(handoff)
+                    (directory / "turn-end.fifo").unlink(missing_ok=True)
         outcome["finished_at"] = stamp()
         (directory / "result.json").write_text(json.dumps(outcome, indent=2) + "\n")
         with driver_lock(goal):
@@ -318,12 +336,29 @@ def worker(goal, wait_id):
             delivery(goal, wait_id)
 
 
-def wake_hook(event):
+def yield_at_stop(goal, turn_id):
+    with driver_lock(goal):
+        state = read(goal)
+        waiting = (state or {}).get("wait") or {}
+        if not selected(goal, state) or state["phase"] != "waiting" or not turn_id or waiting.get("yield_turn") != turn_id:
+            return
+        try:
+            fd = os.open(Path(waiting["directory"]) / "turn-end.fifo", os.O_WRONLY | os.O_NONBLOCK)
+            try:
+                os.write(fd, state["run_id"].encode())
+            finally:
+                os.close(fd)
+        except OSError:
+            return
+        append_event(goal, {"event": "grok_turn_yielded", "turn_id": turn_id, "wait_id": waiting["id"]})
+
+
+def wake_hook(event, host="claude"):
     goal = active_goal(event.get("cwd"))
     if not goal or not owns_goal(goal, event) or os.environ.get("ULTRA_GOAL_HOOKS_DISABLED") == "1":
         return None
     state = read(goal)
-    if not selected(goal, state) or state["host"] != "claude" or not state.get("wait"):
+    if not selected(goal, state) or state["host"] != host or not state.get("wait"):
         return None
     waiting = state["wait"]
     if waiting["status"] not in {"waiting", "ready"} or state["phase"] not in {"waiting", "running"}:
@@ -344,13 +379,14 @@ def wake_hook(event):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("action", choices=("start", "pause", "resume", "status", "wait", "_worker", "wake-hook", "interrupt"))
+    parser.add_argument("action", choices=("start", "pause", "resume", "status", "wait", "yield", "_worker", "wake-hook", "interrupt"))
     parser.add_argument("slug", nargs="?")
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--session-id")
-    parser.add_argument("--host", choices=("codex", "claude"))
+    parser.add_argument("--host", choices=("codex", "claude", "grok"))
     parser.add_argument("--reason")
     parser.add_argument("--wait-id")
+    parser.add_argument("--turn-id")
     parser.add_argument("--timeout", type=float)
     # Keep command options separate from driver options.
     raw = sys.argv[1:]
@@ -387,8 +423,15 @@ def main():
             result = halt(goal, "paused", args.reason)
         elif args.action == "resume":
             result = resume(goal)
-        elif args.action == "wait":
-            result = wait_command(goal, raw[separator + 1:], args.timeout)
+        elif args.action in {"wait", "yield"}:
+            if args.action == "yield" and not args.turn_id:
+                raise ValueError("Turn handoff requires the current native --turn-id.")
+            result = wait_command(goal, raw[separator + 1:], args.timeout,
+                                  yield_turn=args.turn_id if args.action == "yield" else None)
+            if result["host"] == "grok":
+                # Grok runs this CLI in its native background terminal; completion wakes the session.
+                message = wake_hook(dict(cwd=str(args.root), session_id=args.session_id), host="grok")
+                result = {"driver": read(goal), "event": message}
         else:
             result = read(goal)
         print(json.dumps(result, indent=2))

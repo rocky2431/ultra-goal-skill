@@ -109,6 +109,10 @@ class HostFacts:
 
 
 HOSTS: dict[str, HostFacts] = {
+    "grok": HostFacts(
+        7, "sized under Grok's eight continuations per turn (Grok hooks reference, 2026-10-14)",
+        chain_flag="stop_hook_active",
+    ),
     "pi": HostFacts(1, "Pi extension allows one corrective follow-up per user prompt; ordinary stops do not continue"),
     # Claude Code force-ends a turn after 8 consecutive Stop blocks with no
     # tool progress in between (the counter is `stopHookBlockingCount`,

@@ -50,7 +50,7 @@ def delegation_target(event: dict[str, Any]) -> str | None:
         target = data.get("to") or data.get("target")
     if target is None:
         if tool not in {"agent-delegate", "Bash", "bash", "Shell", "shell",
-                        "exec_command", "run_shell_command", "execute_command"}:
+                        "exec_command", "run_shell_command", "execute_command", "run_terminal_command"}:
             return None
         command = data.get("command") or data.get("cmd")
         if not isinstance(command, str) or "\n" in command or "\r" in command:

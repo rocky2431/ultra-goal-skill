@@ -2280,6 +2280,7 @@ class ContinuationBudgetTests(Harness):
     def test_every_host_budget_carries_a_citation(self) -> None:
         facts = lh.HOSTS
         self.assertEqual(7, facts["claude"].continuation_budget)
+        self.assertEqual(7, facts["grok"].continuation_budget)
         self.assertEqual(2, facts["zcode"].continuation_budget)
         self.assertEqual(1, facts["kimi"].continuation_budget)
         self.assertEqual(1, facts["pi"].continuation_budget)
@@ -2294,6 +2295,7 @@ class ContinuationBudgetTests(Harness):
             {
                 "claude": "stop_hook_active",
                 "codex": "stop_hook_active",
+                "grok": "stop_hook_active",
                 "zcode": None,
                 "kimi": None,
                 "pi": None,
